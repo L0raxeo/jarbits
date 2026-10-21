@@ -200,7 +200,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = Z73M6DTVWU;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FA45M2PG8T;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -214,7 +213,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = co.venuesss.browser;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lorcancheng.browser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -230,7 +229,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = Z73M6DTVWU;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FA45M2PG8T;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -244,7 +242,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = co.venuesss.browser;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lorcancheng.browser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
