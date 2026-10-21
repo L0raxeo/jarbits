@@ -10,7 +10,10 @@ struct CardStackView: View {
         if plans.isEmpty {
             emptyState
         } else {
-            ForEach(plans, id: \.self) { plan in
+            // Keyed by slot, not by plan content. A `WebPage` can be shown by only one
+            // `WebView` at a time; keying on the URL would rebuild the card for every
+            // new query and attach a second `WebView` to the same page, which traps.
+            ForEach(Array(plans.enumerated()), id: \.offset) { _, plan in
                 card(for: plan)
             }
         }
