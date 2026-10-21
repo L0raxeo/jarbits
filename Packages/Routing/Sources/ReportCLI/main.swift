@@ -2,8 +2,7 @@ import Foundation
 import Routing
 
 // Usage:
-//   swift run --package-path Packages/Routing report modules   > MODULES.md
-//   swift run --package-path Packages/Routing report routing   > ROUTING.md
+//   swift run --package-path Packages/Routing report routing > ROUTING.md
 //   swift run --package-path Packages/Routing report decisions path/to/decisions.jsonl
 
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -14,8 +13,6 @@ func fail(_ message: String) -> Never {
 }
 
 switch arguments.first {
-case "modules":
-    print(ModulesReport.markdown(), terminator: "")
 case "routing":
     print(RoutingReport.markdown(), terminator: "")
 case "decisions":
@@ -28,5 +25,5 @@ case "decisions":
         fail("could not read \(arguments[1]): \(error)")
     }
 default:
-    fail("usage: report modules | routing | decisions <decisions.jsonl>")
+    fail("usage: report routing | decisions <decisions.jsonl>")
 }

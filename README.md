@@ -64,16 +64,9 @@ at $0.042 per million, so a few hundred searches a month cost under a cent.
 Each response format is a module with a stage recorded in code
 (`ResponseFormat.stage` in `Packages/Routing`): `routed` (Jev can pick it,
 web results stand in), `built` (a real card renders), `verified` (used on a
-device and accepted). [MODULES.md](MODULES.md) is generated from it:
-
-```
-swift run --package-path Packages/Routing report modules > MODULES.md
-```
-
-A test fails while that file is stale, the Debug ribbon reads
-`stock → web (routed, not built)` for a routed pick, and `JevRouter` asserts a
-format marked `built` really has a card. Flip the stage in the same change that
-adds the card.
+device and accepted). The Debug ribbon reads `stock → web (routed, not built)`
+for a routed pick, and `JevRouter` asserts a format marked `built` really has a
+card. Flip the stage in the same change that adds the card.
 
 ## How it routes
 

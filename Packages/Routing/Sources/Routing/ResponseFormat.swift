@@ -19,8 +19,8 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     public static let fallback: ResponseFormat = .webResults
 
     /// How far along this module is. Flip it in the same change that adds the
-    /// card; `JevRouter.plan(for:query:)` asserts the two agree, and
-    /// `MODULES.md` is generated from it.
+    /// card; `JevRouter.plan(for:query:)` asserts the two agree and the Debug
+    /// ribbon shows it.
     public var stage: Stage {
         switch self {
         case .webResults: .verified
@@ -28,7 +28,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    /// Human name for the ribbon and the modules table.
+    /// Human name for the ribbon.
     public var title: String {
         switch self {
         case .webResults: "Web results"
