@@ -18,6 +18,48 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     /// What the app shows when the router cannot or should not decide.
     public static let fallback: ResponseFormat = .webResults
 
+    /// How far along this module is. Flip it in the same change that adds the
+    /// card; `JevRouter.plan(for:query:)` asserts the two agree, and
+    /// `MODULES.md` is generated from it.
+    public var stage: Stage {
+        switch self {
+        case .webResults: .verified
+        case .summary, .images, .map, .flights, .stock, .oneWord, .presentation, .videos, .links: .routed
+        }
+    }
+
+    /// Human name for the ribbon and the modules table.
+    public var title: String {
+        switch self {
+        case .webResults: "Web results"
+        case .summary: "Summary"
+        case .images: "Images"
+        case .map: "Map"
+        case .flights: "Flights"
+        case .stock: "Stock"
+        case .oneWord: "One-word answer"
+        case .presentation: "Presentation"
+        case .videos: "Videos"
+        case .links: "Links"
+        }
+    }
+
+    /// What is missing before the module can be marked `built`. `nil` once it renders.
+    public var needs: String? {
+        switch self {
+        case .webResults: nil
+        case .summary: "Opus 5.5 streamed prose card"
+        case .images: "Image provider (Serper images) and a grid card"
+        case .map: "MapKit card with an MKLocalSearch pin"
+        case .flights: "Route and date extraction (Haiku), Amadeus lookup, list card"
+        case .stock: "Ticker resolution, a market-data provider, Swift Charts card"
+        case .oneWord: "Answer source (Haiku or Serper answer box) and a single-line card"
+        case .presentation: "Opus 5.5 sectioned output and a paged card"
+        case .videos: "YouTube Data API search and a list card"
+        case .links: "Resolve the named site and open it directly"
+        }
+    }
+
     /// The option description Jev reads. Written to separate this format from
     /// its neighbours; `notFor` names the formats it is most often confused with.
     public var criterion: Criterion {
@@ -83,6 +125,20 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
                 examples: ["github login", "apple developer documentation", "nytimes", "stripe docs webhooks"]
             )
         }
+    }
+}
+
+/// A module's maturity, in order.
+public enum Stage: String, Codable, Sendable, CaseIterable, Comparable {
+    /// Jev can pick it; the app shows web results in its place.
+    case routed
+    /// A real card renders for it.
+    case built
+    /// Used on a device and accepted.
+    case verified
+
+    public static func < (lhs: Stage, rhs: Stage) -> Bool {
+        allCases.firstIndex(of: lhs)! < allCases.firstIndex(of: rhs)!
     }
 }
 

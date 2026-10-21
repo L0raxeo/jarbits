@@ -21,7 +21,12 @@ struct JevRouter: Router {
             return .web(url)
         }
         switch decision.format {
-        case .webResults, .summary, .images, .map, .flights, .stock, .oneWord, .presentation, .videos, .links:
+        case .webResults:
+            return .web(QueryParser.searchURL(for: query))
+        case .summary, .images, .map, .flights, .stock, .oneWord, .presentation, .videos, .links:
+            // Not built yet: web results stand in. Moving a format out of this
+            // branch and flipping its `stage` happen in the same change.
+            assert(decision.format.stage == .routed, "\(decision.format) is marked \(decision.format.stage) but has no card")
             return .web(QueryParser.searchURL(for: query))
         }
     }

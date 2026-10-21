@@ -43,6 +43,8 @@ struct RouteDebugRibbon: View {
     private var headline: String {
         var parts: [String] = []
         switch decision.source {
+        case .jev where decision.format.stage == .routed:
+            parts.append("\(decision.format.rawValue) → web (routed, not built)")
         case .jev:
             parts.append(decision.format.rawValue)
         case .confidenceFallback:
@@ -80,6 +82,11 @@ struct RouteDebugRibbon: View {
             if case let .error(message) = decision.source {
                 Text(message)
                     .foregroundStyle(.red)
+                    .lineLimit(3)
+            }
+            if let needs = decision.format.needs {
+                Text("needs: \(needs)")
+                    .foregroundStyle(.secondary)
                     .lineLimit(3)
             }
             ForEach(sortedProbabilities, id: \.0) { name, probability in

@@ -1,13 +1,6 @@
 import Foundation
 import Routing
 
-/// One routed query, as written to the log.
-nonisolated struct DecisionRecord: Codable, Sendable {
-    var timestamp: Date = .now
-    var query: String
-    var decision: RouteDecision
-}
-
 /// Appends every routing decision to a JSON Lines file on the device. The
 /// file is the raw material for the eval set; nothing leaves the phone unless
 /// the user exports it from the debug ribbon.
@@ -27,9 +20,7 @@ actor DecisionLog {
 
     func append(_ record: DecisionRecord) {
         do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            var line = try encoder.encode(record)
+            var line = try DecisionRecord.encoder.encode(record)
             line.append(UInt8(ascii: "\n"))
 
             let directory = fileURL.deletingLastPathComponent()

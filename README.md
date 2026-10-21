@@ -59,6 +59,44 @@ at $0.042 per million, so a few hundred searches a month cost under a cent.
 | `Browser/Info.plist` | Merged into the generated Info.plist. Holds the two keys Xcode will not take as `INFOPLIST_KEY_` settings: the API key and `UIDesignRequiresCompatibility`. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
 
+## Modules
+
+Each response format is a module with a stage recorded in code
+(`ResponseFormat.stage` in `Packages/Routing`): `routed` (Jev can pick it,
+web results stand in), `built` (a real card renders), `verified` (used on a
+device and accepted). [MODULES.md](MODULES.md) is generated from it:
+
+```
+swift run --package-path Packages/Routing report modules > MODULES.md
+```
+
+A test fails while that file is stale, the Debug ribbon reads
+`stock → web (routed, not built)` for a routed pick, and `JevRouter` asserts a
+format marked `built` really has a card. Flip the stage in the same change that
+adds the card.
+
+## How it routes
+
+[ROUTING.md](ROUTING.md) is the routing contract, generated from the same
+`JevRouting.request` the app sends: the state Jev reads, every question with
+its type and options, the queries each option is meant to catch, the answer
+shape, and what the app does with each outcome. Regenerate it with:
+
+```
+swift run --package-path Packages/Routing report routing > ROUTING.md
+```
+
+For what real queries triggered, export `decisions.jsonl` from the Debug
+ribbon (AirDrop or Files to the Mac) and run:
+
+```
+swift run --package-path Packages/Routing report decisions ~/Downloads/decisions.jsonl
+```
+
+That prints picks per format, how often each was acted on or fell back, mean
+confidence, recent example queries, errors, and the unsure picks with their
+runner-up.
+
 ## Tests
 
 ```
