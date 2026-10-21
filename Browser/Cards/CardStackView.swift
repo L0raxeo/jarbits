@@ -16,6 +16,13 @@ struct CardStackView: View {
             ForEach(Array(plans.enumerated()), id: \.offset) { _, plan in
                 card(for: plan)
             }
+            #if DEBUG
+            .overlay(alignment: .top) {
+                if let decision = session.lastDecision {
+                    RouteDebugRibbon(decision: decision, logURL: DecisionLog.shared.fileURL)
+                }
+            }
+            #endif
         }
     }
 

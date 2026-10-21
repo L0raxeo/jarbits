@@ -6,13 +6,33 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B10000000000000000000016 /* Routing in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000015 /* Routing */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		B10000000000000000000001 /* Browser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Browser.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000010 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		B10000000000000000000011 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		B10000000000000000000012 /* Secrets.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.example.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B10000000000000000000017 /* Exceptions for "Browser" folder in "Browser" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B10000000000000000000006 /* Browser */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B10000000000000000000002 /* Browser */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B10000000000000000000017 /* Exceptions for "Browser" folder in "Browser" target */,
+			);
 			path = Browser;
 			sourceTree = "<group>";
 		};
@@ -23,6 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10000000000000000000016 /* Routing in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -33,8 +54,19 @@
 			isa = PBXGroup;
 			children = (
 				B10000000000000000000002 /* Browser */,
+				B10000000000000000000013 /* Config */,
 				B10000000000000000000005 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		B10000000000000000000013 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000010 /* Debug.xcconfig */,
+				B10000000000000000000011 /* Release.xcconfig */,
+				B10000000000000000000012 /* Secrets.example.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		B10000000000000000000005 /* Products */ = {
@@ -65,6 +97,7 @@
 			);
 			name = Browser;
 			packageProductDependencies = (
+				B10000000000000000000015 /* Routing */,
 			);
 			productName = Browser;
 			productReference = B10000000000000000000001 /* Browser.app */;
@@ -94,6 +127,9 @@
 			);
 			mainGroup = B10000000000000000000004;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B10000000000000000000014 /* XCLocalSwiftPackageReference "Packages/Routing" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B10000000000000000000005 /* Products */;
 			projectDirPath = "";
@@ -198,14 +234,15 @@
 		};
 		B1000000000000000000000E /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B10000000000000000000010 /* Debug.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FA45M2PG8T;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Browser/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIDesignRequiresCompatibility = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -227,14 +264,15 @@
 		};
 		B1000000000000000000000F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B10000000000000000000011 /* Release.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FA45M2PG8T;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Browser/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIDesignRequiresCompatibility = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -276,6 +314,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		B10000000000000000000014 /* XCLocalSwiftPackageReference "Packages/Routing" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/Routing;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B10000000000000000000015 /* Routing */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Routing;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B10000000000000000000009 /* Project object */;
 }

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Routing
 import WebKit
 
 /// One browsing session: the single web page, the current plan, and the
@@ -10,10 +11,12 @@ final class BrowserSession {
     let page = WebPage()
     private(set) var plans: [CardPlan] = []
     private(set) var lastQuery = ""
+    /// Why the current plan is what it is; shown by the debug ribbon.
+    private(set) var lastDecision: RouteDecision?
 
     private let router: any Router
 
-    init(router: any Router = LocalRouter()) {
+    init(router: any Router) {
         self.router = router
     }
 
@@ -22,14 +25,15 @@ final class BrowserSession {
         guard !trimmed.isEmpty else { return }
         lastQuery = trimmed
         Task {
-            let plan = await router.route(trimmed)
-            apply(plan)
+            let result = await router.route(trimmed)
+            apply(result)
         }
     }
 
-    private func apply(_ plan: CardPlan) {
-        plans = [plan]
-        switch plan {
+    private func apply(_ result: RouteResult) {
+        lastDecision = result.decision
+        plans = [result.plan]
+        switch result.plan {
         case .web(let url):
             _ = page.load(URLRequest(url: url))
         }

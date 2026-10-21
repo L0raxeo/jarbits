@@ -1,0 +1,4 @@
+// Base configuration for Debug builds. The real secrets file is untracked;
+// `#include?` makes it optional so a fresh clone still builds (with no key,
+// the app uses the local router and the debug ribbon says so).
+#include? "Secrets.xcconfig"

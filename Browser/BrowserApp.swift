@@ -3,7 +3,7 @@ import UIKit
 
 @main
 struct BrowserApp: App {
-    @State private var session = BrowserSession()
+    @State private var session = BrowserSession(router: BrowserSession.makeRouter())
 
     init() {
         // SwiftUI's TextField has no clear button of its own; this gives the address bar one.

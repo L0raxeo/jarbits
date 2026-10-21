@@ -1,0 +1,3 @@
+// Base configuration for Release builds. Same optional secrets include as Debug
+// so a Release build from Xcode on a device also reaches Jev.
+#include? "Secrets.xcconfig"

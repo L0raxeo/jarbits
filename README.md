@@ -1,26 +1,76 @@
 # Browser
 
 An iOS browser where a query goes through a router that decides what kind of
-card to show. Today there is one card type, a Google results web view. Every
-future response format (summary, map, stock, images, …) is a new `CardPlan`
-case, a new SwiftUI card view, and a new provider behind the router.
+card to show. The router is TypeSafe's Jev, a System One model: it picks one of
+ten response formats and reports how sure it is. Today there is one card type,
+a Google results web view, so every format still renders web results; the
+decision is shown in a Debug ribbon and logged on the device so routing quality
+is visible before any new card is built. Every future format (summary, map,
+stock, images, …) is a new `CardPlan` case, a new SwiftUI card view, and a
+provider behind the router.
 
 ## Run
 
-Open `Browser.xcodeproj` in Xcode 26, pick your team under
-Signing & Capabilities once, and run on a device or simulator. Minimum iOS 26.
+1. Open `Browser.xcodeproj` in Xcode 26, pick your team under
+   Signing & Capabilities once. Minimum iOS 26.
+2. Get a Jev key from https://console.typesafe.ai/keys, then:
+   ```
+   cp Config/Secrets.example.xcconfig Config/Secrets.xcconfig
+   ```
+   and paste the key. The file is gitignored. Without it the app builds and
+   runs with the local router (every query is a Google search) and the ribbon
+   says "no key".
+3. Run on a device.
+
+## How a query is routed
+
+`BrowserSession.submit` → `Router.route` → `RouteResult { plan, decision }`.
+
+`JevRouter` (used when a key is configured):
+- An address (`example.com`, `https://…`) loads directly; Jev is not asked.
+- Anything else is sent as `{ query, locale }` with one Choice question over
+  `ResponseFormat.allCases`. Options reach Jev in declaration order, with
+  `web_results` first, because Jev leans toward the first option when unsure.
+- Confidence below `JevRouting.confidenceFloor` (0.5) falls back to
+  `web_results`. Any error or a 2.5 s timeout does the same.
+- The format maps to a plan in `JevRouter.plan(for:query:)`. Every format is
+  `.web(google search)` today; this switch is where format two plugs in.
+- Each decision is appended to `Application Support/Browser/decisions.jsonl`
+  (query, format, confidence, every option's probability, model, latency,
+  tokens). Nothing leaves the phone unless you export it from the ribbon.
+
+Model is pinned to `jev-1.13.0`. A routing request is roughly 500 input tokens
+at $0.042 per million, so a few hundred searches a month cost under a cent.
 
 ## Where things live
 
 | Path | Role |
 |---|---|
-| `Browser/Router/CardPlan.swift` | The response formats. One enum case per format. |
-| `Browser/Router/Router.swift` | The seam: query in, `CardPlan` out. |
-| `Browser/Router/LocalRouter.swift` | Hardcoded router: URL-looking input loads directly, anything else is a Google search. Replaced by the HTTP/Jev router when format two arrives. |
+| `Packages/Routing/` | Foundation-only Swift package: the formats and their Jev criteria, the System One client, the decision type, the confidence gate, `QueryParser`. Tests run on macOS. |
+| `Browser/Router/Router.swift` | The seam: query in, `RouteResult` out. |
+| `Browser/Router/JevRouter.swift` | Asks Jev, maps format → `CardPlan`, writes the log. Also `BrowserSession.makeRouter()`. |
+| `Browser/Router/LocalRouter.swift` | No-network fallback used when no key is configured. |
+| `Browser/Router/DecisionLog.swift` | JSON Lines log of every decision. |
+| `Browser/Router/Secrets.swift` | Reads the key from Info.plist (`TypeSafeAPIKey`). |
+| `Browser/Router/CardPlan.swift` | The renderable plans. One enum case per card type. |
 | `Browser/Session/BrowserSession.swift` | Owns the single `WebPage`, runs queries through the router, applies the plan. |
-| `Browser/Cards/` | One view per card type. `CardStackView` picks the view for each plan. |
+| `Browser/Cards/` | One view per card type, plus the Debug-only `RouteDebugRibbon`. |
 | `Browser/Shell/` | Custom chrome: bottom address bar and navigation buttons. No system toolbars, so no Liquid Glass. |
+| `Browser/Info.plist` | Merged into the generated Info.plist. Holds the two keys Xcode will not take as `INFOPLIST_KEY_` settings: the API key and `UIDesignRequiresCompatibility`. |
+| `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
+
+## Tests
+
+```
+swift test --package-path Packages/Routing
+```
+
+Covers the request body against TypeSafe's documented shape and option order,
+decoding of their example response, the confidence gate, every failure path
+falling back to web results, and the address bypass. Nothing here needs a
+simulator.
 
 ## Deliberately absent
 
-Tabs, history, bookmarks, content blocking, reader mode, backend, tests.
+Tabs, history, bookmarks, content blocking, reader mode, any card other than
+web, the backend (the same Jev request moves behind it later), Serper.
