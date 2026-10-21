@@ -23,7 +23,7 @@ struct JevRouter: Router {
         switch decision.format {
         case .webResults:
             return .web(QueryParser.searchURL(for: query))
-        case .summary, .images, .map, .flights, .stock, .oneWord, .presentation, .videos, .links:
+        case .narrative, .map, .stock, .oneLine:
             // Not built yet: web results stand in. Moving a format out of this
             // branch and flipping its `stage` happen in the same change.
             assert(decision.format.stage == .routed, "\(decision.format) is marked \(decision.format.stage) but has no card")

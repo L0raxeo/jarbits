@@ -2,11 +2,11 @@
 
 An iOS browser where a query goes through a router that decides what kind of
 card to show. The router is TypeSafe's Jev, a System One model: it picks one of
-ten response formats and reports how sure it is. Today there is one card type,
+five response formats and reports how sure it is. Today there is one card type,
 a Google results web view, so every format still renders web results; the
 decision is shown in a Debug ribbon and logged on the device so routing quality
-is visible before any new card is built. Every future format (summary, map,
-stock, images, …) is a new `CardPlan` case, a new SwiftUI card view, and a
+is visible before any new card is built. Every future format (narrative, map,
+stock, one-line) is a new `CardPlan` case, a new SwiftUI card view, and a
 provider behind the router.
 
 ## Run

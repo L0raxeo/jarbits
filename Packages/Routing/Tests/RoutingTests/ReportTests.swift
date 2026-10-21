@@ -54,7 +54,7 @@ import Testing
         #expect(markdown.contains("4 queries: 2 asked Jev, 1 addresses, 0 without a key, 1 errors."))
         #expect(markdown.contains("| `stock` | 1 | 1 | 0 | 0.91 | \"nasdaq stock\" |"))
         #expect(markdown.contains("| `map` | 1 | 0 | 1 | 0.30 | \"coffee\" |"))
-        #expect(!markdown.contains("| `flights` |"), "formats never picked are left out")
+        #expect(!markdown.contains("| `one_line` |"), "formats never picked are left out")
         #expect(markdown.contains("- \"tesla\": timeout"))
         #expect(markdown.contains("| \"coffee\" | `map` | 0.30 | `web_results` 0.33 |"))
     }

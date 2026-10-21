@@ -5,12 +5,12 @@ import Testing
 /// These share one `URLProtocol` handler, so they run one at a time.
 @Suite(.serialized) struct FormatRouterTests {
     @Test func asksJevAndActsOnAConfidentAnswer() async throws {
-        let client = MockTransport.client(status: 200, body: jevResponse(choice: "one_word", confidence: 0.88, probabilities: ["one_word": 0.89, "summary": 0.08, "web_results": 0.03]))
+        let client = MockTransport.client(status: 200, body: jevResponse(choice: "one_line", confidence: 0.88, probabilities: ["one_line": 0.89, "narrative": 0.08, "web_results": 0.03]))
         let router = FormatRouter(client: client, locale: Locale(identifier: "en_US"))
 
-        let decision = await router.decide("capital of peru")
+        let decision = await router.decide("what's the time in costa rica")
 
-        #expect(decision.format == .oneWord)
+        #expect(decision.format == .oneLine)
         #expect(decision.source == .jev)
         #expect(decision.latencyMs != nil)
 
@@ -21,7 +21,7 @@ import Testing
         #expect(sent.value(forHTTPHeaderField: "Content-Type") == "application/json")
         let body = try #require(sent.httpBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-        #expect((json["state"] as? [String: Any])?["query"] as? String == "capital of peru")
+        #expect((json["state"] as? [String: Any])?["query"] as? String == "what's the time in costa rica")
     }
 
     @Test func addressBypassesJev() async {

@@ -11,7 +11,7 @@ import Testing
     }
 
     @Test func confidentAnswerPassesTheGate() throws {
-        let response = try response(choice: "stock", confidence: 0.91, probabilities: ["stock": 0.92, "web_results": 0.05, "links": 0.03])
+        let response = try response(choice: "stock", confidence: 0.91, probabilities: ["stock": 0.92, "web_results": 0.05, "narrative": 0.03])
         let decision = JevRouting.decision(from: response, latencyMs: 212)
         #expect(decision.format == .stock)
         #expect(decision.suggested == .stock)
@@ -24,7 +24,7 @@ import Testing
     }
 
     @Test func unsureAnswerFallsBackToWeb() throws {
-        let response = try response(choice: "map", confidence: 0.4, probabilities: ["map": 0.46, "web_results": 0.3, "images": 0.24])
+        let response = try response(choice: "map", confidence: 0.4, probabilities: ["map": 0.46, "web_results": 0.3, "narrative": 0.24])
         let decision = JevRouting.decision(from: response, latencyMs: 180)
         #expect(decision.format == .webResults)
         #expect(decision.suggested == .map)
@@ -32,7 +32,7 @@ import Testing
     }
 
     @Test func floorIsInclusive() throws {
-        let response = try response(choice: "videos", confidence: 0.5, probabilities: ["videos": 0.55, "web_results": 0.45])
+        let response = try response(choice: "narrative", confidence: 0.5, probabilities: ["narrative": 0.55, "web_results": 0.45])
         #expect(JevRouting.decision(from: response, latencyMs: 1).source == .jev)
     }
 
@@ -56,8 +56,8 @@ import Testing
 
     @Test func decisionRoundTripsThroughJSON() throws {
         let decision = RouteDecision(
-            format: .webResults, suggested: .flights, confidence: 0.3,
-            probabilities: ["flights": 0.37, "web_results": 0.33], model: "jev-1.13.0",
+            format: .webResults, suggested: .oneLine, confidence: 0.3,
+            probabilities: ["one_line": 0.37, "web_results": 0.33], model: "jev-1.13.0",
             latencyMs: 150, inputTokens: 500, source: .confidenceFallback
         )
         let data = try JSONEncoder().encode(decision)
