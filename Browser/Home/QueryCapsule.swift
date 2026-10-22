@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Safari's minimised bar, ours: a capsule at the foot of a result showing
 /// the query that produced it, in the same breathing purple as the orb. It
-/// hugs its text up to the screen edges, shrinks and drops a little while
-/// the result scrolls down, grows on the way up, and when tapped becomes
+/// hugs its text up to the screen edges, shrinks in height and drops a little
+/// while the result scrolls down, grows back on the way up, and when tapped becomes
 /// the follow-up field: full width, taller, the query fading into a text
 /// field. One view, so the three looks morph rather than swap.
 struct QueryCapsule: View {
@@ -16,6 +16,7 @@ struct QueryCapsule: View {
     var fieldWidth: CGFloat
     @Binding var draft: String
     var focus: FocusState<Bool>.Binding
+    var selection: Binding<TextSelection?>
     var onTap: () -> Void
     var onSubmit: () -> Void
 
@@ -32,14 +33,14 @@ struct QueryCapsule: View {
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    // Scale rather than a font change, so the growth animates smoothly.
-                    .scaleEffect(compact ? 1 : 1.12)
-                    .padding(.horizontal, compact ? 16 : 24)
+                    // Only the capsule's height changes between the two sizes: the
+                    // text and its side padding stay put.
+                    .padding(.horizontal, 18)
                     .opacity(editing ? 0 : 1)
                     .animation(.easeOut(duration: 0.15), value: editing)
 
                 // Zero-width when not editing, so the hidden field never widens the label form.
-                QueryField(draft: $draft, focus: focus, onSubmit: onSubmit)
+                QueryField(draft: $draft, focus: focus, selection: selection, onSubmit: onSubmit)
                     .frame(width: editing ? fieldWidth : 0)
                     .clipped()
                     .opacity(editing ? 1 : 0)

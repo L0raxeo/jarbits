@@ -17,7 +17,8 @@ the answer in dark text where the line was, growing as it streams. A page
 starts below the status bar and frosts it when it scrolls under. Over a
 result a capsule at the foot shows the query, shrinks while you scroll down
 and grows on the way up; tapping it raises the keyboard and the capsule
-rises with it, morphing into the field, with the result still behind.
+rises with it, morphing into the field, with the result still behind; on a
+web result the field holds the query, selected, so typing replaces it.
 Return sends the follow-up as a new query, routed like any other. Swiping down on an answer, or tapping the line while it
 waves, returns to the circle.
 

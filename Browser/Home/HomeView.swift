@@ -16,6 +16,8 @@ struct HomeView: View {
     @FocusState private var typing: Bool
     @State private var followDraft = ""
     @FocusState private var followingUp: Bool
+    /// Set to the whole draft when a web result's query is prefilled, so typing replaces it.
+    @State private var followSelection: TextSelection?
     /// The query capsule shrinks while the result scrolls down, grows on the way up.
     @State private var barCompact = false
 
@@ -108,7 +110,8 @@ struct HomeView: View {
                         fieldWidth: proxy.size.width - 48,
                         draft: $followDraft,
                         focus: $followingUp,
-                        onTap: { followingUp = true },
+                        selection: $followSelection,
+                        onTap: openFollowUp,
                         onSubmit: submitFollowUp
                     )
                     .padding(.bottom, followingUp ? 8 : 2)
@@ -122,6 +125,19 @@ struct HomeView: View {
         .onChange(of: session.stage) { _, stage in
             if stage == .ready { barCompact = false }
             if stage != .ready { followingUp = false }
+        }
+        .onChange(of: followingUp) { _, editing in
+            guard editing, !followDraft.isEmpty else {
+                followSelection = nil
+                return
+            }
+            // After the field has taken focus, select everything, as Safari does.
+            let draft = followDraft
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(30))
+                guard followingUp, followDraft == draft else { return }
+                followSelection = TextSelection(range: draft.startIndex..<draft.endIndex)
+            }
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: typing) { wasTyping, isTyping in
             !wasTyping && isTyping
@@ -141,6 +157,17 @@ struct HomeView: View {
         draft = ""
         typing = false
         session.submit(query)
+    }
+
+    /// From the capsule. On a web result the field opens holding the query,
+    /// selected, as Safari's address bar does; elsewhere it opens empty.
+    private func openFollowUp() {
+        if case .web = session.plans.first {
+            followDraft = session.lastQuery
+        } else {
+            followDraft = ""
+        }
+        followingUp = true
     }
 
     /// Return in the follow-up field: a new query like any other. The result
