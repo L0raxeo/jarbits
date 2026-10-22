@@ -51,7 +51,7 @@ final class AnswerSession {
 
     /// `displayText` with the format's emphasis markers applied.
     var styledSpans: [StyledSpan] {
-        AnswerMarkup.spans(displayText, allowed: Set(AnswerMarkup.markers(for: format)))
+        AnswerMarkup.paddingHighlights(AnswerMarkup.spans(displayText, allowed: Set(AnswerMarkup.markers(for: format))))
     }
 
     func start(format: ResponseFormat, query: String) {

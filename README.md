@@ -109,7 +109,9 @@ answer), `**…**` for the facts that directly answer the question, `__…__`
 for a condition or caveat that changes the answer, and `_…_` for a name or
 term being introduced. One-line answers may only highlight. An opener with
 no closer styles to the end of the text, so emphasis shows as it streams,
-and a half-arrived marker is held back rather than flashed.
+and a half-arrived marker is held back rather than flashed. A highlight
+with whitespace or nothing on both sides grows one space each way, so the
+box breathes; one touching punctuation or a letter stays tight.
 
 No first byte in 10 s, or any failure before text arrives, falls back to web
 results; a failure after some text keeps the text and says it stopped early.

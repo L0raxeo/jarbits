@@ -62,6 +62,46 @@ import Testing
         #expect(AnswerMarkup.trimmingPartialMarker("") == "")
     }
 
+    @Test func highlightBetweenSpacesTakesThem() {
+        let spans = AnswerMarkup.paddingHighlights(AnswerMarkup.spans("hello ==bye== hello", allowed: all))
+        #expect(spans == [StyledSpan("hello"), StyledSpan(" bye ", styles: [.highlight]), StyledSpan("hello")])
+    }
+
+    @Test func highlightAloneGetsNoBreakSpaces() {
+        let spans = AnswerMarkup.paddingHighlights(AnswerMarkup.spans("==hello==", allowed: all))
+        #expect(spans == [StyledSpan("\u{00A0}hello\u{00A0}", styles: [.highlight])])
+    }
+
+    @Test func highlightTouchingPunctuationStaysTight() {
+        for text in ["say ==hi==, now", "(==hi==)", "a ==b==c", "==hi==."] {
+            let spans = AnswerMarkup.spans(text, allowed: all)
+            #expect(AnswerMarkup.paddingHighlights(spans) == spans, Comment(rawValue: text))
+        }
+    }
+
+    @Test func highlightAtNewlinesPadsWithNoBreakSpaces() {
+        let spans = AnswerMarkup.paddingHighlights(AnswerMarkup.spans("line\n==word==\nnext", allowed: all))
+        #expect(spans == [StyledSpan("line\n"), StyledSpan("\u{00A0}word\u{00A0}", styles: [.highlight]), StyledSpan("\nnext")])
+    }
+
+    @Test func nestedHighlightPadsTheOuterSpansOnly() {
+        let spans = AnswerMarkup.paddingHighlights(AnswerMarkup.spans("==the **key** fact== here", allowed: all))
+        #expect(spans == [
+            StyledSpan("\u{00A0}the ", styles: [.highlight]),
+            StyledSpan("key", styles: [.highlight, .bold]),
+            StyledSpan(" fact ", styles: [.highlight]),
+            StyledSpan("here"),
+        ])
+    }
+
+    @Test func spaceBetweenTwoHighlightsGoesToTheFirst() {
+        let spans = AnswerMarkup.paddingHighlights(AnswerMarkup.spans("==a== ==b==", allowed: all))
+        #expect(spans == [
+            StyledSpan("\u{00A0}a ", styles: [.highlight]),
+            StyledSpan("\u{00A0}b\u{00A0}", styles: [.highlight]),
+        ])
+    }
+
     @Test func emptyTextHasNoSpans() {
         #expect(AnswerMarkup.spans("", allowed: all).isEmpty)
     }

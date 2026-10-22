@@ -78,6 +78,48 @@ public enum AnswerMarkup {
         return spans
     }
 
+    /// Lets a highlight breathe. A run of highlighted spans with whitespace or
+    /// nothing on both sides grows one space each way: a neighbouring plain
+    /// space moves into the highlight, and a text edge, a newline or a space
+    /// already taken by the previous highlight gets a no-break space instead.
+    /// A highlight touching any other character, such as a comma, stays tight
+    /// on both sides.
+    public static func paddingHighlights(_ spans: [StyledSpan]) -> [StyledSpan] {
+        var result = spans
+        let pad: Character = "\u{00A0}"
+        var i = 0
+        var previousRegionEnd = -1   // index after the last region, to spot a shared space
+        while i < result.count {
+            guard result[i].styles.contains(.highlight) else { i += 1; continue }
+            var end = i
+            while end + 1 < result.count, result[end + 1].styles.contains(.highlight) { end += 1 }
+
+            let before: Character? = i > 0 ? result[i - 1].text.last : nil
+            let after: Character? = end + 1 < result.count ? result[end + 1].text.first : nil
+            let emptyBefore = before.map(\.isWhitespace) ?? true
+            let emptyAfter = after.map(\.isWhitespace) ?? true
+            // A space the previous region already absorbed leaves its span empty;
+            // `before` is then the highlighted space, which still counts as empty.
+            guard emptyBefore && emptyAfter else { i = end + 1; continue }
+
+            if before == " ", i - 1 >= previousRegionEnd, !result[i - 1].styles.contains(.highlight) {
+                result[i - 1].text.removeLast()
+                result[i].text.insert(" ", at: result[i].text.startIndex)
+            } else {
+                result[i].text.insert(pad, at: result[i].text.startIndex)
+            }
+            if after == " " {
+                result[end + 1].text.removeFirst()
+                result[end].text.append(" ")
+            } else {
+                result[end].text.append(pad)
+            }
+            previousRegionEnd = end + 1
+            i = end + 1
+        }
+        return result.filter { !$0.text.isEmpty }
+    }
+
     /// The text with every allowed marker removed.
     public static func plain(_ text: String, allowed: Set<Emphasis> = Set(Emphasis.allCases)) -> String {
         spans(text, allowed: allowed).map(\.text).joined()
