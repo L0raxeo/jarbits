@@ -85,37 +85,14 @@ struct BreathingOrb: View {
 
     private var field: some View {
         let expanded = mode == .capsule
-        return TextField("", text: $draft, prompt: Text("Ask anything").foregroundStyle(.white.opacity(0.7)))
-            .font(.body)
-            .foregroundStyle(.white)
-            .tint(.white)
-            .focused(typing)
-            .keyboardType(.webSearch)
-            .submitLabel(.go)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .onSubmit(onSubmit)
-            .padding(.horizontal, 20)
+        return QueryField(draft: $draft, focus: typing, onSubmit: onSubmit)
             .opacity(expanded ? 1 : 0)
             .allowsHitTesting(expanded)
             .animation(expanded ? .easeIn(duration: 0.25).delay(0.15) : .easeOut(duration: 0.15), value: expanded)
     }
 
-    /// A 3×3 mesh whose inner points wander with the breath, so the colour
-    /// visibly moves without ever leaving purple.
     private func gradient(at t: TimeInterval) -> MeshGradient {
-        let w = 2 * .pi * t / Self.breathPeriod
-        func drift(_ amount: Float, _ phase: Double) -> Float {
-            amount * Float(sin(w + phase))
-        }
-        let points: [SIMD2<Float>] = [
-            [0, 0], [0.5 + drift(0.08, 0.0), 0], [1, 0],
-            [0, 0.5 + drift(0.08, 1.3)],
-            [0.5 + 0.18 * Float(sin(w)), 0.5 + 0.18 * Float(cos(0.8 * w))],
-            [1, 0.5 + drift(0.08, 2.6)],
-            [0, 1], [0.5 + drift(0.08, 3.9), 1], [1, 1],
-        ]
-        return MeshGradient(width: 3, height: 3, points: points, colors: Palette.mesh, smoothsColors: true)
+        Palette.breathingMesh(at: t, period: Self.breathPeriod)
     }
 }
 

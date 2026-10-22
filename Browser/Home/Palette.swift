@@ -12,6 +12,24 @@ enum Palette {
     static let highlight = Color(hex: 0x7C3AED)
     static let ink = Color(white: 0.1)
     static let quiet = Color(white: 0.45)
+
+    /// The breathing purple: a 3×3 mesh whose inner points wander with time
+    /// on `period`, so the colour visibly moves without ever leaving purple.
+    /// Shared by the orb and the query capsule so they breathe together.
+    static func breathingMesh(at t: TimeInterval, period: TimeInterval = 5) -> MeshGradient {
+        let w = 2 * .pi * t / period
+        func drift(_ amount: Float, _ phase: Double) -> Float {
+            amount * Float(sin(w + phase))
+        }
+        let points: [SIMD2<Float>] = [
+            [0, 0], [0.5 + drift(0.08, 0.0), 0], [1, 0],
+            [0, 0.5 + drift(0.08, 1.3)],
+            [0.5 + 0.18 * Float(sin(w)), 0.5 + 0.18 * Float(cos(0.8 * w))],
+            [1, 0.5 + drift(0.08, 2.6)],
+            [0, 1], [0.5 + drift(0.08, 3.9), 1], [1, 1],
+        ]
+        return MeshGradient(width: 3, height: 3, points: points, colors: mesh, smoothsColors: true)
+    }
 }
 
 extension Color {

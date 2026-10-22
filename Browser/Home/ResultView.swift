@@ -3,43 +3,89 @@ import Routing
 import SwiftUI
 import WebKit
 
-/// What a query turned into, once it is ready to show: a full-screen web
-/// page, or Gemini's answer where the wave line was.
+/// What a query turned into, once it is ready to show: a web page, or
+/// Gemini's answer where the wave line was. Laid out inside the safe area, so
+/// scrolling content starts below the status bar and slides under a frosted
+/// strip when it scrolls, as in Safari.
 struct ResultView: View {
     @Environment(BrowserSession.self) private var session
     let plan: CardPlan
     /// The orb's vertical centre, so a one-line answer lands where the line faded.
     let orbY: CGFloat
+    /// Height of the status-bar zone above this view.
+    let topInset: CGFloat
+    /// Set while the result scrolls down, cleared on the way up or at the top.
+    @Binding var barCompact: Bool
+
+    /// How far below the status bar the frost keeps fading. A page's frost
+    /// ends sooner than an answer's.
+    private var frostFade: CGFloat {
+        if case .web = plan { 22 } else { 36 }
+    }
 
     var body: some View {
+        content
+            .overlay(alignment: .top) {
+                // Safari's frost: solid behind the clock, then thinning into
+                // the content rather than stopping at a hard edge.
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial)
+                    LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0)], startPoint: .top, endPoint: .bottom)
+                }
+                .mask {
+                    LinearGradient(
+                        stops: [.init(color: .white, location: 0), .init(color: .white, location: 0.45), .init(color: .clear, location: 1)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                }
+                .frame(height: topInset + frostFade)
+                .offset(y: -topInset)
+                .allowsHitTesting(false)
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch plan {
         case .web:
-            WebResultView(page: session.page)
+            WebResultView(page: session.page, barCompact: $barCompact)
         case let .answer(format, _):
             if let answer = session.answer {
-                AnswerView(answer: answer, format: format, orbY: orbY)
+                AnswerView(answer: answer, format: format, orbY: orbY, barCompact: $barCompact)
             }
         }
     }
+
+    /// Safari's rule for the bar: at the top it is open; scrolling down past a
+    /// couple of points closes it, scrolling up opens it. `offset` is the
+    /// content offset with the top inset already added, so 0 is the top.
+    static func scrolled(from old: CGFloat, to new: CGFloat, compact: inout Bool) {
+        if new <= 0 {
+            compact = false
+        } else if new > old + 2 {
+            compact = true
+        } else if new < old - 2 {
+            compact = false
+        }
+    }
+
+    static func offset(_ geometry: ScrollGeometry) -> CGFloat {
+        geometry.contentOffset.y + geometry.contentInsets.top
+    }
 }
 
-/// The page below the top safe area (white above it, so nothing sits under the
-/// Dynamic Island), with a white fade at the foot so the hint stays legible.
+/// The page, below the status bar and down to the home indicator.
 private struct WebResultView: View {
     let page: WebPage
+    @Binding var barCompact: Bool
 
     var body: some View {
-        GeometryReader { proxy in
-            WebView(page)
-                .webViewBackForwardNavigationGestures(.enabled)
-                .padding(.top, proxy.safeAreaInsets.top)
-                .overlay(alignment: .bottom) {
-                    LinearGradient(colors: [.white.opacity(0), .white], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 96)
-                        .allowsHitTesting(false)
-                }
-        }
-        .ignoresSafeArea()
+        WebView(page)
+            .webViewBackForwardNavigationGestures(.enabled)
+            .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
+                ResultView.scrolled(from: old, to: new, compact: &barCompact)
+            }
+            .ignoresSafeArea(edges: .bottom)
     }
 }
 
@@ -51,6 +97,7 @@ private struct AnswerView: View {
     let answer: AnswerSession
     let format: ResponseFormat
     let orbY: CGFloat
+    @Binding var barCompact: Bool
 
     private let ink = Palette.ink
     private let quiet = Palette.quiet
@@ -73,7 +120,6 @@ private struct AnswerView: View {
                     }
             )
         }
-        .ignoresSafeArea()
     }
 
     private func oneLine(in proxy: GeometryProxy) -> some View {
@@ -101,9 +147,12 @@ private struct AnswerView: View {
             }
             .padding(.horizontal, 24)
             .padding(.top, proxy.size.height * 0.15)
-            .padding(.bottom, 120)   // room for the hint
+            .padding(.bottom, 120)   // room for the query capsule
         }
         .scrollBounceBehavior(.basedOnSize)
+        .onScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
+            ResultView.scrolled(from: old, to: new, compact: &barCompact)
+        }
     }
 
     private var footer: some View {

@@ -13,9 +13,12 @@ capsule you type in. Return sends the query and the orb becomes a short line
 with one wave sliding along it, for as long as the query is being processed:
 routing, then either the Google page committing or Gemini's first text. Then
 the line fades out as the result fades in: a web page filling the screen, or
-the answer in dark text where the line was, growing as it streams. The hint
-returns over the result; tapping it clears the result and opens the capsule
-for the next query. Swiping down on an answer, or tapping the line while it
+the answer in dark text where the line was, growing as it streams. A page
+starts below the status bar and frosts it when it scrolls under. Over a
+result a capsule at the foot shows the query, shrinks while you scroll down
+and grows on the way up; tapping it raises the keyboard and the capsule
+rises with it, morphing into the field, with the result still behind.
+Return sends the follow-up as a new query, routed like any other. Swiping down on an answer, or tapping the line while it
 waves, returns to the circle.
 
 ## Run
@@ -137,7 +140,7 @@ block without changing the cards.
 | `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`). |
 | `Browser/Router/CardPlan.swift` | The renderable plans. One enum case per card type. |
 | `Browser/Session/BrowserSession.swift` | Owns the single `WebPage` and the `AnswerSession`, runs queries through the router, applies the plan, writes the log. |
-| `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `BreathingOrb` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon) and `ResultView` (the full-screen web page, or the answer text with its "Web results" link). No system toolbars, so no Liquid Glass. |
+| `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `BreathingOrb` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar) `QueryCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard) and `QueryField` (the text field the orb and the capsule share). No system toolbars, so no Liquid Glass. |
 | `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the two API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
 
