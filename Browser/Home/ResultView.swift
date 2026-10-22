@@ -1,3 +1,4 @@
+import Answers
 import Routing
 import SwiftUI
 import WebKit
@@ -51,8 +52,8 @@ private struct AnswerView: View {
     let format: ResponseFormat
     let orbY: CGFloat
 
-    private let ink = Color(white: 0.1)
-    private let quiet = Color(white: 0.45)
+    private let ink = Palette.ink
+    private let quiet = Palette.quiet
 
     var body: some View {
         GeometryReader { proxy in
@@ -77,9 +78,8 @@ private struct AnswerView: View {
 
     private func oneLine(in proxy: GeometryProxy) -> some View {
         VStack(spacing: 20) {
-            Text(verbatim: answer.displayText)
+            Text(AttributedString(spans: answer.styledSpans, ink: ink))
                 .font(.largeTitle.weight(.semibold))
-                .foregroundStyle(ink)
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
             footer
@@ -93,9 +93,8 @@ private struct AnswerView: View {
     private func narrative(in proxy: GeometryProxy) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text(verbatim: answer.displayText)
+                Text(AttributedString(spans: answer.styledSpans, ink: ink))
                     .font(.body)
-                    .foregroundStyle(ink)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 footer

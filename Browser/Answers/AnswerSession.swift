@@ -45,7 +45,13 @@ final class AnswerSession {
         if format == .oneLine, phase == .streaming, AnswerPrompt.liveDataMarker.hasPrefix(trimmed) {
             return ""
         }
-        return trimmed
+        // A marker still streaming in must not flash as a stray character.
+        return phase == .streaming ? AnswerMarkup.trimmingPartialMarker(trimmed) : trimmed
+    }
+
+    /// `displayText` with the format's emphasis markers applied.
+    var styledSpans: [StyledSpan] {
+        AnswerMarkup.spans(displayText, allowed: Set(AnswerMarkup.markers(for: format)))
     }
 
     func start(format: ResponseFormat, query: String) {

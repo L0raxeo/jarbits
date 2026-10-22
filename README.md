@@ -90,6 +90,15 @@ restyled. So:
   the answer may be out of date, then what the model knows; the Web results
   button is on every answer card.
 
+Answers carry four levels of emphasis, written by the model as markers that
+are not Markdown and parsed by `AnswerMarkup` in the package: `==…==` for
+the one thing to take away (purple behind white text, at most once per
+answer), `**…**` for the facts that directly answer the question, `__…__`
+for a condition or caveat that changes the answer, and `_…_` for a name or
+term being introduced. One-line answers may only highlight. An opener with
+no closer styles to the end of the text, so emphasis shows as it streams,
+and a half-arrived marker is held back rather than flashed.
+
 No first byte in 10 s, or any failure before text arrives, falls back to web
 results; a failure after some text keeps the text and says it stopped early.
 
@@ -169,7 +178,7 @@ a simulator.
 
 ## Deliberately absent
 
-Dark mode, the Debug ribbon (the log still records every decision; summarise
+Dark mode, Markdown in answers, the Debug ribbon (the log still records every decision; summarise
 it with the report CLI), tabs, history, bookmarks, content blocking, reader
 mode, the map and stock cards, follow-up questions on an answer, live search behind answers (see
 "Answer cards" for why Google's grounding was removed), location, the
