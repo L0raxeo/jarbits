@@ -8,6 +8,12 @@ import Testing
         #expect(TranscriptRules.strippingFillers("um, what's the time, erm, in tokyo") == "what's the time, in tokyo")
     }
 
+    @Test func hyphenatedSoundsAreFillers() {
+        #expect(TranscriptRules.strippingFillers("Yeah. Mm-hmm, What is the cheapest airline to take to go to Senegal?")
+                == "What is the cheapest airline to take to go to Senegal?")
+        #expect(TranscriptRules.strippingFillers("uh-huh, the time in tokyo") == "the time in tokyo")
+    }
+
     @Test func wordsContainingAFillerStay() {
         #expect(TranscriptRules.strippingFillers("an umbrella and a hummer") == "an umbrella and a hummer")
     }
@@ -15,8 +21,18 @@ import Testing
     @Test func openersGoOnlyAtTheStart() {
         #expect(TranscriptRules.strippingFillers("so what's the weather") == "what's the weather")
         #expect(TranscriptRules.strippingFillers("okay so where is machu picchu") == "where is machu picchu")
+        #expect(TranscriptRules.strippingFillers("Yeah, okay, so, yes, let me see, capital of peru") == "capital of peru")
+        #expect(TranscriptRules.strippingFillers("All right. What time is it") == "What time is it")
         #expect(TranscriptRules.strippingFillers("is it so hot in texas") == "is it so hot in texas")
         #expect(TranscriptRules.strippingFillers("well") == "well")
+        #expect(TranscriptRules.strippingFillers("okay so") == "so")
+    }
+
+    @Test func closersGoOnlyAtTheEnd() {
+        #expect(TranscriptRules.strippingFillers("what's the weather today, thank you") == "what's the weather today,")
+        #expect(TranscriptRules.strippingFillers("directions to austin airport please thanks") == "directions to austin airport")
+        #expect(TranscriptRules.strippingFillers("please please me beatles") == "please please me beatles")
+        #expect(TranscriptRules.strippingFillers("thanks") == "thanks")
     }
 
     @Test func cuesAreNoticed() {

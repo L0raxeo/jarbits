@@ -5,11 +5,21 @@ import Foundation
 /// only words that were said. The correction itself is left to the model:
 /// how far back "no wait tokyo" reaches is a judgement, not a rule.
 public enum TranscriptRules {
-    /// Sounds, never words: safe to drop wherever they stand.
-    public static let fillers: Set<String> = ["um", "umm", "uh", "uhh", "er", "erm", "hmm", "hm", "mm", "mhm"]
+    /// Sounds, never words: safe to drop wherever they stand. Matched on
+    /// the letters alone, so "Mm-hmm," is "mmhmm".
+    public static let fillers: Set<String> = [
+        "um", "umm", "uh", "uhh", "er", "erm", "ah", "eh", "hmm", "hm", "mm", "mhm", "mmhm", "mmhmm", "uhhuh", "uhuh",
+    ]
 
-    /// Only fillers at the very start; "so" and "well" mean something later on.
-    public static let openers: [String] = ["okay so", "ok so", "okay", "ok", "so", "well"]
+    /// Acknowledgements and lead-ins, stripped from the very start as long
+    /// as they keep coming ("Yeah. Okay, so what is…"); "so" and "well" mean
+    /// something later on. Longer phrases first, so "all right" is not "all".
+    public static let openers: [String] = [
+        "let me see", "let's see", "you know", "all right", "alright", "okay", "ok", "yeah", "yes", "yep", "yup", "so", "well",
+    ]
+
+    /// Sign-offs, stripped from the very end.
+    public static let closers: [String] = ["thank you", "thanks", "please"]
 
     /// The speaker changed their mind: the model should look at this one.
     public static let correctionCues: [String] = [
@@ -26,19 +36,18 @@ public enum TranscriptRules {
             .filter { !$0.isEmpty }
     }
 
-    /// `text` without standalone fillers, and without an opener at the start.
-    /// Punctuation attached to a filler goes with it ("um, what" → "what").
+    /// `text` without standalone fillers, without openers at the start and
+    /// without closers at the end. Punctuation attached to a dropped word
+    /// goes with it ("um, what" → "what"). Never the whole text: a query
+    /// that is nothing but "well" stays "well".
     public static func strippingFillers(_ text: String) -> String {
         let tokens = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).map(String.init)
         var kept = tokens.filter { !fillers.contains(bare($0)) }
-        for opener in openers {
-            let count = opener.split(separator: " ").count
-            guard kept.count > count else { continue }
-            let head = kept.prefix(count).map(bare).joined(separator: " ")
-            if head == opener {
-                kept.removeFirst(count)
-                break
-            }
+        while let count = leading(openers, in: kept) {
+            kept.removeFirst(count)
+        }
+        while let count = trailing(closers, in: kept) {
+            kept.removeLast(count)
         }
         return kept.joined(separator: " ")
     }
@@ -64,5 +73,25 @@ public enum TranscriptRules {
 
     private static func bare(_ token: String) -> String {
         words(token).first ?? ""
+    }
+
+    /// How many tokens the first matching phrase takes at the start of
+    /// `tokens`, leaving at least one behind; nil when none matches.
+    private static func leading(_ phrases: [String], in tokens: [String]) -> Int? {
+        for phrase in phrases {
+            let count = phrase.split(separator: " ").count
+            guard tokens.count > count else { continue }
+            if tokens.prefix(count).map(bare).joined(separator: " ") == phrase { return count }
+        }
+        return nil
+    }
+
+    private static func trailing(_ phrases: [String], in tokens: [String]) -> Int? {
+        for phrase in phrases {
+            let count = phrase.split(separator: " ").count
+            guard tokens.count > count else { continue }
+            if tokens.suffix(count).map(bare).joined(separator: " ") == phrase { return count }
+        }
+        return nil
     }
 }
