@@ -14,18 +14,22 @@ enum ClayForm: Equatable {
 /// grows and shrinks on a five-second cycle. As a capsule it holds the search
 /// field; the gradient keeps drifting but the size stops pulsing so the text
 /// holds still. As a line it is the surface of water seen from the shore: flat,
-/// with one crest that slides back and forth along it.
+/// with one crest that slides back and forth along it. While a circle it also
+/// swells with `voice`, the microphone's loudness, on top of the breath.
 struct Clay: View {
     @Binding var draft: String
     var typing: FocusState<Bool>.Binding
     var mode: ClayForm
     /// Width of the capsule when typing.
     var width: CGFloat
+    /// How loud the voice is, 0…1; the circle swells with it.
+    var voice: Double = 0
     var onSubmit: () -> Void
     /// A tap on the circle or the line.
     var onTap: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulse = VoicePulse()
 
     private static let circleSize: CGFloat = 168
     private static let capsuleHeight: CGFloat = 56
@@ -52,6 +56,7 @@ struct Clay: View {
             let breath = sin(2 * .pi * t / Self.breathPeriod)
             // The crest's position along the line, 0…1, swinging end to end.
             let crest = 0.5 + 0.5 * sin(2 * .pi * t / Self.wavePeriod)
+            let heard = reduceMotion ? 0 : pulse.step(toward: voice, at: t)
 
             WavyCapsule(
                 amplitude: mode == .line ? Self.waveHeight : 0,
@@ -60,7 +65,7 @@ struct Clay: View {
             )
                 .fill(gradient(at: t))
                 .frame(width: frameSize.width, height: frameSize.height)
-                .scaleEffect(mode == .circle ? 1 + 0.05 * breath : 1)
+                .scaleEffect(mode == .circle ? 1 + 0.05 * breath + 0.12 * heard : 1)
                 .shadow(color: Palette.glow.opacity(mode == .line ? 0.25 : 0.35), radius: 24, y: 10)
                 .contentShape(Capsule())
                 // A tap on the circle or the line; while a capsule the field
@@ -93,6 +98,22 @@ struct Clay: View {
 
     private func gradient(at t: TimeInterval) -> MeshGradient {
         Palette.breathingMesh(at: t, period: Self.breathPeriod)
+    }
+}
+
+/// Follows the microphone level between its updates, which arrive about ten
+/// times a second: a quick rise and a slower fall, stepped once per frame, so
+/// the swell reads as the voice and not as the steps.
+final class VoicePulse {
+    private var value: Double = 0
+    private var last: TimeInterval?
+
+    func step(toward target: Double, at t: TimeInterval) -> Double {
+        let dt = min(0.1, max(0, t - (last ?? t)))
+        last = t
+        let tau = target > value ? 0.05 : 0.18
+        value += (target - value) * (1 - exp(-dt / tau))
+        return value
     }
 }
 

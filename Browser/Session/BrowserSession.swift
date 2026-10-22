@@ -15,6 +15,8 @@ final class BrowserSession {
     /// `routing` through `loading` and fades the result in at `ready`.
     enum Stage: Equatable {
         case idle
+        /// A spoken query is being finalised and cleaned; Jev not asked yet.
+        case cleaning
         /// Jev asked, no plan yet.
         case routing
         /// Plan known; the page has not committed or no answer text has arrived.
@@ -29,6 +31,8 @@ final class BrowserSession {
     let answer: AnswerSession?
     /// Loads Wikipedia pictures for image plans.
     let images = ImageSession()
+    /// The microphone on the idle screen; what it hears is never shown.
+    let dictation = DictationSession()
     private(set) var plans: [CardPlan] = []
     private(set) var lastQuery = ""
     private(set) var stage: Stage = .idle
@@ -46,6 +50,10 @@ final class BrowserSession {
 
     private let router: any Router
     private let log: DecisionLog
+    private let cleaner = TranscriptCleaner()
+    /// Counts spoken submissions, so a finish or a clean that outlives a
+    /// reset never lands.
+    private var spokenGeneration = 0
     private let chromeHandler: PageChromeHandler
     private var loadTask: Task<Void, Never>?
     private var navigationWatch: Task<Void, Never>?
@@ -111,6 +119,49 @@ final class BrowserSession {
         }
     }
 
+    // MARK: Speaking
+
+    /// The idle screen is showing the circle: listen, and have the model
+    /// ready for the clean-up.
+    func startListening() {
+        dictation.start()
+        cleaner.prewarm()
+    }
+
+    /// The circle is gone: typing, a query in flight, or the background.
+    func stopListening() {
+        dictation.stop()
+    }
+
+    /// The "I'm done talking" button: capture stops, the last words are
+    /// finalised and cleaned under the wave line, and the result goes through
+    /// `submit(_:)` like anything typed. Nothing said is shown anywhere.
+    func submitSpoken() {
+        guard stage == .idle, dictation.phase == .listening else { return }
+        stage = .cleaning
+        spokenGeneration += 1
+        let generation = spokenGeneration
+        let pending = dictation.finish()
+        Task {
+            let raw = await pending.value
+            guard generation == spokenGeneration, stage == .cleaning else { return }
+            guard let raw else {
+                stage = .idle
+                return
+            }
+            let cleaned = await cleaner.clean(raw)
+            guard generation == spokenGeneration, stage == .cleaning else { return }
+            #if DEBUG
+            print("spoken: \(raw) -> \(cleaned)")
+            #endif
+            guard !cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                stage = .idle
+                return
+            }
+            submit(cleaned)
+        }
+    }
+
     /// The Google results page for the current query, from under an answer.
     func showWebResults() {
         guard !lastQuery.isEmpty else { return }
@@ -128,6 +179,7 @@ final class BrowserSession {
         images.cancel()
         loadTask?.cancel()
         loadGeneration += 1
+        spokenGeneration += 1
         page.stopLoading()
         plans = []
         lastDecision = nil

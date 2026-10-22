@@ -7,12 +7,15 @@ import SwiftUI
 /// is the wave line; then it fades out as the result fades in. Over a result a
 /// capsule at the foot shows the query; tapping it raises the keyboard and the
 /// capsule rides up with it as the follow-up field, the result still behind.
-/// Return sends the follow-up as a new query. The hint is for the idle screen.
+/// Return sends the follow-up as a new query. The hint is for the idle screen,
+/// where the microphone listens: the clay pulses with the voice, and once a
+/// word has been heard the hint becomes the "I'm done talking" button.
 ///
 /// Layers: the background, the result, the clay and the hint ignore the
 /// keyboard; the capsule does not, so the keyboard carries it.
 struct HomeView: View {
     @Environment(BrowserSession.self) private var session
+    @Environment(\.scenePhase) private var scenePhase
     @State private var draft = ""
     @FocusState private var typing: Bool
     @State private var followDraft = ""
@@ -28,12 +31,15 @@ struct HomeView: View {
     private var mode: ClayForm {
         switch session.stage {
         case .idle: typing ? .capsule : .circle
-        case .routing, .loading, .ready: .line
+        case .cleaning, .routing, .loading, .ready: .line
         }
     }
 
     private var showsResult: Bool { session.stage == .ready }
     private var showsHint: Bool { mode == .circle }
+    /// The microphone is on exactly while the circle is on screen. The
+    /// inactive phase is ignored: the permission alert itself causes it.
+    private var listening: Bool { mode == .circle && scenePhase != .background }
     /// Over a result, or standing in for the clay while a follow-up loads.
     private var showsCapsule: Bool { showsResult || capsuleSubmitted }
 
@@ -108,6 +114,7 @@ struct HomeView: View {
                         typing: $typing,
                         mode: mode,
                         width: proxy.size.width - 48,
+                        voice: session.dictation.level,
                         onSubmit: submit,
                         onTap: {
                             if session.stage == .idle { typing = true } else { dismiss() }
@@ -125,9 +132,15 @@ struct HomeView: View {
                     if showsHint {
                         VStack {
                             Spacer()
-                            KeyboardHint(onOpen: openKeyboard)
-                                .padding(.bottom, 8)
+                            if session.dictation.heardSpeech {
+                                DoneTalkingButton(action: session.submitSpoken)
+                                    .padding(.bottom, 8)
+                            } else {
+                                KeyboardHint(onOpen: openKeyboard)
+                                    .padding(.bottom, 8)
+                            }
                         }
+                        .animation(.easeInOut(duration: 0.25), value: session.dictation.heardSpeech)
                         .transition(.opacity.animation(.easeInOut(duration: 0.25)))
                     }
                 }
@@ -163,6 +176,9 @@ struct HomeView: View {
             .allowsHitTesting(showsCapsule)
             .animation(.easeInOut(duration: 0.25), value: showsCapsule)
         }
+        .onChange(of: listening, initial: true) { _, listening in
+            if listening { session.startListening() } else { session.stopListening() }
+        }
         .onChange(of: session.stage) { _, stage in
             if stage == .ready { barCompact = false }
             if stage != .ready { followingUp = false }
@@ -186,6 +202,9 @@ struct HomeView: View {
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: followingUp) { was, now in
             !was && now
+        }
+        .sensoryFeedback(.impact(weight: .medium), trigger: session.stage) { _, stage in
+            stage == .cleaning
         }
         .sensoryFeedback(.impact(weight: .light), trigger: session.stage) { _, stage in
             stage == .ready
