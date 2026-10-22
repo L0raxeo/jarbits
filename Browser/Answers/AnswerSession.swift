@@ -3,15 +3,14 @@ import Foundation
 import Observation
 import Routing
 
-/// One in-flight Gemini answer: the text as it streams, what the model
-/// searched, the citations and Google's Search Suggestions, and the summary
-/// that goes to the log when it ends. A new query cancels the old answer.
+/// One in-flight Gemini answer: the text as it streams and the summary that
+/// goes to the log when it ends. A new query cancels the old answer.
 @Observable
 @MainActor
 final class AnswerSession {
     enum Phase: Equatable {
         case idle
-        /// Request sent, nothing shown yet (the model may be searching).
+        /// Request sent, nothing shown yet.
         case waiting
         case streaming
         case done
@@ -22,26 +21,28 @@ final class AnswerSession {
     private(set) var format: ResponseFormat = .narrative
     private(set) var query = ""
     private(set) var text = ""
-    private(set) var citations: [Citation] = []
-    private(set) var suggestionsHTML: String?
-    /// Google queries the model ran, in order.
-    private(set) var searched: [String] = []
-    /// A search step is open and no text has followed it yet.
-    private(set) var isSearching = false
     private(set) var phase: Phase = .idle
     private(set) var summary: AnswerSummary?
 
     /// Called once per answer with the final summary. The owner logs it and
-    /// swaps to web results when nothing usable arrived.
+    /// swaps to web results when nothing usable arrived or live data is needed.
     var onFinish: ((AnswerSummary) -> Void)?
 
     private let client: GeminiClient
-    private let location: ApproximateLocation
     private var task: Task<Void, Never>?
 
-    init(client: GeminiClient, location: ApproximateLocation = .shared) {
+    init(client: GeminiClient) {
         self.client = client
-        self.location = location
+    }
+
+    /// What the card renders. A one-line answer is held back while it could
+    /// still turn out to be the live-data marker, so the marker never flashes.
+    var displayText: String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if format == .oneLine, phase == .streaming, AnswerPrompt.liveDataMarker.hasPrefix(trimmed) {
+            return ""
+        }
+        return trimmed
     }
 
     func start(format: ResponseFormat, query: String) {
@@ -49,10 +50,6 @@ final class AnswerSession {
         self.format = format
         self.query = query
         text = ""
-        citations = []
-        suggestionsHTML = nil
-        searched = []
-        isSearching = false
         summary = nil
         phase = .waiting
         task = Task { await run(format: format, query: query) }
@@ -69,8 +66,7 @@ final class AnswerSession {
     private func run(format: ResponseFormat, query: String) async {
         let clock = ContinuousClock()
         let start = clock.now
-        let context = AnswerContext(locale: .current, timeZone: .current, now: .now, location: await location.current())
-        if Task.isCancelled { return }
+        let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
         let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model)
 
         var usage: AnswerUsage?
@@ -80,20 +76,12 @@ final class AnswerSession {
             for try await event in client.stream(request) {
                 if Task.isCancelled { return }
                 switch event {
-                case let .searching(queries):
-                    searched += queries
-                    isSearching = true
-                case let .suggestions(html):
-                    suggestionsHTML = html
                 case let .text(piece):
                     if firstTokenMs == nil {
                         firstTokenMs = Self.elapsedMs(clock, since: start)
                         phase = .streaming
                     }
-                    isSearching = false
                     text += piece
-                case let .citations(found):
-                    citations = found
                 case let .usage(found):
                     usage = found
                 case let .finished(status):
@@ -107,23 +95,25 @@ final class AnswerSession {
         }
         if Task.isCancelled { return }
 
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let outcome: AnswerSummary.Outcome
         if let failure {
-            outcome = text.isEmpty ? .fellBackToWeb(failure) : .partial(failure)
-        } else if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            outcome = trimmed.isEmpty ? .fellBackToWeb(failure) : .partial(failure)
+        } else if trimmed.isEmpty {
             outcome = .fellBackToWeb("empty answer")
+        } else if format == .oneLine, trimmed.contains(AnswerPrompt.liveDataMarker) {
+            outcome = .needsLiveData
         } else {
             outcome = .completed
         }
-        isSearching = false
         switch outcome {
         case .completed: phase = .done
+        case .needsLiveData: phase = .done
         case let .partial(reason), let .fellBackToWeb(reason): phase = .failed(reason)
         }
         let summary = AnswerSummary(
             model: client.model,
             format: format,
-            searched: searched,
             usage: usage,
             firstTokenMs: firstTokenMs,
             latencyMs: Self.elapsedMs(clock, since: start),

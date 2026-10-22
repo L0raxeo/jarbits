@@ -47,11 +47,6 @@ final class BrowserSession {
         show(QueryParser.searchURL(for: lastQuery))
     }
 
-    /// A cited page or a Search Suggestion chip, opened in the web card.
-    func open(_ url: URL) {
-        show(url)
-    }
-
     private func apply(_ result: RouteResult) {
         lastDecision = result.decision
         switch result.plan {
@@ -78,8 +73,11 @@ final class BrowserSession {
         if let decision = lastDecision {
             record(decision, query: answer.query, answer: summary)
         }
-        if case .fellBackToWeb = summary.outcome {
+        switch summary.outcome {
+        case .fellBackToWeb, .needsLiveData:
             show(QueryParser.searchURL(for: answer.query))
+        case .completed, .partial:
+            break
         }
     }
 

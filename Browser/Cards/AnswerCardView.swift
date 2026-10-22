@@ -3,8 +3,7 @@ import Routing
 import SwiftUI
 
 /// A Gemini answer. Narrative: streamed paragraphs. One-line: one big line.
-/// Both end with Google's Search Suggestions (when the model searched), the
-/// cited sources, and a link to the web results for the same query.
+/// Both end with a link to the web results for the same query.
 struct AnswerCardView: View {
     @Environment(BrowserSession.self) private var session
     let format: ResponseFormat
@@ -30,17 +29,15 @@ struct AnswerCardView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-                status(answer)
-
-                if !answer.text.isEmpty {
-                    Text("\(Text(verbatim: answer.text.trimmingCharacters(in: .whitespacesAndNewlines)))\(caret(answer))")
+                if answer.displayText.isEmpty {
+                    waiting(answer)
+                } else {
+                    Text("\(Text(verbatim: answer.displayText))\(caret(answer))")
                         .font(.body)
                         .textSelection(.enabled)
                 }
 
                 failureNote(answer)
-                suggestions(answer)
-                sources(answer, limit: 5)
                 webResultsButton
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -59,18 +56,16 @@ struct AnswerCardView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            if answer.text.isEmpty {
-                status(answer)
+            if answer.displayText.isEmpty {
+                waiting(answer)
             } else {
-                Text(verbatim: answer.text.trimmingCharacters(in: .whitespacesAndNewlines))
+                Text(verbatim: answer.displayText)
                     .font(.largeTitle.weight(.semibold))
                     .multilineTextAlignment(.center)
                     .textSelection(.enabled)
             }
 
             failureNote(answer)
-            suggestions(answer)
-            sources(answer, limit: 1)
             Spacer(minLength: 0)
             webResultsButton
         }
@@ -81,12 +76,8 @@ struct AnswerCardView: View {
     // MARK: Shared pieces
 
     @ViewBuilder
-    private func status(_ answer: AnswerSession) -> some View {
-        if answer.isSearching, let last = answer.searched.last {
-            Label("Searching Google for “\(last)”", systemImage: "magnifyingglass")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        } else if answer.phase == .waiting {
+    private func waiting(_ answer: AnswerSession) -> some View {
+        if answer.phase == .waiting || answer.phase == .streaming {
             ProgressView()
         }
     }
@@ -97,37 +88,10 @@ struct AnswerCardView: View {
 
     @ViewBuilder
     private func failureNote(_ answer: AnswerSession) -> some View {
-        if case let .failed(reason) = answer.phase, !answer.text.isEmpty {
+        if case let .failed(reason) = answer.phase, !answer.displayText.isEmpty {
             Text("The answer stopped early (\(reason)).")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private func suggestions(_ answer: AnswerSession) -> some View {
-        if let html = answer.suggestionsHTML {
-            SearchSuggestionsStrip(html: html) { url in session.open(url) }
-        }
-    }
-
-    @ViewBuilder
-    private func sources(_ answer: AnswerSession, limit: Int) -> some View {
-        let unique = Self.uniqueByHost(answer.citations).prefix(limit)
-        if !unique.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(unique), id: \.url) { citation in
-                    Button {
-                        session.open(citation.url)
-                    } label: {
-                        Label(citation.title ?? citation.url.host() ?? citation.url.absoluteString, systemImage: "link")
-                            .font(.footnote)
-                            .lineLimit(1)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                }
-            }
         }
     }
 
@@ -140,10 +104,5 @@ struct AnswerCardView: View {
         }
         .buttonStyle(.bordered)
         .padding(.top, 4)
-    }
-
-    private static func uniqueByHost(_ citations: [Citation]) -> [Citation] {
-        var seen: Set<String> = []
-        return citations.filter { seen.insert($0.url.host() ?? $0.url.absoluteString).inserted }
     }
 }

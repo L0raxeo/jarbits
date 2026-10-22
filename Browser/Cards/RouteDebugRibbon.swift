@@ -11,7 +11,6 @@ struct RouteDebugRibbon: View {
     let answer: AnswerSummary?
     let logURL: URL
     @State private var expanded = false
-    @State private var searchesThisMonth: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -42,10 +41,6 @@ struct RouteDebugRibbon: View {
         .background(Color(.secondarySystemBackground).opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .padding(8)
-        .task(id: answer) {
-            guard answer != nil else { return }
-            searchesThisMonth = await DecisionLog.shared.searchesThisMonth()
-        }
     }
 
     private var headline: String {
@@ -86,9 +81,10 @@ struct RouteDebugRibbon: View {
         case .completed:
             var bits = ["gemini"]
             if let ms = answer.latencyMs { bits.append(seconds(ms)) }
-            bits.append(answer.searched.isEmpty ? "no search" : "searched \(answer.searched.count)")
             if let usage = answer.usage { bits.append("\(usage.outputTokens + usage.thoughtTokens) out") }
             return bits.joined(separator: " ")
+        case .needsLiveData:
+            return "gemini → web (live data)"
         case let .partial(reason):
             return "gemini partial (\(reason))"
         case let .fellBackToWeb(reason):
@@ -105,7 +101,7 @@ struct RouteDebugRibbon: View {
         if let answer {
             switch answer.outcome {
             case .completed: break
-            case .partial: return .orange
+            case .needsLiveData, .partial: return .orange
             case .fellBackToWeb: return .red
             }
         }
@@ -157,26 +153,13 @@ struct RouteDebugRibbon: View {
         Divider()
         Text(answer.model)
             .foregroundStyle(.secondary)
-        if answer.searched.isEmpty {
-            Text("answered without searching")
-                .foregroundStyle(.secondary)
-        } else {
-            ForEach(answer.searched, id: \.self) { query in
-                Text("searched: \(query)")
-                    .lineLimit(1)
-            }
-        }
         if let first = answer.firstTokenMs, let total = answer.latencyMs {
             Text("first token \(seconds(first)) · total \(seconds(total))")
                 .foregroundStyle(.secondary)
         }
         if let usage = answer.usage {
-            Text("\(usage.inputTokens) in · \(usage.outputTokens) out · \(usage.thoughtTokens) thought · \(cents(usage.tokenCostUSD)) in tokens")
+            Text("\(usage.inputTokens) in · \(usage.outputTokens) out · \(usage.thoughtTokens) thought · \(cents(usage.costUSD))")
                 .foregroundStyle(.secondary)
-        }
-        if let searchesThisMonth {
-            Text("searches this month \(searchesThisMonth) / \(GeminiPricing.freeSearchesPerMonth) free")
-                .foregroundStyle(searchesThisMonth >= GeminiPricing.freeSearchesPerMonth ? .orange : .secondary)
         }
     }
 

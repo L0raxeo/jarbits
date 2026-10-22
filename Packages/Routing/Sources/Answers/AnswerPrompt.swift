@@ -2,36 +2,38 @@ import Foundation
 import Routing
 
 /// What the model knows about the user's situation. Sent with every answer
-/// request so "today", "now" and "here" mean something; nothing else about
-/// the user is sent.
+/// request so "today" and "now" mean something; nothing else about the user
+/// is sent.
 public struct AnswerContext: Sendable, Equatable {
     public var locale: Locale
     public var timeZone: TimeZone
     public var now: Date
-    /// "City, Region, Country" from reduced-accuracy location, or nil when
-    /// the user declined or it is not known yet.
-    public var location: String?
 
-    public init(locale: Locale, timeZone: TimeZone, now: Date, location: String? = nil) {
+    public init(locale: Locale, timeZone: TimeZone, now: Date) {
         self.locale = locale
         self.timeZone = timeZone
         self.now = now
-        self.location = location
     }
 
     /// Fixed values for reports and tests.
     public static let example = AnswerContext(
         locale: Locale(identifier: "en_US"),
         timeZone: TimeZone(identifier: "America/Chicago")!,
-        now: Date(timeIntervalSince1970: 1_792_600_000),
-        location: "Austin, Texas, United States"
+        now: Date(timeIntervalSince1970: 1_792_600_000)
     )
 }
 
 /// The hard rules per format, as a system instruction, plus the input block.
 /// Only `narrative` and `one_line` are answered by a model; asking for
 /// another format is a programming error.
+///
+/// The model has no search tool. A one-line question that needs live data
+/// gets `liveDataMarker` back and the app shows web results instead; a
+/// narrative question about recent events gets a dated caveat.
 public enum AnswerPrompt {
+    /// The whole reply when a one-line question cannot be answered without live data.
+    public static let liveDataMarker = "NEEDS_LIVE_DATA"
+
     public static func system(for format: ResponseFormat) -> String {
         switch format {
         case .narrative: narrative
@@ -52,17 +54,13 @@ public enum AnswerPrompt {
     }
 
     public static func input(query: String, context: AnswerContext) -> String {
-        var lines = [
+        [
             "Query: \(query)",
             "",
-            "Context (use for \"today\", \"now\" and \"here\"; do not repeat it unless the query asks about it):",
+            "Context (use for \"today\" and \"now\"; do not repeat it unless the query asks about it):",
             "- Date and time: \(dateText(context))",
             "- Locale: \(context.locale.identifier)",
-        ]
-        if let location = context.location {
-            lines.append("- Approximate location: \(location)")
-        }
-        return lines.joined(separator: "\n")
+        ].joined(separator: "\n")
     }
 
     public static func request(
@@ -86,8 +84,8 @@ public enum AnswerPrompt {
         - Answer only the question that was asked. Do not add background, related facts, caveats, tips, or anything that is not a direct part of the answer.
         - Write two to four short paragraphs of plain prose. No headings, bullet points, numbered lists, bold text, tables, or emoji.
         - No preamble and no closing line. Start with the answer. Do not offer further help or suggest follow-up questions.
-        - Use Google Search when the question concerns anything recent or still changing: news, events, prices, safety, people in the news, or anything with "now", "today", "currently", "latest" or a recent year. Answer from what you find. Do not search for settled facts you already know.
-        - Use the context block for "today", "now" and "here". Do not mention the context unless the query is about it.
+        - You have no access to the web. If the answer depends on events after what you know, say so in one plain sentence at the start, then answer with what you do know. Do not invent recent developments.
+        - Use the context block for "today" and "now". Do not mention the context unless the query is about it.
         - If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
         - Write in the language of the query.
         """
@@ -96,11 +94,11 @@ public enum AnswerPrompt {
         You answer web search queries for a browser with a single line.
 
         Rules:
-        - Reply with one line only: a number, a word, a name, a date, a time, or a short clause. Examples: "24 days", "Lima", "Yes, rain is expected this afternoon", "8:14 PM", "About 92 euros".
+        - Reply with one line only: a number, a word, a name, a date, a time, or a short clause. Examples: "24 days", "Lima", "8:14 PM", "About 92 euros".
         - Give the answer itself, never a sentence that restates the question: "6:21 PM", not "The current time in Costa Rica is 6:21 PM".
         - Never more than twelve words. No explanation, no second sentence, no preamble, no trailing period.
-        - For current conditions, use Google Search first and answer from the result: weather, time, exchange rates, prices, scores, who currently holds a role, or anything with "now" or "today".
-        - Use the context block for "today", "now" and "here": the current date and time with its time zone, and the user's approximate location.
+        - You have no access to the web. If the question needs live data you do not have, such as today's weather, a current price or exchange rate, a live score, or the latest news, reply with exactly: \(liveDataMarker)
+        - You do know the current date and time from the context block. Compute dates, countdowns and the time in other places from it.
         - If the honest answer is a range or depends on something, give the typical value in the line, such as "Usually 7 to 10 days".
         - If the question cannot be answered in one line, answer its most direct version in one line anyway.
         - Answer in the language of the query.

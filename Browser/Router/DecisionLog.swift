@@ -38,16 +38,4 @@ actor DecisionLog {
             print("DecisionLog: \(error)")
         }
     }
-
-    /// Google searches Gemini ran this calendar month, for the ribbon's
-    /// running count against the free allowance. Lines that do not parse are skipped.
-    func searchesThisMonth(now: Date = .now) -> Int {
-        guard let data = try? Data(contentsOf: fileURL) else { return 0 }
-        let calendar = Calendar.current
-        return String(decoding: data, as: UTF8.self)
-            .split(separator: "\n", omittingEmptySubsequences: true)
-            .compactMap { try? DecisionRecord.decoder.decode(DecisionRecord.self, from: Data($0.utf8)) }
-            .filter { calendar.isDate($0.timestamp, equalTo: now, toGranularity: .month) }
-            .reduce(0) { $0 + ($1.answer?.usage?.searches ?? 0) }
-    }
 }

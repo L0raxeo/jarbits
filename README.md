@@ -24,8 +24,7 @@ and a provider behind the router.
    runs with the local router (every query is a Google search) and the ribbon
    says "no key"; without the Gemini key `narrative` and `one_line` show web
    results and the ribbon says "no Gemini key".
-3. Run on a device. The first answer that could depend on where you are asks
-   for location once (city-level, reduced accuracy).
+3. Run on a device.
 
 ## How a query is routed
 
@@ -52,30 +51,36 @@ at $0.042 per million, so a few hundred searches a month cost under a cent.
 ## Answer cards
 
 `AnswerSession` streams one answer at a time from Gemini `gemini-3.1-flash-lite`
-(Interactions API, Grounding with Google Search on, thinking `minimal`,
-`store: false`). The system instruction is the per-format rule set in
-`AnswerPrompt` (`Packages/Routing/Sources/Answers`): narrative answers only
-the question in two to four plain paragraphs; one-line answers in at most
-twelve words. Both tell the model to search for anything current (weather,
-time, prices, news, "today") and not for settled facts. The input carries the
-query plus the device date, time zone, locale and, if allowed, the approximate
-city, so "today" and "here" mean something.
+(Interactions API, thinking `minimal`, `store: false`, no tools). The system
+instruction is the per-format rule set in `AnswerPrompt`
+(`Packages/Routing/Sources/Answers`): narrative answers only the question in
+two to four plain paragraphs; one-line gives the answer itself in at most
+twelve words, never a sentence restating the question. The input carries the
+query plus the device date, time and zone and the locale, so "today", "now"
+and "the time in X" work without any lookup.
 
-What the card shows: the streamed text, then Google's Search Suggestions strip
-when the model searched (Google's terms require it, unmodified, with nothing
-between the answer and the strip), the cited sources, and a "Web results"
-button that loads the Google page for the same query. No first byte in 10 s,
-or any failure before text arrives, falls back to web results; a failure after
-some text keeps the text and says it stopped early.
+The model has no web access, on purpose. Grounding with Google Search was
+built and removed: Google's terms require their Search Suggestions bar,
+unmodified and full width, under every grounded answer, and it cannot be
+restyled. So:
+- a one-line question that needs live data (today's weather, a price, a
+  rate, a score, the latest news) makes the model reply with the marker
+  `NEEDS_LIVE_DATA`, which the app never shows; it loads the Google results
+  page for the query instead and logs `needsLiveData`;
+- a narrative question about recent events gets one plain sentence saying
+  the answer may be out of date, then what the model knows; the Web results
+  button is on every answer card.
+
+No first byte in 10 s, or any failure before text arrives, falls back to web
+results; a failure after some text keeps the text and says it stopped early.
 
 Cost, from Google's pricing page on 2026-10-21 (pinned in `GeminiPricing`):
 $0.25 per million input tokens, $1.50 per million output tokens including
-thinking, so about $0.0005 per narrative answer. Google searches are free up to
-5,000 a month across Gemini 3 models, then $14 per 1,000; a forced-search-on-
-every-query policy would make that the whole bill, which is why the prompt
-asks for a search only when the question is time-sensitive. The ribbon shows
-each answer's tokens, cost and whether it searched, and a running count of
-searches this month from the log.
+thinking, so about $0.0005 per narrative answer and nothing per search,
+because there are none. The ribbon shows each answer's tokens, cost and
+outcome. If live answers are wanted later, a search source such as Serper
+(prepaid, about $1 per 1,000 queries) can feed results into the same input
+block without changing the cards.
 
 ## Where things live
 
@@ -84,16 +89,15 @@ searches this month from the log.
 | `Packages/Routing/` | Foundation-only Swift package with two libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence gate, `QueryParser`, the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, and the per-format prompts. Tests run on macOS. |
 | `Browser/Router/Router.swift` | The seam: query in, `RouteResult` out. |
 | `Browser/Router/JevRouter.swift` | Asks Jev, maps format → `CardPlan`. Also `BrowserSession.makeRouter()` and `makeAnswerClient()`. |
-| `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: text, searches, citations, Search Suggestions, and the summary for the log. |
-| `Browser/Answers/ApproximateLocation.swift` | City-level location on demand, cached 15 minutes, asked for on first use. |
+| `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
 | `Browser/Router/LocalRouter.swift` | No-network fallback used when no key is configured. |
-| `Browser/Router/DecisionLog.swift` | JSON Lines log of every decision and answer; also the month's search count for the ribbon. |
+| `Browser/Router/DecisionLog.swift` | JSON Lines log of every decision and answer. |
 | `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`). |
 | `Browser/Router/CardPlan.swift` | The renderable plans. One enum case per card type. |
 | `Browser/Session/BrowserSession.swift` | Owns the single `WebPage` and the `AnswerSession`, runs queries through the router, applies the plan, writes the log. |
-| `Browser/Cards/` | One view per card type (`WebCardView`, `AnswerCardView` with `SearchSuggestionsStrip`), plus the Debug-only `RouteDebugRibbon`. |
+| `Browser/Cards/` | One view per card type (`WebCardView`, `AnswerCardView`), plus the Debug-only `RouteDebugRibbon`. |
 | `Browser/Shell/` | Custom chrome: bottom address bar and navigation buttons. No system toolbars, so no Liquid Glass. |
-| `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the two API keys, `UIDesignRequiresCompatibility`, and the location usage string and reduced-accuracy flag. |
+| `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the two API keys and `UIDesignRequiresCompatibility`. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
 
 ## Modules
@@ -128,9 +132,9 @@ swift run --package-path Packages/Routing report decisions ~/Downloads/decisions
 
 That prints picks per format, how often each was acted on or fell back, mean
 confidence, recent example queries, errors, the unsure picks with their
-runner-up, and an Answers table: per format, how many completed, fell back or
-stopped early, how many searched, median first-token and total latency, mean
-output tokens, and the token cost and search count for the log.
+runner-up, and an Answers table: per format, how many completed, needed live
+data, fell back or stopped early, median first-token and total latency, mean
+output tokens, and the token cost for the log.
 
 ## Tests
 
@@ -141,12 +145,15 @@ swift test --package-path Packages/Routing
 Covers the Jev request body against TypeSafe's documented shape and option
 order, decoding of their example response, the confidence gate, every failure
 path falling back to web results, and the address bypass; and for Gemini, the
-request body and key order, the per-format prompts and budgets, the context
-block, SSE parsing, a canned grounded stream end to end, error frames,
-timeouts, and old log lines without answers. Nothing here needs a simulator.
+request body and key order (and that no tool is sent), the per-format prompts
+and budgets, the context block, SSE parsing, a canned stream end to end,
+error frames, timeouts, and old log lines without answers. Nothing here needs
+a simulator.
 
 ## Deliberately absent
 
 Tabs, history, bookmarks, content blocking, reader mode, the map and stock
-cards, follow-up questions on an answer, the backend (the Jev and Gemini
-requests move behind it later, taking the keys with them), Serper.
+cards, follow-up questions on an answer, live search behind answers (see
+"Answer cards" for why Google's grounding was removed), location, the
+backend (the Jev and Gemini requests move behind it later, taking the keys
+with them).

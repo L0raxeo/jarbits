@@ -81,25 +81,34 @@ public enum DecisionsReport {
         if !answered.isEmpty {
             out.append("## Answers")
             out.append("")
-            let searches = answered.compactMap { $0.1.usage?.searches }.reduce(0, +)
-            let cost = answered.compactMap { $0.1.usage?.tokenCostUSD }.reduce(0, +)
-            out.append("\(answered.count) answered by Gemini, \(searches) Google searches (the first \(GeminiPricing.freeSearchesPerMonth) a month are free, then $\(GeminiPricing.searchPerThousandUSD.formatted()) per 1,000), about $\(cost.formatted(.number.precision(.fractionLength(4)))) in tokens.")
+            let cost = answered.compactMap { $0.1.usage?.costUSD }.reduce(0, +)
+            out.append("\(answered.count) answered by Gemini, about $\(cost.formatted(.number.precision(.fractionLength(4)))) in tokens.")
             out.append("")
-            out.append("| Format | Answers | Completed | Partial | Fell back | Searched | Median first token | Median total | Mean output tokens |")
+            out.append("| Format | Answers | Completed | Needed live data | Partial | Fell back | Median first token | Median total | Mean output tokens |")
             out.append("|---|---|---|---|---|---|---|---|---|")
             for format in ResponseFormat.allCases {
                 let rows = answered.filter { $0.1.format == format }
                 guard !rows.isEmpty else { continue }
                 let completed = rows.filter { $0.1.outcome == .completed }.count
+                let liveData = rows.filter { $0.1.outcome == .needsLiveData }.count
                 let partial = rows.filter { if case .partial = $0.1.outcome { true } else { false } }.count
                 let fellBack = rows.filter { if case .fellBackToWeb = $0.1.outcome { true } else { false } }.count
-                let searched = rows.filter { !$0.1.searched.isEmpty }.count
                 let outputs = rows.compactMap { $0.1.usage.map { $0.outputTokens + $0.thoughtTokens } }
                 let meanOutput = outputs.isEmpty ? 0 : outputs.reduce(0, +) / outputs.count
-                out.append("| `\(format.rawValue)` | \(rows.count) | \(completed) | \(partial) | \(fellBack) | \(searched) | \(median(rows.compactMap(\.1.firstTokenMs))) | \(median(rows.compactMap(\.1.latencyMs))) | \(meanOutput) |")
+                out.append("| `\(format.rawValue)` | \(rows.count) | \(completed) | \(liveData) | \(partial) | \(fellBack) | \(median(rows.compactMap(\.1.firstTokenMs))) | \(median(rows.compactMap(\.1.latencyMs))) | \(meanOutput) |")
             }
             out.append("")
-            let failed = answered.filter { $0.1.outcome != .completed }
+            let liveData = answered.filter { $0.1.outcome == .needsLiveData }
+            if !liveData.isEmpty {
+                out.append("Needed live data (shown web results): " + liveData.suffix(10).map { "\"\($0.0.query)\"" }.joined(separator: ", "))
+                out.append("")
+            }
+            let failed = answered.filter {
+                switch $0.1.outcome {
+                case .partial, .fellBackToWeb: true
+                case .completed, .needsLiveData: false
+                }
+            }
             if !failed.isEmpty {
                 out.append("Answer failures:")
                 out.append("")
@@ -107,7 +116,7 @@ public enum DecisionsReport {
                     switch answer.outcome {
                     case let .partial(reason): out.append("- \"\(record.query)\": partial, \(reason)")
                     case let .fellBackToWeb(reason): out.append("- \"\(record.query)\": fell back to web, \(reason)")
-                    case .completed: break
+                    case .completed, .needsLiveData: break
                     }
                 }
                 out.append("")

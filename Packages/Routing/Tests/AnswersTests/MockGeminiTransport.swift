@@ -51,37 +51,25 @@ final class MockGeminiTransport: URLProtocol {
     override func stopLoading() {}
 }
 
-/// A grounded one-line answer in the shape Google documents for the Interactions API stream.
-let groundedStream = """
+/// A one-line answer in the shape Google documents for the Interactions API stream.
+let answerStream = """
 event: interaction.created
 data: {"event_type":"interaction.created","interaction":{"id":"int_1","status":"in_progress"}}
 
 event: step.start
-data: {"event_type":"step.start","index":0,"step":{"type":"google_search_call","id":"call_1","arguments":{"queries":["time in costa rica now"]}}}
-
-event: step.stop
-data: {"event_type":"step.stop","index":0}
-
-event: step.start
-data: {"event_type":"step.start","index":1,"step":{"type":"google_search_result","call_id":"call_1","result":[{"search_suggestions":"<div class=\\"container\\">chips</div>"}]}}
-
-event: step.stop
-data: {"event_type":"step.stop","index":1}
-
-event: step.start
-data: {"event_type":"step.start","index":2,"step":{"type":"model_output","content":[{"type":"text","text":""}]}}
+data: {"event_type":"step.start","index":0,"step":{"type":"model_output","content":[{"type":"text","text":""}]}}
 
 event: step.delta
-data: {"event_type":"step.delta","index":2,"delta":{"type":"text","text":"8:14 "}}
+data: {"event_type":"step.delta","index":0,"delta":{"type":"text","text":"8:14 "}}
 
 event: step.delta
-data: {"event_type":"step.delta","index":2,"delta":{"type":"text","text":"PM"}}
+data: {"event_type":"step.delta","index":0,"delta":{"type":"text","text":"PM"}}
 
 event: step.stop
-data: {"event_type":"step.stop","index":2,"step":{"type":"model_output","content":[{"type":"text","text":"8:14 PM","annotations":[{"type":"url_citation","url":"https://www.timeanddate.com/worldclock/costa-rica","title":"timeanddate.com","start_index":0,"end_index":7}]}]}}
+data: {"event_type":"step.stop","index":0,"step":{"type":"model_output","content":[{"type":"text","text":"8:14 PM"}]}}
 
 event: interaction.completed
-data: {"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed","usage":{"total_input_tokens":412,"total_output_tokens":6,"total_thought_tokens":3,"total_tokens":421,"grounding_tool_count":[{"type":"google_search","count":1}]}}}
+data: {"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed","usage":{"total_input_tokens":412,"total_output_tokens":6,"total_thought_tokens":3,"total_tokens":421}}}
 
 event: done
 data: [DONE]

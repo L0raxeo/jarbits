@@ -11,7 +11,7 @@ import Testing
         #expect(json["model"] as? String == GeminiClient.defaultModel)
         #expect(json["stream"] as? Bool == true)
         #expect(json["store"] as? Bool == false)
-        #expect((json["tools"] as? [[String: String]]) == [["type": "google_search"]])
+        #expect(json["tools"] == nil, "no grounding: Google's terms would require their Search Suggestions bar")
         let generation = try #require(json["generation_config"] as? [String: Any])
         #expect(generation["thinking_level"] as? String == "minimal")
         #expect(generation["max_output_tokens"] as? Int == AnswerPrompt.maxOutputTokens(for: .oneLine))
@@ -21,7 +21,7 @@ import Testing
 
     @Test func keyOrderIsStable() throws {
         let body = String(decoding: try AnswerPrompt.request(format: .narrative, query: "q", context: .example).jsonData(), as: UTF8.self)
-        let order = ["\"model\"", "\"system_instruction\"", "\"input\"", "\"tools\"", "\"generation_config\"", "\"stream\"", "\"store\""]
+        let order = ["\"model\"", "\"system_instruction\"", "\"input\"", "\"generation_config\"", "\"stream\"", "\"store\""]
         let positions = order.map { body.range(of: $0)!.lowerBound }
         #expect(positions == positions.sorted())
     }
@@ -32,21 +32,17 @@ import Testing
         #expect(narrative != oneLine)
         #expect(narrative.contains("Answer only the question that was asked"))
         #expect(narrative.contains("two to four short paragraphs"))
+        #expect(narrative.contains("no access to the web"))
         #expect(oneLine.contains("one line only"))
         #expect(oneLine.contains("Never more than twelve words"))
-        #expect(oneLine.contains("Google Search"), "live facts need a search")
-        #expect(narrative.contains("Google Search"))
+        #expect(oneLine.contains("reply with exactly: \(AnswerPrompt.liveDataMarker)"))
         #expect(AnswerPrompt.maxOutputTokens(for: .narrative) > AnswerPrompt.maxOutputTokens(for: .oneLine))
     }
 
-    @Test func contextCarriesDateZoneLocaleAndLocation() {
-        let input = AnswerPrompt.input(query: "will it rain today", context: .example)
+    @Test func contextCarriesDateZoneAndLocale() {
+        let input = AnswerPrompt.input(query: "what's the time in costa rica", context: .example)
         #expect(input.contains("- Date and time: Wednesday 21 October 2026, 11:26 (America/Chicago)"), "got: \(input)")
         #expect(input.contains("- Locale: en_US"))
-        #expect(input.contains("- Approximate location: Austin, Texas, United States"))
-
-        var noLocation = AnswerContext.example
-        noLocation.location = nil
-        #expect(!AnswerPrompt.input(query: "x", context: noLocation).contains("location"))
+        #expect(!input.contains("location"))
     }
 }

@@ -87,20 +87,8 @@ public struct GeminiClient: Sendable {
 
         var parser = SSEParser()
         var line: [UInt8] = []
-        var searchCalls = 0
         func handle(_ event: SSEParser.Event) throws(GeminiError) {
             for answerEvent in try InteractionStream.events(event) {
-                var answerEvent = answerEvent
-                switch answerEvent {
-                case .searching:
-                    searchCalls += 1
-                case .usage(var usage) where usage.searches == 0 && searchCalls > 0:
-                    // Usage did not break out grounding calls; count the steps we saw.
-                    usage.searches = searchCalls
-                    answerEvent = .usage(usage)
-                default:
-                    break
-                }
                 continuation.yield(answerEvent)
             }
         }

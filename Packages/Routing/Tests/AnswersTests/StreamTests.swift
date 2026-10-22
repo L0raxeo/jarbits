@@ -24,28 +24,21 @@ import Testing
 
     @Test func textComesOnlyFromDeltas() throws {
         #expect(try events("step.delta", #"{"delta":{"type":"text","text":"Hi"}}"#) == [.text("Hi")])
+        #expect(try events("step.delta", #"{"delta":{"type":"thought","text":"hmm"}}"#) == [])
         #expect(try events("step.start", #"{"step":{"type":"model_output","content":[{"type":"text","text":"Hi"}]}}"#) == [])
         #expect(try events("step.stop", #"{"step":{"type":"model_output","content":[{"type":"text","text":"Hi"}]}}"#) == [])
     }
 
-    @Test func searchStepsAndSuggestions() throws {
-        #expect(try events("step.start", #"{"step":{"type":"google_search_call","arguments":{"queries":["a","b"]}}}"#) == [.searching(["a", "b"])])
-        #expect(try events("step.delta", #"{"delta":{"type":"google_search_result","result":[{"search_suggestions":"<div/>"}]}}"#) == [.suggestions(html: "<div/>")])
-    }
-
-    @Test func completionCarriesUsageCitationsAndStatus() throws {
-        let data = #"{"interaction":{"status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"Lima","annotations":[{"type":"url_citation","url":"https://en.wikipedia.org/wiki/Lima","title":"Wikipedia","start_index":0,"end_index":4}]}]}],"usage":{"total_input_tokens":10,"total_output_tokens":2,"total_thought_tokens":0,"grounding_tool_count":[{"type":"google_search","count":2}]}}}"#
-        let out = try events("interaction.completed", data)
-        #expect(out == [
-            .citations([Citation(url: URL(string: "https://en.wikipedia.org/wiki/Lima")!, title: "Wikipedia", start: 0, end: 4)]),
-            .usage(AnswerUsage(inputTokens: 10, outputTokens: 2, thoughtTokens: 0, searches: 2)),
+    @Test func completionCarriesUsageAndStatus() throws {
+        let data = #"{"interaction":{"status":"completed","usage":{"total_input_tokens":10,"total_output_tokens":2,"total_thought_tokens":0}}}"#
+        #expect(try events("interaction.completed", data) == [
+            .usage(AnswerUsage(inputTokens: 10, outputTokens: 2, thoughtTokens: 0)),
             .finished(status: "completed"),
         ])
     }
 
     @Test func unknownFramesAreIgnoredAndErrorsThrow() throws {
         #expect(try events("interaction.created", #"{"interaction":{"id":"x"}}"#) == [])
-        #expect(try events("step.delta", #"{"delta":{"type":"thought","text":"hmm"}}"#) == [])
         #expect(try events("done", "[DONE]") == [])
         #expect(throws: GeminiError.stream("quota exceeded")) {
             try events("error", #"{"error":{"code":429,"message":"quota exceeded"}}"#)
@@ -68,17 +61,14 @@ import Testing
 
     private let request = AnswerPrompt.request(format: .oneLine, query: "what's the time in costa rica", context: .example)
 
-    @Test func streamsAGroundedAnswerInOrder() async throws {
-        let client = MockGeminiTransport.client(status: 200, body: groundedStream)
+    @Test func streamsAnAnswerInOrder() async throws {
+        let client = MockGeminiTransport.client(status: 200, body: answerStream)
         let (events, error) = await collect(client, request)
         #expect(error == nil)
         #expect(events == [
-            .searching(["time in costa rica now"]),
-            .suggestions(html: "<div class=\"container\">chips</div>"),
             .text("8:14 "),
             .text("PM"),
-            .citations([Citation(url: URL(string: "https://www.timeanddate.com/worldclock/costa-rica")!, title: "timeanddate.com", start: 0, end: 7)]),
-            .usage(AnswerUsage(inputTokens: 412, outputTokens: 6, thoughtTokens: 3, searches: 1)),
+            .usage(AnswerUsage(inputTokens: 412, outputTokens: 6, thoughtTokens: 3)),
             .finished(status: "completed"),
         ])
 
@@ -88,12 +78,6 @@ import Testing
         #expect(sent.value(forHTTPHeaderField: "x-goog-api-key") == "test-key")
         #expect(sent.value(forHTTPHeaderField: "Content-Type") == "application/json")
         #expect(sent.httpBody == (try request.jsonData()))
-    }
-
-    @Test func countsSearchStepsWhenUsageDoesNot() async {
-        let body = groundedStream.replacingOccurrences(of: #","grounding_tool_count":[{"type":"google_search","count":1}]"#, with: "")
-        let (events, _) = await collect(MockGeminiTransport.client(status: 200, body: body), request)
-        #expect(events.contains(.usage(AnswerUsage(inputTokens: 412, outputTokens: 6, thoughtTokens: 3, searches: 1))))
     }
 
     @Test func httpErrorsSurfaceStatusAndBody() async {
@@ -119,7 +103,7 @@ import Testing
     @Test func slowHeadersTimeOut() async {
         MockGeminiTransport.handler = { _ in
             Thread.sleep(forTimeInterval: 0.5)
-            return (200, Data(groundedStream.utf8))
+            return (200, Data(answerStream.utf8))
         }
         MockGeminiTransport.requests = []
         let client = GeminiClient(apiKey: "test-key", firstByteTimeout: .milliseconds(50), session: MockGeminiTransport.session())

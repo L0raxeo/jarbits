@@ -10,10 +10,5 @@
 	<string>$(GEMINI_API_KEY)</string>
 	<key>UIDesignRequiresCompatibility</key>
 	<true/>
-	<!-- Answers use a city-level location so "will it rain today" means here. -->
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Your approximate city lets answers about weather, time and nearby things apply to where you are. It is only sent with questions that get a written answer.</string>
-	<key>NSLocationDefaultAccuracyReduced</key>
-	<true/>
 </dict>
 </plist>
