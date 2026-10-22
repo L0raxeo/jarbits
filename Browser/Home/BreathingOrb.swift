@@ -13,8 +13,8 @@ enum OrbMode: Equatable {
 /// A purple gradient blob. As a circle it breathes: the colours drift and it
 /// grows and shrinks on a five-second cycle. As a capsule it holds the search
 /// field; the gradient keeps drifting but the size stops pulsing so the text
-/// holds still. As a line it is the surface of water seen from the shore: one
-/// wavelength across its length, the crest sliding back and forth.
+/// holds still. As a line it is the surface of water seen from the shore: flat,
+/// with one crest that slides back and forth along it.
 struct BreathingOrb: View {
     @Binding var draft: String
     var typing: FocusState<Bool>.Binding
@@ -31,9 +31,9 @@ struct BreathingOrb: View {
     private static let capsuleHeight: CGFloat = 56
     private static let lineWidth: CGFloat = 120
     private static let lineThickness: CGFloat = 5
-    private static let waveHeight: CGFloat = 8
+    private static let waveHeight: CGFloat = 10
     private static let breathPeriod: TimeInterval = 5
-    private static let wavePeriod: TimeInterval = 2
+    private static let wavePeriod: TimeInterval = 1.8
 
     var body: some View {
         ZStack {
@@ -50,11 +50,14 @@ struct BreathingOrb: View {
         TimelineView(.animation(paused: reduceMotion)) { context in
             let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
             let breath = sin(2 * .pi * t / Self.breathPeriod)
-            // The wave's phase swings back and forth, so the crest slides
-            // along the line and returns instead of travelling off one end.
-            let phase = .pi * sin(2 * .pi * t / Self.wavePeriod)
+            // The crest's position along the line, 0…1, swinging end to end.
+            let crest = 0.5 + 0.5 * sin(2 * .pi * t / Self.wavePeriod)
 
-            WavyCapsule(amplitude: mode == .line ? Self.waveHeight : 0, phase: phase)
+            WavyCapsule(
+                amplitude: mode == .line ? Self.waveHeight : 0,
+                crest: crest,
+                thickness: mode == .line ? Self.lineThickness : frameSize.height
+            )
                 .fill(gradient(at: t))
                 .frame(width: frameSize.width, height: frameSize.height)
                 .scaleEffect(mode == .circle ? 1 + 0.05 * breath : 1)
@@ -74,7 +77,9 @@ struct BreathingOrb: View {
         switch mode {
         case .circle: CGSize(width: Self.circleSize, height: Self.circleSize)
         case .capsule: CGSize(width: width, height: Self.capsuleHeight)
-        case .line: CGSize(width: Self.lineWidth, height: Self.lineThickness)
+        // Tall enough for the crest: the gradient paints only inside the
+        // frame, so a wave that left it would be cut off.
+        case .line: CGSize(width: Self.lineWidth, height: Self.lineThickness + 2 * Self.waveHeight)
         }
     }
 
@@ -114,41 +119,44 @@ struct BreathingOrb: View {
     }
 }
 
-/// A capsule whose centreline can be a wave. With `amplitude` 0 it is exactly
-/// `Capsule()`; with a square frame that is a circle. Otherwise the centreline
-/// is one full sine wavelength across the line, shifted by `phase`, under an
-/// envelope that pins both ends to the midline so only the middle moves.
+/// A band of the given `thickness` along the frame's midline, with round ends.
+/// With `amplitude` 0 and `thickness` equal to the frame height it is exactly
+/// `Capsule()`; with a square frame that is a circle. Otherwise the midline
+/// rises into one crest, a Gaussian bump centred at `crest` (0…1 along the
+/// line), and lies flat everywhere else: the top outline of a single wave.
 private struct WavyCapsule: Shape {
     var amplitude: CGFloat
-    var phase: CGFloat
+    var crest: CGFloat
+    var thickness: CGFloat
 
-    var animatableData: CGFloat {
-        get { amplitude }
-        set { amplitude = newValue }
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(amplitude, thickness) }
+        set { amplitude = newValue.first; thickness = newValue.second }
     }
 
     func path(in rect: CGRect) -> Path {
-        let radius = rect.height / 2
+        let radius = thickness / 2
         let start = rect.minX + radius
         let end = rect.maxX - radius
         guard end - start > 0.5, amplitude > 0.01 else {
-            return Capsule().path(in: rect)
+            return Capsule().path(in: CGRect(x: rect.minX, y: rect.midY - radius, width: rect.width, height: thickness))
         }
         let length = end - start
+        let sigma = length * 0.16
+        let centre = start + crest * length
         var line = Path()
         let steps = 64
-        line.move(to: CGPoint(x: start, y: rect.midY - height(at: 0)))
+        line.move(to: CGPoint(x: start, y: rect.midY - bump(at: start, centre: centre, sigma: sigma)))
         for i in 1...steps {
-            let u = CGFloat(i) / CGFloat(steps)
-            line.addLine(to: CGPoint(x: start + length * u, y: rect.midY - height(at: u)))
+            let x = start + length * CGFloat(i) / CGFloat(steps)
+            line.addLine(to: CGPoint(x: x, y: rect.midY - bump(at: x, centre: centre, sigma: sigma)))
         }
-        return line.strokedPath(StrokeStyle(lineWidth: rect.height, lineCap: .round, lineJoin: .round))
+        return line.strokedPath(StrokeStyle(lineWidth: thickness, lineCap: .round, lineJoin: .round))
     }
 
-    /// Surface height at `u` (0…1 along the line).
-    private func height(at u: CGFloat) -> CGFloat {
-        let envelope = sin(.pi * u)
-        return amplitude * sin(2 * .pi * u + phase) * envelope
+    private func bump(at x: CGFloat, centre: CGFloat, sigma: CGFloat) -> CGFloat {
+        let d = (x - centre) / sigma
+        return amplitude * exp(-d * d)
     }
 }
 
