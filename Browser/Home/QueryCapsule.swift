@@ -22,22 +22,7 @@ struct QueryCapsule: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    static let openHeight: CGFloat = 46
-    static let compactHeight: CGFloat = 34
-    static let editingHeight: CGFloat = 56
-    /// Collapsed, it sits this much lower, as Safari's does.
-    static let compactDrop: CGFloat = 12
-    /// Above the safe-area bottom.
-    static let bottomPadding: CGFloat = 2
-
-    /// How much of the screen's foot the capsule takes, measured up from the
-    /// safe-area bottom, with 8 pt of breathing room above it. A web page's
-    /// bottom edge is kept this far up so a site's own tab bar stays visible.
-    static func footprint(compact: Bool) -> CGFloat {
-        (compact ? compactHeight - compactDrop : openHeight) + bottomPadding + 8
-    }
-
-    private var height: CGFloat { editing ? Self.editingHeight : compact ? Self.compactHeight : Self.openHeight }
+    private var height: CGFloat { editing ? 56 : compact ? 34 : 46 }
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
@@ -70,7 +55,8 @@ struct QueryCapsule: View {
         }
         .fixedSize(horizontal: !editing, vertical: false)
         .frame(maxWidth: editing ? fieldWidth : maxWidth)
-        .offset(y: compact && !editing ? Self.compactDrop : 0)
+        // Collapsed, it sits lower still, as Safari's does.
+        .offset(y: compact && !editing ? 12 : 0)
         .contentShape(Capsule())
         .onTapGesture {
             if !editing { onTap() }

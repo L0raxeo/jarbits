@@ -14,9 +14,7 @@ with one wave sliding along it, for as long as the query is being processed:
 routing, then either the Google page committing or Gemini's first text. Then
 the line fades out as the result fades in: a web page filling the screen, or
 the answer in dark text where the line was, growing as it streams. A page
-is laid out between a frosted status bar and the capsule, so a site's own
-header and tab bar stay visible; answers and images scroll under a frost
-that fades into them. Over a
+starts below the status bar and frosts it when it scrolls under. Over a
 result a capsule at the foot shows the query, shrinks while you scroll down
 and grows on the way up; tapping it raises the keyboard and the capsule
 rises with it, morphing into the field, with the result still behind; on a
