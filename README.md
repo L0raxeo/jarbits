@@ -6,13 +6,17 @@ five response formats and reports how sure it is. Two answer providers exist
 behind it: a Google results web view (`web_results`) and Gemini answers for
 `narrative` and `one_line`.
 
-The UI is being redone from scratch. Today the app is the home screen only:
-white, a purple gradient orb above the middle that breathes, and a keyboard
-hint at the bottom. Tapping or swiping up on the hint raises the keyboard and
-stretches the orb into a capsule you type in; return clears it and drops the
-keyboard. Nothing is sent yet: the old web and answer cards are out of the
-view tree, and the routing and answer code below is compiled but not called
-until the result UI is designed.
+The screen is white with a purple gradient orb above the middle that
+breathes, and a keyboard hint at the bottom. Tapping the orb or the hint, or
+swiping up on the hint, raises the keyboard and stretches the orb into a
+capsule you type in. Return sends the query and the orb becomes a short line
+with one wave sliding along it, for as long as the query is being processed:
+routing, then either the Google page committing or Gemini's first text. Then
+the line fades out as the result fades in: a web page filling the screen, or
+the answer in dark text where the line was, growing as it streams. The hint
+returns over the result; tapping it clears the result and opens the capsule
+for the next query. Swiping down on an answer, or tapping the line while it
+waves, returns to the circle.
 
 ## Run
 
@@ -33,7 +37,10 @@ until the result UI is designed.
 ## How a query is routed
 
 `BrowserSession.submit` → `Router.route` → `RouteResult { plan, decision }`.
-(Not reachable from the home screen yet; see the introduction.)
+`BrowserSession.stage` (`idle`, `routing`, `loading`, `ready`) is what the
+home screen reads to show the line or the result; a page counts as ready
+when WebKit commits its first content (or after 8 s), an answer when its
+first text arrives.
 
 `JevRouter` (used when a key is configured):
 - An address (`example.com`, `https://…`) loads directly; Jev is not asked.
@@ -100,7 +107,7 @@ block without changing the cards.
 | `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`). |
 | `Browser/Router/CardPlan.swift` | The renderable plans. One enum case per card type. |
 | `Browser/Session/BrowserSession.swift` | Owns the single `WebPage` and the `AnswerSession`, runs queries through the router, applies the plan, writes the log. |
-| `Browser/Home/` | The screen: `HomeView` (white background, focus state, dismissal), `BreathingOrb` (the mesh-gradient circle that morphs into the capsule field) and `KeyboardHint` (the bobbing chevron over a keyboard icon). No system toolbars, so no Liquid Glass. |
+| `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `BreathingOrb` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon) and `ResultView` (the full-screen web page, or the answer text with its "Web results" link). No system toolbars, so no Liquid Glass. |
 | `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the two API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
 
@@ -110,10 +117,9 @@ Each response format is a module with a stage recorded in code
 (`ResponseFormat.stage` in `Packages/Routing`): `routed` (Jev can pick it,
 web results stand in), `built` (a real card renders), `verified` (used on a
 device and accepted). Today: `web_results` verified; `narrative` and
-`one_line` built; `map` and `stock` routed. The Debug ribbon reads
-`stock → web (routed, not built)` for a routed pick, and `JevRouter` asserts
-the stage and the switch agree. Flip the stage in the same change that adds
-the card.
+`one_line` built; `map` and `stock` routed. A routed pick shows web
+results and is logged as the pick it was, and `JevRouter` asserts the stage
+and the switch agree. Flip the stage in the same change that adds the card.
 
 ## How it routes
 
@@ -156,8 +162,9 @@ a simulator.
 
 ## Deliberately absent
 
-Dark mode, tabs, history, bookmarks, content blocking, reader mode, the map
-and stock cards, follow-up questions on an answer, live search behind answers (see
+Dark mode, the Debug ribbon (the log still records every decision; summarise
+it with the report CLI), tabs, history, bookmarks, content blocking, reader
+mode, the map and stock cards, follow-up questions on an answer, live search behind answers (see
 "Answer cards" for why Google's grounding was removed), location, the
 backend (the Jev and Gemini requests move behind it later, taking the keys
 with them).

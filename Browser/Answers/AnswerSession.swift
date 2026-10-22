@@ -27,6 +27,9 @@ final class AnswerSession {
     /// Called once per answer with the final summary. The owner logs it and
     /// swaps to web results when nothing usable arrived or live data is needed.
     var onFinish: ((AnswerSummary) -> Void)?
+    /// Called once per answer, the first time `displayText` has something to
+    /// show. The owner fades the wave line out and the text in.
+    var onFirstText: (() -> Void)?
 
     private let client: GeminiClient
     private var task: Task<Void, Never>?
@@ -72,6 +75,7 @@ final class AnswerSession {
         var usage: AnswerUsage?
         var firstTokenMs: Int?
         var failure: String?
+        var announced = false
         do {
             for try await event in client.stream(request) {
                 if Task.isCancelled { return }
@@ -82,6 +86,10 @@ final class AnswerSession {
                         phase = .streaming
                     }
                     text += piece
+                    if !announced, !displayText.isEmpty {
+                        announced = true
+                        onFirstText?()
+                    }
                 case let .usage(found):
                     usage = found
                 case let .finished(status):
