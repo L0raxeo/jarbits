@@ -31,8 +31,12 @@ page keeps its frost whatever it pins at the top. The top zone's colour is
 painted over the page, which the web view insets under the status bar by
 itself; a page that asks for the whole screen (`viewport-fit=cover`) is
 opted out by the watcher, because this web view gives it no safe-area
-insets to pad with and it would sit under the clock. The clock stays dark
-over a dark banner for now. Over a result a capsule at the foot
+insets to pad with and it would sit under the clock. A bar's colour is
+what the page declares: its opaque paint, else its theme colour. A bar
+that declares nothing (a gradient over a video, as on YouTube Shorts) is
+sampled by the app from the page's rendered edge, as Safari does, and the
+sample counts only when the strip is one colour; otherwise white. The
+clock stays dark over a dark banner for now. Over a result a capsule at the foot
 shows the query, shrinks while you scroll down and grows on the way up;
 tapping it raises the keyboard and the capsule rises with it, morphing into
 the field, with the result still behind; on a web result the field holds
@@ -188,7 +192,7 @@ article title before searching.
 | `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`). |
 | `Browser/Router/CardPlan.swift` | The renderable plans. One enum case per card type. |
 | `Browser/Session/BrowserSession.swift` | Owns the single `WebPage`, the `AnswerSession` and the `ImageSession`, runs queries through the router, applies the plan, watches the page's navigations (ours and tapped links) for the clay's wave line and the page-chrome bookkeeping, writes the log. |
-| `Browser/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives so nothing resizes under the finger); `PageChrome.swift`, the state the app keeps, the message handler and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
+| `Browser/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler, the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
 | `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `Clay` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar) `ClayCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard) and `QueryField` (the text field the clay and the capsule share). No system toolbars, so no Liquid Glass. |
 | `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the two API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |

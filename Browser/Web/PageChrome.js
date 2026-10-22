@@ -2,10 +2,14 @@
 // end, main frame only, in the app's own content world, so the page's scripts
 // never see it. It reports what the page pins to its top and bottom edges:
 //
-//   { top:    { kind: 'none' | 'bar',              color: [r, g, b] | null },
-//     bottom: { kind: 'none' | 'bar' | 'floating', color: [r, g, b] | null },
+//   { top:    { kind: 'none' | 'bar',              color: [r, g, b] | null, guessed: Bool },
+//     bottom: { kind: 'none' | 'bar' | 'floating', color: [r, g, b] | null, guessed: Bool },
 //     overlay: Bool,   // a pinned box covers the viewport (a dialog, Google's AI overview)
-//     atTop:   Bool }  // the document is scrolled to its top
+//     atTop:   Bool,   // the document is scrolled to its top
+//     height:  Number } // the viewport height in CSS px
+//
+// `guessed` marks a bar whose colour fell through to white: nothing opaque
+// in its paint and no theme colour. The app samples the rendered edge then.
 //
 // A bar is a pinned box that spans the width and touches the edge: a header,
 // a tab bar, a checkout bar, a cookie bar. Floating is anything else pinned
@@ -166,7 +170,8 @@
   // The bar's paint: its own layers from the hit element outward, keeping
   // only boxes that span the bar (a button inside it is not its paint), then
   // what is behind it up to the root, composited until opaque; then the
-  // theme colour; then white.
+  // theme colour; then white. `sure` is false on the white fallback: the
+  // app then samples the rendered edge instead, as Safari does.
   function barColor(bar, hitEl) {
     const barRect = bar.getBoundingClientRect();
     const layers = [];
@@ -181,15 +186,15 @@
       const c = parseColor(getComputedStyle(el).backgroundColor);
       if (!c || c.a <= 0) continue;
       acc = acc ? over(acc, c) : c;
-      if (acc.a >= 0.999) return rgb(acc);
+      if (acc.a >= 0.999) return { rgb: rgb(acc), sure: true };
     }
     const theme = themeColor();
     if (theme) {
       acc = acc ? over(acc, theme) : theme;
-      if (acc.a >= 0.999) return rgb(acc);
+      if (acc.a >= 0.999) return { rgb: rgb(acc), sure: true };
     }
     const white = { r: 255, g: 255, b: 255, a: 1 };
-    return rgb(acc ? over(acc, white) : white);
+    return { rgb: rgb(acc ? over(acc, white) : white), sure: false };
   }
 
   // --- Verdicts and their stability --------------------------------------
@@ -198,8 +203,10 @@
   let seen = false;
   let lastKey = null;
 
+  // Alive: still in the document and still anchored, itself pinned or inside
+  // a pinned box (a panel inside a full-screen reel, as on YouTube Shorts).
   const alive = (el) => {
-    if (!el || !el.isConnected || !pinned(el)) return false;
+    if (!el || !el.isConnected || !chainOf(el).some(pinned)) return false;
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') return false;
     return el.getBoundingClientRect().width > 0;
@@ -223,7 +230,8 @@
 
   const pack = (v, top) => ({
     kind: v.kind === 'bar' ? 'bar' : (!top && v.kind === 'floating') ? 'floating' : 'none',
-    color: v.kind === 'bar' ? v.color : null,
+    color: v.kind === 'bar' ? v.color.rgb : null,
+    guessed: v.kind === 'bar' && !v.color.sure,
   });
 
   function evaluate(force) {
@@ -242,7 +250,9 @@
     }
     if (!top) top = { kind: 'none', el: null, color: null };
     seen = true;
-    const payload = { top: pack(top, true), bottom: pack(bottom, false), overlay, atTop };
+    // `height` is the page's viewport, so the app can find its edges in the
+    // web view when it samples a guessed colour.
+    const payload = { top: pack(top, true), bottom: pack(bottom, false), overlay, atTop, height: vh() };
     const key = JSON.stringify(payload);
     if (force || key !== lastKey) {
       lastKey = key;
@@ -253,12 +263,17 @@
 
   // --- Triggers, coalesced ----------------------------------------------
 
+  const REST = 200;     // a scheduled look waits until no scroll for this long
   let timer = null;
   let dirty = false;
+  let lastScroll = -Infinity;
+  // A look mid-scroll (a swipe between Shorts, mutations during a fling)
+  // sees elements half-way across the edge; it waits for the scroll to rest.
   function schedule() {
     if (timer) { dirty = true; return; }
     timer = setTimeout(() => {
       timer = null;
+      if (performance.now() - lastScroll < REST) { schedule(); return; }
       try { evaluate(false); } catch (e) {}
       if (dirty) { dirty = false; schedule(); }
     }, 150);
@@ -270,13 +285,14 @@
   });
   window.addEventListener('resize', schedule);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', schedule);
+  document.addEventListener('scroll', () => { lastScroll = performance.now(); }, { capture: true, passive: true });
   if ('onscrollend' in window) {
     document.addEventListener('scrollend', schedule, { capture: true, passive: true });
   } else {
     let settling = null;
     document.addEventListener('scroll', () => {
       clearTimeout(settling);
-      settling = setTimeout(schedule, 160);
+      settling = setTimeout(schedule, REST);
     }, { capture: true, passive: true });
   }
   window.addEventListener('load', () => setTimeout(schedule, 250));

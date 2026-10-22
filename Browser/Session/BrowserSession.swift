@@ -39,6 +39,10 @@ final class BrowserSession {
     /// A page navigation is in flight, ours or a link tapped inside the
     /// page: the clay shows the wave line meanwhile.
     private(set) var pageLoading = false
+    /// The window's size and the safe area above the page, from the screen:
+    /// where the page's edges are when a guessed colour is sampled.
+    var window = CGSize.zero
+    var topInset: CGFloat = 0
 
     private let router: any Router
     private let log: DecisionLog
@@ -57,6 +61,9 @@ final class BrowserSession {
     private var documentSettled = false
     private var pendingReport: PageChromeReport?
     private var reportedGeneration = -1
+    /// Counts applied reports, so a sample taken for one never lands after
+    /// a newer one.
+    private var reportSequence = 0
     private var previousHost: String?
     /// A page that has not committed by then is shown anyway.
     private let commitTimeout: Duration = .seconds(8)
@@ -333,16 +340,46 @@ final class BrowserSession {
     /// the plain results page stays exactly as it is (it pins nothing at
     /// either edge). Their bottom follows the report: the expanded AI
     /// overview pins its "Ask anything" field there.
+    ///
+    /// A bar whose colour the watcher could only guess is held until the
+    /// app has sampled the rendered edge, so the zone never shows the guess
+    /// and then flips; a sample that fails leaves the guess, which is what
+    /// the zone showed before sampling existed.
     private func apply(_ report: PageChromeReport) {
         var next = report.chrome
         if let url = page.url, QueryParser.isSearchResults(url) {
             next.top = .frost
         }
-        #if DEBUG
-        // What the watcher decided for this page, in Xcode's console.
-        print("page chrome \(page.url?.host() ?? "-"): top \(report.chrome.top) bottom \(report.chrome.bottom) overlay \(report.overlay) atTop \(report.atTop) -> \(next)")
-        #endif
-        if next != chrome { chrome = next }
+        reportSequence += 1
+        let sampleTop = report.topGuessed && { if case .solid = next.top { true } else { false } }()
+        let sampleBottom = report.bottomGuessed && { if case .bar = next.bottom { true } else { false } }()
+        guard sampleTop || sampleBottom else {
+            #if DEBUG
+            // What the watcher decided for this page, in Xcode's console.
+            print("page chrome \(page.url?.host() ?? "-"): top \(report.chrome.top) bottom \(report.chrome.bottom) overlay \(report.overlay) atTop \(report.atTop) -> \(next)")
+            #endif
+            if next != chrome { chrome = next }
+            return
+        }
+        let sequence = reportSequence
+        let generation = documentGeneration
+        Task { [weak self] in
+            guard let self else { return }
+            async let top: ChromeColor? = sampleTop
+                ? EdgeSampler.sample(page, edge: .top, window: window, topInset: topInset, viewportHeight: report.viewportHeight)
+                : nil
+            async let bottom: ChromeColor? = sampleBottom
+                ? EdgeSampler.sample(page, edge: .bottom, window: window, topInset: topInset, viewportHeight: report.viewportHeight)
+                : nil
+            let sampled = await (top, bottom)
+            guard sequence == reportSequence, generation == documentGeneration else { return }
+            if let color = sampled.0 { next.top = .solid(color) }
+            if let color = sampled.1 { next.bottom = .bar(color) }
+            #if DEBUG
+            print("page chrome \(page.url?.host() ?? "-"): top \(report.chrome.top) bottom \(report.chrome.bottom) overlay \(report.overlay) atTop \(report.atTop) sampled top \(sampled.0.map { "\($0)" } ?? (sampleTop ? "no uniform strip" : "-")) bottom \(sampled.1.map { "\($0)" } ?? (sampleBottom ? "no uniform strip" : "-")) -> \(next)")
+            #endif
+            if next != chrome { chrome = next }
+        }
     }
 
     private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil) {

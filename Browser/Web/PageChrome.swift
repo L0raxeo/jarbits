@@ -9,6 +9,12 @@ struct ChromeColor: Hashable, Sendable {
 
     var color: Color { Color(.sRGB, red: red, green: green, blue: blue) }
 
+    init(red: Double, green: Double, blue: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+    }
+
     /// From the watcher's `[r, g, b]`, 0…255.
     init?(_ value: Any?) {
         guard let parts = value as? [NSNumber], parts.count == 3 else { return nil }
@@ -48,6 +54,13 @@ struct PageChromeReport {
     /// A pinned box covers the viewport: a dialog, Google's AI overview.
     var overlay: Bool
     var atTop: Bool
+    /// The bar's colour fell through to white: nothing opaque in its paint
+    /// and no theme colour. The app samples the rendered edge instead.
+    var topGuessed: Bool
+    var bottomGuessed: Bool
+    /// The page's viewport height in CSS points, to find its edges in the
+    /// web view.
+    var viewportHeight: CGFloat
 
     init?(_ body: Any) {
         guard let dictionary = body as? [String: Any],
@@ -68,6 +81,97 @@ struct PageChromeReport {
         self.chrome = chrome
         overlay = dictionary["overlay"] as? Bool ?? false
         atTop = dictionary["atTop"] as? Bool ?? true
+        topGuessed = top["guessed"] as? Bool ?? false
+        bottomGuessed = bottom["guessed"] as? Bool ?? false
+        viewportHeight = (dictionary["height"] as? NSNumber).map { CGFloat($0.doubleValue) } ?? 0
+    }
+}
+
+/// The colour of a thin strip of the rendered page at one edge, for a bar
+/// whose colour the watcher could only guess (a gradient over a video, as on
+/// YouTube Shorts). This is what WebKit does for Safari's own bars: the
+/// strip counts only when it is near-uniform, so text, buttons or a picture
+/// behind the bar give nothing rather than mud.
+enum EdgeSampler {
+    enum Edge { case top, bottom }
+
+    /// Strip height and position, in points, just inside the edge.
+    private static let stripHeight: CGFloat = 3
+    private static let inset: CGFloat = 1
+    /// Snapshot width in points; the strip is this wide by a few pixels.
+    private static let snapshotWidth: CGFloat = 64
+    /// Per-channel spread a strip may have and still count as one colour.
+    private static let tolerance = 32
+    /// A slow export never holds the zone.
+    private static let timeout: Duration = .milliseconds(400)
+
+    /// `window` is the web view's size, which is the whole window under
+    /// SwiftUI's `WebView`; the page's viewport starts `topInset` down and
+    /// is `viewportHeight` tall.
+    static func sample(_ page: WebPage, edge: Edge, window: CGSize, topInset: CGFloat, viewportHeight: CGFloat) async -> ChromeColor? {
+        guard window.width > 0, viewportHeight > stripHeight + inset else { return nil }
+        let y = edge == .top ? topInset + inset : topInset + viewportHeight - inset - stripHeight
+        let strip = CGRect(x: 0, y: y, width: window.width, height: stripHeight)
+        // The export on the main actor, raced against the timeout; the
+        // group captures only the task handle.
+        let export = Task { try? await page.exported(as: .image(region: .rect(strip), snapshotWidth: snapshotWidth)) }
+        let data: Data? = await withTaskGroup(of: Data?.self) { group in
+            group.addTask { await export.value }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            export.cancel()
+            return first
+        }
+        guard let data, let image = UIImage(data: data)?.cgImage else { return nil }
+        return uniformColor(of: image)
+    }
+
+    /// The mean of the middle 60 % of the columns, every row, if every
+    /// sampled pixel is within `tolerance` of it on each channel.
+    private static func uniformColor(of image: CGImage) -> ChromeColor? {
+        let width = image.width
+        let height = image.height
+        guard width >= 5, height >= 1, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+            ) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return nil }
+        let x0 = width / 5
+        let x1 = width - width / 5
+        var sum = (0, 0, 0)
+        var count = 0
+        for y in 0..<height {
+            for x in x0..<x1 {
+                let i = (y * width + x) * 4
+                sum.0 += Int(pixels[i])
+                sum.1 += Int(pixels[i + 1])
+                sum.2 += Int(pixels[i + 2])
+                count += 1
+            }
+        }
+        guard count > 0 else { return nil }
+        let mean = (sum.0 / count, sum.1 / count, sum.2 / count)
+        for y in 0..<height {
+            for x in x0..<x1 {
+                let i = (y * width + x) * 4
+                if abs(Int(pixels[i]) - mean.0) > tolerance
+                    || abs(Int(pixels[i + 1]) - mean.1) > tolerance
+                    || abs(Int(pixels[i + 2]) - mean.2) > tolerance {
+                    return nil
+                }
+            }
+        }
+        return ChromeColor(red: Double(mean.0) / 255, green: Double(mean.1) / 255, blue: Double(mean.2) / 255)
     }
 }
 

@@ -53,6 +53,10 @@ struct HomeView: View {
                 let insets = proxy.safeAreaInsets
                 // The clay sits at 42% of the full screen, measured before the safe area.
                 let clayY = (proxy.size.height + insets.top + insets.bottom) * 0.42 - insets.top
+                // The whole window, before the safe area; the keyboard
+                // changes the insets and the size together, not the sum.
+                let window = CGSize(width: proxy.size.width + insets.leading + insets.trailing,
+                                    height: proxy.size.height + insets.top + insets.bottom)
 
                 ZStack {
                     // The background takes taps and swipes only on the clay
@@ -126,6 +130,10 @@ struct HomeView: View {
                         }
                         .transition(.opacity.animation(.easeInOut(duration: 0.25)))
                     }
+                }
+                .onChange(of: window, initial: true) { _, window in
+                    session.window = window
+                    session.topInset = insets.top
                 }
             }
             .ignoresSafeArea(.keyboard)
