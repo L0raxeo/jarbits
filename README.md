@@ -6,21 +6,45 @@ six response formats and reports how sure it is. Three providers exist
 behind it: a Google results web view (`web_results`), Gemini answers for
 `narrative` and `one_line`, and a Wikipedia picture for `image`.
 
-The screen is white with a purple gradient orb above the middle that
-breathes, and a keyboard hint at the bottom. Tapping the orb or the hint, or
-swiping up on the hint, raises the keyboard and stretches the orb into a
-capsule you type in. Return sends the query and the orb becomes a short line
+The screen is white with a purple gradient clay above the middle that
+breathes, and a keyboard hint at the bottom. Tapping the clay or the hint, or
+swiping up on the hint, raises the keyboard and stretches the clay into a
+capsule you type in. Return sends the query and the clay becomes a short line
 with one wave sliding along it, for as long as the query is being processed:
 routing, then either the Google page committing or Gemini's first text. Then
 the line fades out as the result fades in: a web page filling the screen, or
-the answer in dark text where the line was, growing as it streams. A page
-starts below the status bar and frosts it when it scrolls under. Over a
-result a capsule at the foot shows the query, shrinks while you scroll down
-and grows on the way up; tapping it raises the keyboard and the capsule
-rises with it, morphing into the field, with the result still behind; on a
-web result the field holds the query, selected, so typing replaces it.
-Return sends the follow-up as a new query, routed like any other. Swiping down on an answer, or tapping the line while it
-waves, returns to the circle.
+the answer in dark text where the line was, growing as it streams.
+
+The two safe-area zones follow what the page pins to its edges, as Safari's
+do. The top zone (status bar, Dynamic Island) is a fading frost over the
+page; when the page pins a full-width banner there (YouTube's header, a
+tabs bar) it is a solid block in the banner's colour instead, with the page
+below it. The bottom zone is a reserve the page ends above: none when
+nothing is pinned, so the page runs under the clay (Google results); the
+bar's colour when a tab bar, checkout bar or cookie bar is pinned, the
+clay inside it, growing and shrinking with the clay; a frost strip under a
+floating button. A watcher script inside the page finds pinned elements
+at both edges, works out each bar's paint, and reports whenever that
+changes, so links, pages opened from results and in-page overlays (the
+expanded AI overview, with its "Ask anything" field) all follow; a results
+page keeps its frost whatever it pins at the top. The clock stays dark
+over a dark banner for now. Over a result a capsule at the foot
+shows the query, shrinks while you scroll down and grows on the way up;
+tapping it raises the keyboard and the capsule rises with it, morphing into
+the field, with the result still behind; on a web result the field holds
+the page's query, selected, so typing replaces it. Return sends the
+follow-up as a new query, routed like any other, and the capsule itself
+becomes the wave line, small, at the foot, until the new result is ready; a
+link tapped inside a page shows the same line while the page loads. Swiping
+down on an answer, or tapping the line while it waves, returns to the circle.
+
+The page is SwiftUI's `WebView`. A site's tab bar is kept above the capsule
+by laying the page out to end there, and it follows the capsule as fast as
+WebKit lays the page out again for each frame, which is not Safari's
+frame-smooth motion: Safari tells WebKit how much of the page its bars
+obscure through private API that only an app-owned `WKWebView` can reach.
+That route was built and removed: on iOS 26, inside this view hierarchy,
+UIKit aborted touch delivery whenever such a page was scrolled far.
 
 ## Run
 
@@ -159,8 +183,9 @@ article title before searching.
 | `Browser/Router/DecisionLog.swift` | JSON Lines log of every decision and answer. |
 | `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`). |
 | `Browser/Router/CardPlan.swift` | The renderable plans. One enum case per card type. |
-| `Browser/Session/BrowserSession.swift` | Owns the single `WebPage` and the `AnswerSession`, runs queries through the router, applies the plan, writes the log. |
-| `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `BreathingOrb` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar) `QueryCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard) and `QueryField` (the text field the orb and the capsule share). No system toolbars, so no Liquid Glass. |
+| `Browser/Session/BrowserSession.swift` | Owns the single `WebPage`, the `AnswerSession` and the `ImageSession`, runs queries through the router, applies the plan, watches the page's navigations (ours and tapped links) for the clay's wave line and the page-chrome bookkeeping, writes the log. |
+| `Browser/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives so nothing resizes under the finger); `PageChrome.swift`, the state the app keeps, the message handler and the page configuration that installs the script. Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
+| `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `Clay` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar) `ClayCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard) and `QueryField` (the text field the clay and the capsule share). No system toolbars, so no Liquid Glass. |
 | `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the two API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
 

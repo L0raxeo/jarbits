@@ -1,14 +1,15 @@
+import Routing
 import SwiftUI
 
-/// The whole screen: white, the orb above the middle, the keyboard hint at the
-/// bottom, and the result once there is one. Focus makes the orb a capsule you
-/// type in. From return until the result is on screen (`session.stage`) the orb
+/// The whole screen: white, the clay above the middle, the keyboard hint at the
+/// bottom, and the result once there is one. Focus makes the clay a capsule you
+/// type in. From return until the result is on screen (`session.stage`) the clay
 /// is the wave line; then it fades out as the result fades in. Over a result a
 /// capsule at the foot shows the query; tapping it raises the keyboard and the
 /// capsule rides up with it as the follow-up field, the result still behind.
 /// Return sends the follow-up as a new query. The hint is for the idle screen.
 ///
-/// Layers: the background, the result, the orb and the hint ignore the
+/// Layers: the background, the result, the clay and the hint ignore the
 /// keyboard; the capsule does not, so the keyboard carries it.
 struct HomeView: View {
     @Environment(BrowserSession.self) private var session
@@ -20,8 +21,11 @@ struct HomeView: View {
     @State private var followSelection: TextSelection?
     /// The query capsule shrinks while the result scrolls down, grows on the way up.
     @State private var barCompact = false
+    /// A follow-up was sent from the capsule: it shows the wave line at the
+    /// foot until the result is ready, and the clay stays out of it.
+    @State private var capsuleSubmitted = false
 
-    private var mode: OrbMode {
+    private var mode: ClayForm {
         switch session.stage {
         case .idle: typing ? .capsule : .circle
         case .routing, .loading, .ready: .line
@@ -30,28 +34,53 @@ struct HomeView: View {
 
     private var showsResult: Bool { session.stage == .ready }
     private var showsHint: Bool { mode == .circle }
+    /// Over a result, or standing in for the clay while a follow-up loads.
+    private var showsCapsule: Bool { showsResult || capsuleSubmitted }
+
+    /// What the capsule reads: the page's query or host for a web plan, the
+    /// query otherwise. Also what a web follow-up starts with.
+    private var capsuleText: String {
+        if case .web = session.plans.first, let url = session.page.url {
+            let text = QueryParser.displayText(for: url)
+            if !text.isEmpty { return text }
+        }
+        return session.lastQuery
+    }
 
     var body: some View {
         ZStack {
             GeometryReader { proxy in
                 let insets = proxy.safeAreaInsets
-                // The orb sits at 42% of the full screen, measured before the safe area.
-                let orbY = (proxy.size.height + insets.top + insets.bottom) * 0.42 - insets.top
+                // The clay sits at 42% of the full screen, measured before the safe area.
+                let clayY = (proxy.size.height + insets.top + insets.bottom) * 0.42 - insets.top
 
                 ZStack {
-                    Color.white
-                        .contentShape(Rectangle())
-                        .onTapGesture(perform: dismiss)
-                        .gesture(
-                            DragGesture(minimumDistance: 20)
-                                .onEnded { value in
-                                    if value.translation.height > 30 { dismiss() }
-                                }
-                        )
-                        .ignoresSafeArea()
+                    // The background takes taps and swipes only on the clay
+                    // screen; under a result the page or the answer has them.
+                    if session.stage == .idle {
+                        Color.white
+                            .contentShape(Rectangle())
+                            .onTapGesture(perform: dismiss)
+                            .gesture(
+                                DragGesture(minimumDistance: 20)
+                                    .onEnded { value in
+                                        if value.translation.height > 30 { dismiss() }
+                                    }
+                            )
+                            .ignoresSafeArea()
+                    } else {
+                        Color.white.ignoresSafeArea()
+                    }
 
-                    if let plan = session.plans.first, showsResult {
-                        ResultView(plan: plan, orbY: orbY, topInset: insets.top, barCompact: $barCompact)
+                    // Mounted as soon as there is a plan and hidden until ready,
+                    // rather than removed and re-added: WebKit's content process
+                    // can assert when its view is torn down and re-attached while
+                    // a page is still laying out.
+                    if let plan = session.plans.first, session.stage != .idle {
+                        ResultView(plan: plan, clayY: clayY, topInset: insets.top, bottomInset: insets.bottom, barCompact: $barCompact)
+                            .opacity(showsResult ? 1 : 0)
+                            .allowsHitTesting(showsResult)
+                            .animation(.easeIn(duration: 0.4), value: showsResult)
                             .transition(.opacity.animation(.easeIn(duration: 0.4)))
                     }
 
@@ -70,7 +99,7 @@ struct HomeView: View {
                             .ignoresSafeArea()
                     }
 
-                    BreathingOrb(
+                    Clay(
                         draft: $draft,
                         typing: $typing,
                         mode: mode,
@@ -80,20 +109,23 @@ struct HomeView: View {
                             if session.stage == .idle { typing = true } else { dismiss() }
                         }
                     )
-                    .position(x: proxy.size.width / 2, y: orbY)
+                    .position(x: proxy.size.width / 2, y: clayY)
                     // The cross-fade: the line fades out in place as the result fades in.
-                    .opacity(showsResult ? 0 : 1)
-                    .allowsHitTesting(!showsResult)
-                    .animation(.easeOut(duration: 0.4), value: showsResult)
+                    // During a follow-up the capsule is the line, so the clay stays out.
+                    .opacity(showsCapsule ? 0 : 1)
+                    .allowsHitTesting(!showsCapsule)
+                    .animation(.easeOut(duration: 0.4), value: showsCapsule)
 
-                    VStack {
-                        Spacer()
-                        KeyboardHint(onOpen: openKeyboard)
-                            .padding(.bottom, 8)
+                    // Removed from the tree over a result, not just faded, so
+                    // nothing of it sits over the page.
+                    if showsHint {
+                        VStack {
+                            Spacer()
+                            KeyboardHint(onOpen: openKeyboard)
+                                .padding(.bottom, 8)
+                        }
+                        .transition(.opacity.animation(.easeInOut(duration: 0.25)))
                     }
-                    .opacity(showsHint ? 1 : 0)
-                    .allowsHitTesting(showsHint)
-                    .animation(.easeInOut(duration: 0.25), value: showsHint)
                 }
             }
             .ignoresSafeArea(.keyboard)
@@ -102,10 +134,11 @@ struct HomeView: View {
             GeometryReader { proxy in
                 VStack {
                     Spacer()
-                    QueryCapsule(
-                        text: session.lastQuery,
+                    ClayCapsule(
+                        text: capsuleText,
                         compact: barCompact && !followingUp,
                         editing: followingUp,
+                        loading: capsuleSubmitted || session.pageLoading,
                         maxWidth: proxy.size.width - 32,
                         fieldWidth: proxy.size.width - 48,
                         draft: $followDraft,
@@ -114,17 +147,18 @@ struct HomeView: View {
                         onTap: openFollowUp,
                         onSubmit: submitFollowUp
                     )
-                    .padding(.bottom, followingUp ? 8 : 2)
+                    .padding(.bottom, followingUp ? 8 : ClayCapsule.bottomPadding)
                     .frame(maxWidth: .infinity)
                 }
             }
-            .opacity(showsResult ? 1 : 0)
-            .allowsHitTesting(showsResult)
-            .animation(.easeInOut(duration: 0.25), value: showsResult)
+            .opacity(showsCapsule ? 1 : 0)
+            .allowsHitTesting(showsCapsule)
+            .animation(.easeInOut(duration: 0.25), value: showsCapsule)
         }
         .onChange(of: session.stage) { _, stage in
             if stage == .ready { barCompact = false }
             if stage != .ready { followingUp = false }
+            if stage == .ready || stage == .idle { capsuleSubmitted = false }
         }
         .onChange(of: followingUp) { _, editing in
             guard editing, !followDraft.isEmpty else {
@@ -159,11 +193,11 @@ struct HomeView: View {
         session.submit(query)
     }
 
-    /// From the capsule. On a web result the field opens holding the query,
-    /// selected, as Safari's address bar does; elsewhere it opens empty.
+    /// From the capsule. On a web result the field opens holding the page's
+    /// query, selected, as Safari's address bar does; elsewhere it opens empty.
     private func openFollowUp() {
         if case .web = session.plans.first {
-            followDraft = session.lastQuery
+            followDraft = capsuleText
         } else {
             followDraft = ""
         }
@@ -171,15 +205,17 @@ struct HomeView: View {
     }
 
     /// Return in the follow-up field: a new query like any other. The result
-    /// and the capsule fade out as the orb's line fades in.
+    /// fades out while the capsule, as the wave line, waits for the new one.
     private func submitFollowUp() {
         let query = followDraft
         followDraft = ""
         followingUp = false
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        capsuleSubmitted = true
         session.submit(query)
     }
 
-    /// From the hint: focus the orb's field.
+    /// From the hint: focus the clay's field.
     private func openKeyboard() {
         if session.stage != .idle { session.reset() }
         typing = true
@@ -190,6 +226,7 @@ struct HomeView: View {
     private func dismiss() {
         typing = false
         followingUp = false
+        capsuleSubmitted = false
         session.reset()
     }
 }

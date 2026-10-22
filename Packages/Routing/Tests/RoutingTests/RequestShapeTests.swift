@@ -51,6 +51,13 @@ import Testing
         #expect(response.answers["recent"] == .noul(0.83))
     }
 
+    @Test func googleResultsPagesAreRecognised() {
+        #expect(QueryParser.isSearchResults(QueryParser.searchURL(for: "coffee")))
+        #expect(QueryParser.isSearchResults(URL(string: "https://google.com/search?q=x")!))
+        #expect(!QueryParser.isSearchResults(URL(string: "https://www.google.com/maps")!))
+        #expect(!QueryParser.isSearchResults(URL(string: "https://m.youtube.com/")!))
+    }
+
     @Test func criteriaKeepDeclarationOrderOnTheWire() throws {
         let request = JevRouting.request(for: "anything", locale: Locale(identifier: "en_US"))
         let text = String(decoding: try request.jsonData(), as: UTF8.self)

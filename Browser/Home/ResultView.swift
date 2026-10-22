@@ -11,10 +11,12 @@ import WebKit
 struct ResultView: View {
     @Environment(BrowserSession.self) private var session
     let plan: CardPlan
-    /// The orb's vertical centre, so a one-line answer lands where the line faded.
-    let orbY: CGFloat
+    /// The clay's vertical centre, so a one-line answer lands where the line faded.
+    let clayY: CGFloat
     /// Height of the status-bar zone above this view.
     let topInset: CGFloat
+    /// Height of the home-indicator zone below this view.
+    let bottomInset: CGFloat
     /// Set while the result scrolls down, cleared on the way up or at the top.
     @Binding var barCompact: Bool
 
@@ -24,9 +26,26 @@ struct ResultView: View {
         if case .web = plan { 22 } else { 36 }
     }
 
+    /// Whether the top zone shows the fading frost: always over an answer or
+    /// a picture; over a page, unless the page pins a banner there, when a
+    /// block in the banner's colour stands in for it (see WebResultView).
+    private var frosted: Bool {
+        if case .web = plan, case .solid = session.chrome.top { return false }
+        return true
+    }
+
     var body: some View {
         content
             .overlay(alignment: .top) {
+                if frosted {
+                    fadingFrost.transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: frosted)
+    }
+
+    private var fadingFrost: some View {
+        Group {
                 // Safari's frost: solid behind the clock, then thinning into
                 // the content rather than stopping at a hard edge.
                 ZStack {
@@ -42,20 +61,20 @@ struct ResultView: View {
                 .frame(height: topInset + frostFade)
                 .offset(y: -topInset)
                 .allowsHitTesting(false)
-            }
+        }
     }
 
     @ViewBuilder
     private var content: some View {
         switch plan {
         case .web:
-            WebResultView(page: session.page, barCompact: $barCompact)
+            WebResultView(page: session.page, topInset: topInset, bottomInset: bottomInset, chrome: session.chrome, barCompact: $barCompact)
         case let .answer(format, _):
             if let answer = session.answer {
-                AnswerView(answer: answer, format: format, orbY: orbY, barCompact: $barCompact)
+                AnswerView(answer: answer, format: format, clayY: clayY, barCompact: $barCompact)
             }
         case .image:
-            ImageCardView(images: session.images, orbY: orbY)
+            ImageCardView(images: session.images, clayY: clayY)
         }
     }
 
@@ -63,12 +82,20 @@ struct ResultView: View {
     /// couple of points closes it, scrolling up opens it. `offset` is the
     /// content offset with the top inset already added, so 0 is the top.
     static func scrolled(from old: CGFloat, to new: CGFloat, compact: inout Bool) {
+        let wanted: Bool
         if new <= 0 {
-            compact = false
+            wanted = false
         } else if new > old + 2 {
-            compact = true
+            wanted = true
         } else if new < old - 2 {
-            compact = false
+            wanted = false
+        } else {
+            return
+        }
+        guard wanted != compact else { return }
+        // One transaction for the capsule and anything laid out against it.
+        withAnimation(.spring(duration: 0.35, bounce: 0.1)) {
+            compact = wanted
         }
     }
 
@@ -77,29 +104,102 @@ struct ResultView: View {
     }
 }
 
-/// The page, below the status bar and down to the home indicator.
+/// The page between the two zones. The top zone is painted over it: the
+/// fading frost, or a block in a pinned header's colour with the page laid
+/// out below the block. The bottom zone is a reserve the page ends above:
+/// none, so the page runs under the clay; a pinned bar's colour, following
+/// the clay's size; or a frost strip under a floating button, constant.
 private struct WebResultView: View {
     let page: WebPage
+    let topInset: CGFloat
+    let bottomInset: CGFloat
+    let chrome: PageChrome
     @Binding var barCompact: Bool
 
     var body: some View {
-        WebView(page)
-            .webViewBackForwardNavigationGestures(.enabled)
-            .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
-                ResultView.scrolled(from: old, to: new, compact: &barCompact)
+        VStack(spacing: 0) {
+            if case let .solid(color) = chrome.top {
+                Rectangle()
+                    .fill(color.color)
+                    .frame(height: topInset)
+                    // A new colour cross-fades rather than snapping.
+                    .id(color)
+                    .transition(.opacity)
             }
-            .ignoresSafeArea(edges: .bottom)
+            WebView(page)
+                .webViewBackForwardNavigationGestures(.enabled)
+                .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
+                    ResultView.scrolled(from: old, to: new, compact: &barCompact)
+                }
+            if chrome.bottom != .none {
+                reserve
+                    .frame(height: reserveHeight)
+                    .transition(.opacity)
+            }
+        }
+        .ignoresSafeArea(edges: ignoredEdges)
+        // The whole stack, so the page's frame animates with the reserve,
+        // on the clay's timing and without overshoot.
+        .animation(.smooth(duration: 0.35), value: barCompact)
+        .animation(.easeInOut(duration: 0.25), value: chrome)
+    }
+
+    /// The colour fill and the frost strip, cross-faded, so a bar turning
+    /// into a floating button (or back) never remounts the reserve.
+    private var reserve: some View {
+        ZStack {
+            if case let .bar(color) = chrome.bottom {
+                Rectangle()
+                    .fill(color.color)
+                    .id(color)
+                    .transition(.opacity)
+            }
+            frostStrip.opacity(isBar ? 0 : 1)
+        }
+    }
+
+    private var isBar: Bool {
+        if case .bar = chrome.bottom { true } else { false }
+    }
+
+    /// The reserve reaches the screen's bottom edge, so it paints the
+    /// home-indicator zone too and the clay sits inside it.
+    private var reserveHeight: CGFloat {
+        switch chrome.bottom {
+        case .none: 0
+        case .bar: ClayCapsule.footprint(compact: barCompact) + bottomInset
+        case .floating: ClayCapsule.footprint(compact: false) + bottomInset
+        }
+    }
+
+    /// The top is ignored only when a block stands in for it.
+    private var ignoredEdges: Edge.Set {
+        if case .solid = chrome.top { [.top, .bottom] } else { .bottom }
+    }
+
+    /// The frost over the app's white: a soft band that firms up toward the foot.
+    private var frostStrip: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+            LinearGradient(colors: [.white.opacity(0), .white.opacity(0.55)], startPoint: .top, endPoint: .bottom)
+        }
+        .mask {
+            LinearGradient(
+                stops: [.init(color: .clear, location: 0), .init(color: .white, location: 0.2), .init(color: .white, location: 1)],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
     }
 }
 
 /// Gemini's answer in dark text on the white screen. One-line answers sit at
-/// the orb's spot; narrative text starts near the top and grows as it streams.
+/// the clay's spot; narrative text starts near the top and grows as it streams.
 /// A plain "Web results" link under either loads the Google page instead.
 private struct AnswerView: View {
     @Environment(BrowserSession.self) private var session
     let answer: AnswerSession
     let format: ResponseFormat
-    let orbY: CGFloat
+    let clayY: CGFloat
     @Binding var barCompact: Bool
 
     private let ink = Palette.ink
@@ -135,8 +235,8 @@ private struct AnswerView: View {
         }
         .padding(.horizontal, 24)
         .frame(width: proxy.size.width)
-        // Centre the answer's first line where the orb was; the footer hangs below.
-        .position(x: proxy.size.width / 2, y: orbY + 30)
+        // Centre the answer's first line where the clay was; the footer hangs below.
+        .position(x: proxy.size.width / 2, y: clayY + 30)
     }
 
     private func narrative(in proxy: GeometryProxy) -> some View {
@@ -180,7 +280,7 @@ private struct AnswerView: View {
 private struct ImageCardView: View {
     @Environment(BrowserSession.self) private var session
     let images: ImageSession
-    let orbY: CGFloat
+    let clayY: CGFloat
 
     var body: some View {
         GeometryReader { proxy in
@@ -218,8 +318,8 @@ private struct ImageCardView: View {
             }
             .padding(.horizontal, 16)
             .frame(width: proxy.size.width)
-            // The picture lands about where the orb was; the captions hang below.
-            .position(x: proxy.size.width / 2, y: orbY + 60)
+            // The picture lands about where the clay was; the captions hang below.
+            .position(x: proxy.size.width / 2, y: clayY + 60)
             .frame(width: proxy.size.width, height: proxy.size.height)
             .contentShape(Rectangle())
             .simultaneousGesture(

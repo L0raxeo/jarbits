@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The search field inside a gradient capsule: white text and caret, a white
-/// prompt, a web-search keyboard with a Go key. Shared by the orb and the
+/// prompt, a web-search keyboard with a Go key. Shared by the clay and the
 /// follow-up capsule so typing feels the same in both. `selection` lets the
 /// owner select the whole draft, as Safari does when you tap its address bar.
 struct QueryField: View {

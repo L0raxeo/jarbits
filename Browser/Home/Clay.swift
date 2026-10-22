@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The three forms the orb takes.
-enum OrbMode: Equatable {
+/// The three forms the clay takes.
+enum ClayForm: Equatable {
     /// Idle: a circle that breathes.
     case circle
     /// Typing: a capsule holding the search field.
@@ -15,10 +15,10 @@ enum OrbMode: Equatable {
 /// field; the gradient keeps drifting but the size stops pulsing so the text
 /// holds still. As a line it is the surface of water seen from the shore: flat,
 /// with one crest that slides back and forth along it.
-struct BreathingOrb: View {
+struct Clay: View {
     @Binding var draft: String
     var typing: FocusState<Bool>.Binding
-    var mode: OrbMode
+    var mode: ClayForm
     /// Width of the capsule when typing.
     var width: CGFloat
     var onSubmit: () -> Void
@@ -101,7 +101,7 @@ struct BreathingOrb: View {
 /// `Capsule()`; with a square frame that is a circle. Otherwise the midline
 /// rises into one crest, a Gaussian bump centred at `crest` (0…1 along the
 /// line), and lies flat everywhere else: the top outline of a single wave.
-private struct WavyCapsule: Shape {
+struct WavyCapsule: Shape {
     var amplitude: CGFloat
     var crest: CGFloat
     var thickness: CGFloat

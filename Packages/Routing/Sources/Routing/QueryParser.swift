@@ -37,11 +37,17 @@ public enum QueryParser {
         return components.url!
     }
 
+    /// A Google results page, as opposed to a website.
+    public static func isSearchResults(_ url: URL) -> Bool {
+        guard let host = url.host() else { return false }
+        return host.hasSuffix("google.com") && url.path() == "/search"
+    }
+
     /// The text to show in the address bar for a loaded page: the search
     /// query for a Google results page, the host for anything else.
     public static func displayText(for url: URL?) -> String {
         guard let url, let host = url.host() else { return "" }
-        if host.hasSuffix("google.com"), url.path() == "/search",
+        if isSearchResults(url),
            let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                .queryItems?.first(where: { $0.name == "q" })?.value {
             return query

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The app's colours: the orb's purples, the highlight behind emphasised
+/// The app's colours: the clay's purples, the highlight behind emphasised
 /// answer text, and the ink the answers are set in.
 enum Palette {
     static let mesh: [Color] = [
@@ -15,7 +15,7 @@ enum Palette {
 
     /// The breathing purple: a 3×3 mesh whose inner points wander with time
     /// on `period`, so the colour visibly moves without ever leaving purple.
-    /// Shared by the orb and the query capsule so they breathe together.
+    /// Shared by the clay and the query capsule so they breathe together.
     static func breathingMesh(at t: TimeInterval, period: TimeInterval = 5) -> MeshGradient {
         let w = 2 * .pi * t / period
         func drift(_ amount: Float, _ phase: Double) -> Float {
