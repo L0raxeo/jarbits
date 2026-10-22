@@ -26,22 +26,33 @@ struct ResultView: View {
         if case .web = plan { 22 } else { 36 }
     }
 
-    /// Whether the top zone shows the fading frost: always over an answer or
-    /// a picture; over a page, unless the page pins a banner there, when a
-    /// block in the banner's colour stands in for it (see WebResultView).
-    private var frosted: Bool {
-        if case .web = plan, case .solid = session.chrome.top { return false }
-        return true
-    }
-
     var body: some View {
         content
             .overlay(alignment: .top) {
-                if frosted {
-                    fadingFrost.transition(.opacity)
-                }
+                topZone
+                    .animation(.easeInOut(duration: 0.25), value: session.chrome.top)
             }
-            .animation(.easeInOut(duration: 0.25), value: frosted)
+    }
+
+    /// The top zone, painted over the result. Over a page that pins a banner
+    /// there it is a block in the banner's colour; otherwise the fading
+    /// frost. It is paint only: SwiftUI's web view fills the window whatever
+    /// its layout slot and insets the page under the status bar by itself,
+    /// so the page is laid out the same way in both cases and anything put
+    /// above it in the layout would be drawn beneath it.
+    @ViewBuilder
+    private var topZone: some View {
+        if case .web = plan, case let .solid(color) = session.chrome.top {
+            Rectangle()
+                .fill(color.color)
+                .frame(height: topInset)
+                .offset(y: -topInset)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        } else {
+            fadingFrost
+                .transition(.opacity)
+        }
     }
 
     private var fadingFrost: some View {
@@ -68,7 +79,7 @@ struct ResultView: View {
     private var content: some View {
         switch plan {
         case .web:
-            WebResultView(page: session.page, topInset: topInset, bottomInset: bottomInset, chrome: session.chrome, barCompact: $barCompact)
+            WebResultView(page: session.page, bottomInset: bottomInset, chrome: session.chrome, barCompact: $barCompact)
         case let .answer(format, _):
             if let answer = session.answer {
                 AnswerView(answer: answer, format: format, clayY: clayY, barCompact: $barCompact)
@@ -104,28 +115,20 @@ struct ResultView: View {
     }
 }
 
-/// The page between the two zones. The top zone is painted over it: the
-/// fading frost, or a block in a pinned header's colour with the page laid
-/// out below the block. The bottom zone is a reserve the page ends above:
-/// none, so the page runs under the clay; a pinned bar's colour, following
-/// the clay's size; or a frost strip under a floating button, constant.
+/// The page, under the top zone and above the bottom one. The web view
+/// insets the page under the status bar by itself, and the zone there is
+/// painted over it by `ResultView`. The bottom zone is a reserve the page
+/// ends above: none, so the page runs under the clay; a pinned bar's
+/// colour, following the clay's size; or a frost strip under a floating
+/// button, constant. It is a later sibling, so it draws over the page.
 private struct WebResultView: View {
     let page: WebPage
-    let topInset: CGFloat
     let bottomInset: CGFloat
     let chrome: PageChrome
     @Binding var barCompact: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            if case let .solid(color) = chrome.top {
-                Rectangle()
-                    .fill(color.color)
-                    .frame(height: topInset)
-                    // A new colour cross-fades rather than snapping.
-                    .id(color)
-                    .transition(.opacity)
-            }
             WebView(page)
                 .webViewBackForwardNavigationGestures(.enabled)
                 .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
@@ -137,7 +140,7 @@ private struct WebResultView: View {
                     .transition(.opacity)
             }
         }
-        .ignoresSafeArea(edges: ignoredEdges)
+        .ignoresSafeArea(edges: .bottom)
         // The whole stack, so the page's frame animates with the reserve,
         // on the clay's timing and without overshoot.
         .animation(.smooth(duration: 0.35), value: barCompact)
@@ -170,11 +173,6 @@ private struct WebResultView: View {
         case .bar: ClayCapsule.footprint(compact: barCompact) + bottomInset
         case .floating: ClayCapsule.footprint(compact: false) + bottomInset
         }
-    }
-
-    /// The top is ignored only when a block stands in for it.
-    private var ignoredEdges: Edge.Set {
-        if case .solid = chrome.top { [.top, .bottom] } else { .bottom }
     }
 
     /// The frost over the app's white: a soft band that firms up toward the foot.

@@ -27,7 +27,11 @@ floating button. A watcher script inside the page finds pinned elements
 at both edges, works out each bar's paint, and reports whenever that
 changes, so links, pages opened from results and in-page overlays (the
 expanded AI overview, with its "Ask anything" field) all follow; a results
-page keeps its frost whatever it pins at the top. The clock stays dark
+page keeps its frost whatever it pins at the top. The top zone's colour is
+painted over the page, which the web view insets under the status bar by
+itself; a page that asks for the whole screen (`viewport-fit=cover`) is
+opted out by the watcher, because this web view gives it no safe-area
+insets to pad with and it would sit under the clock. The clock stays dark
 over a dark banner for now. Over a result a capsule at the foot
 shows the query, shrinks while you scroll down and grows on the way up;
 tapping it raises the keyboard and the capsule rises with it, morphing into

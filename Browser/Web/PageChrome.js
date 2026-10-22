@@ -14,6 +14,26 @@
 (() => {
   if (window.__pageChrome) return;
 
+  // --- Cover pages ----------------------------------------------------
+  // The app's web view reports no safe-area insets to the page, so a page
+  // that asks for the whole screen (viewport-fit=cover) cannot pad itself
+  // as it would in Safari and lands under the clock. Opt it out, and WebKit
+  // insets it under the status bar like any other page.
+  function uncover() {
+    for (const meta of document.querySelectorAll('meta[name="viewport"]')) {
+      const content = meta.getAttribute('content') || '';
+      if (/viewport-fit\s*=\s*cover/i.test(content)) {
+        meta.setAttribute('content', content.replace(/viewport-fit\s*=\s*cover/i, 'viewport-fit=contain'));
+      }
+    }
+  }
+  uncover();
+  if (document.head) {
+    new MutationObserver(uncover).observe(document.head, {
+      childList: true, subtree: true, attributes: true, attributeFilter: ['content'],
+    });
+  }
+
   const EDGE = 2;       // touching the edge, in px
   const NEAR = 44;      // within this of the edge counts as floating
   const MIN_BAR = 20;   // a bar is at least this tall…
