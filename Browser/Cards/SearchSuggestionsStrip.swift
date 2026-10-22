@@ -5,26 +5,40 @@ import WebKit
 /// snippet Gemini returns. The terms require showing it with the answer,
 /// unmodified, with nothing between a chip and its Google results page, so the
 /// strip is a tiny web view and a tapped chip loads in the main web card.
+///
+/// The web view draws no background of its own and takes the height of the
+/// rendered snippet, so only Google's chip bar shows.
 struct SearchSuggestionsStrip: View {
     let html: String
     let onOpen: @MainActor (URL) -> Void
 
     @State private var page: WebPage?
+    @State private var height: CGFloat = 44
 
     var body: some View {
         Group {
             if let page {
                 WebView(page)
+                    .webViewContentBackground(.hidden)
                     .scrollDisabled(true)
             } else {
                 Color.clear
             }
         }
-        .frame(height: 56)
+        .frame(height: height)
         .task(id: html) {
             let page = WebPage(navigationDecider: Decider(onOpen: onOpen))
             self.page = page
-            _ = page.load(html: html, baseURL: URL(string: "https://www.google.com/")!)
+            do {
+                for try await event in page.load(html: html, baseURL: URL(string: "https://www.google.com/")!) {
+                    if case .finished = event { break }
+                }
+                if let measured = try await page.callJavaScript("return document.documentElement.scrollHeight") as? Double {
+                    height = min(max(measured, 32), 96)
+                }
+            } catch {
+                // Keep the default height; the chips still render.
+            }
         }
     }
 

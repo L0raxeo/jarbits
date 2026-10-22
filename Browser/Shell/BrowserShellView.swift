@@ -31,14 +31,28 @@ struct BrowserShellView: View {
         }
         .onChange(of: addressFocused) { _, focused in
             if !focused {
-                draft = QueryParser.displayText(for: session.page.url)
+                draft = idleText
             }
         }
-        .onChange(of: session.page.url) { _, url in
+        .onChange(of: session.page.url) { _, _ in
             if !addressFocused {
-                draft = QueryParser.displayText(for: url)
+                draft = idleText
             }
         }
+        .onChange(of: session.plans) { _, _ in
+            if !addressFocused {
+                draft = idleText
+            }
+        }
+    }
+
+    /// What the bar shows when not being edited: the query for an answer
+    /// card, the page's query or host for a web card.
+    private var idleText: String {
+        if case .answer = session.plans.first {
+            return session.lastQuery
+        }
+        return QueryParser.displayText(for: session.page.url)
     }
 
     private var bottomBar: some View {
