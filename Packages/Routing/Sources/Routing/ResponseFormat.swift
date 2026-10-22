@@ -19,7 +19,8 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     public var stage: Stage {
         switch self {
         case .webResults: .verified
-        case .narrative, .map, .stock, .oneLine: .routed
+        case .narrative, .oneLine: .built
+        case .map, .stock: .routed
         }
     }
 
@@ -38,10 +39,10 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     public var needs: String? {
         switch self {
         case .webResults: nil
-        case .narrative: "Opus 5.5 streamed prose card"
+        case .narrative: nil
         case .map: "MapKit card with an MKLocalSearch pin"
         case .stock: "Ticker resolution, a market-data provider, Swift Charts card"
-        case .oneLine: "Answer source (Haiku, WeatherKit, or Serper answer box) and a single-line card"
+        case .oneLine: nil
         }
     }
 

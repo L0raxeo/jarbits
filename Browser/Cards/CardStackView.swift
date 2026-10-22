@@ -19,7 +19,12 @@ struct CardStackView: View {
             #if DEBUG
             .overlay(alignment: .top) {
                 if let decision = session.lastDecision {
-                    RouteDebugRibbon(decision: decision, logURL: DecisionLog.shared.fileURL)
+                    RouteDebugRibbon(
+                        decision: decision,
+                        plan: plans.first,
+                        answer: session.answer?.summary,
+                        logURL: DecisionLog.shared.fileURL
+                    )
                 }
             }
             #endif
@@ -31,6 +36,8 @@ struct CardStackView: View {
         switch plan {
         case .web:
             WebCardView(page: session.page)
+        case let .answer(format, query):
+            AnswerCardView(format: format, query: query)
         }
     }
 

@@ -54,7 +54,7 @@ public enum RoutingReport {
         out.append("| No API key configured | Web results | `noKey` |")
         out.append("| Request failed or timed out | Web results | `error(reason)` |")
         out.append("| `confidence` below \(JevRouting.confidenceFloor.formatted()) | Web results | `confidenceFallback` (the pick is kept as `suggested`) |")
-        out.append("| `confidence` at or above \(JevRouting.confidenceFloor.formatted()) | The chosen format's card, or web results while that module is only `routed` | `jev` |")
+        out.append("| `confidence` at or above \(JevRouting.confidenceFloor.formatted()) | The chosen format's card; web results while that module is only `routed` (today: \(routedList)) | `jev` |")
         out.append("")
         out.append("Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.")
         out.append("")
@@ -65,6 +65,10 @@ public enum RoutingReport {
         out.append("")
         out.append("Adding a question is one entry in `JevRouting.request`; this file and `RoutingTests` pick it up.")
         return out.joined(separator: "\n") + "\n"
+    }
+
+    private static var routedList: String {
+        ResponseFormat.allCases.filter { $0.stage == .routed }.map { "`\($0.rawValue)`" }.joined(separator: ", ")
     }
 
     private static var timeoutText: String {

@@ -57,7 +57,7 @@ Answer: `choice` (one option name), `probabilities` (one per option), `confidenc
 | No API key configured | Web results | `noKey` |
 | Request failed or timed out | Web results | `error(reason)` |
 | `confidence` below 0.5 | Web results | `confidenceFallback` (the pick is kept as `suggested`) |
-| `confidence` at or above 0.5 | The chosen format's card, or web results while that module is only `routed` | `jev` |
+| `confidence` at or above 0.5 | The chosen format's card; web results while that module is only `routed` (today: `map`, `stock`) | `jev` |
 
 Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.
 
@@ -67,3 +67,65 @@ Every outcome is appended to `decisions.jsonl` on the device with the query, the
 - **score**: a position on an ordered scale with confidence. Candidate use: how much the query needs a written explanation.
 
 Adding a question is one entry in `JevRouting.request`; this file and `RoutingTests` pick it up.
+
+## After routing: Gemini answers
+
+`narrative` and `one_line` are answered by Gemini `gemini-3.1-flash-lite` through the Interactions API with Grounding with Google Search on, thinking `minimal`, `store: false`. One streamed request per query. The model decides per request whether to search; the system instruction tells it when.
+
+Prices pinned in `GeminiPricing`: $0.25 per 1M input tokens, $1.5 per 1M output tokens (thinking included), 5000 Google searches a month free, then $14 per 1,000.
+
+### Input (both formats)
+
+```
+Query: <query>
+
+Context (use for "today", "now" and "here"; do not repeat it unless the query asks about it):
+- Date and time: Wednesday 21 October 2026, 11:26 (America/Chicago)
+- Locale: en_US
+- Approximate location: Austin, Texas, United States
+```
+
+Location is "City, Region, Country" from reduced-accuracy Core Location, only when the user allowed it; the line is left out otherwise.
+
+### `narrative` — system instruction, max 800 output tokens
+
+```
+You answer web search queries for a browser. The user typed a query and expects a short written answer.
+
+Rules:
+- Answer only the question that was asked. Do not add background, related facts, caveats, tips, or anything that is not a direct part of the answer.
+- Write two to four short paragraphs of plain prose. No headings, bullet points, numbered lists, bold text, tables, or emoji.
+- No preamble and no closing line. Start with the answer. Do not offer further help or suggest follow-up questions.
+- Use Google Search when the question concerns anything recent or still changing: news, events, prices, safety, people in the news, or anything with "now", "today", "currently", "latest" or a recent year. Answer from what you find. Do not search for settled facts you already know.
+- Use the context block for "today", "now" and "here". Do not mention the context unless the query is about it.
+- If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
+- Write in the language of the query.
+```
+
+### `one_line` — system instruction, max 160 output tokens
+
+```
+You answer web search queries for a browser with a single line.
+
+Rules:
+- Reply with one line only: a number, a word, a name, a date, a time, or a short clause. Examples: "24 days", "Lima", "Yes, rain is expected this afternoon", "8:14 PM", "About 92 euros".
+- Never more than twelve words. No explanation, no second sentence, no preamble, no trailing period.
+- For current conditions, use Google Search first and answer from the result: weather, time, exchange rates, prices, scores, who currently holds a role, or anything with "now" or "today".
+- Use the context block for "today", "now" and "here": the current date and time with its time zone, and the user's approximate location.
+- If the honest answer is a range or depends on something, give the typical value in the line, such as "Usually 7 to 10 days".
+- If the question cannot be answered in one line, answer its most direct version in one line anyway.
+- Answer in the language of the query.
+```
+
+### What comes back
+
+Server-sent events: `google_search_call` steps (the queries run), `google_search_result` steps (Google's Search Suggestions snippet, which the terms require showing with the answer, unmodified), `step.delta` text pieces, `url_citation` annotations on the final text, then `interaction.completed` with usage (`total_input_tokens`, `total_output_tokens`, `total_thought_tokens`, `grounding_tool_count`).
+
+| Outcome | Shown | Logged as |
+|---|---|---|
+| Streamed to the end | The answer card with sources and Search Suggestions | `answer.outcome = completed` |
+| Failed after some text | What arrived, with a note | `partial(reason)` |
+| Failed before any text, or no first byte in 10 s, or over 30 s in all | Web results for the query | `fellBackToWeb(reason)` |
+| No Gemini key configured | Web results; Jev's pick is still logged | the decision alone |
+
+The answer summary (model, searches run, tokens, first-token and total latency, outcome) is appended to the same `decisions.jsonl` line as the routing decision.

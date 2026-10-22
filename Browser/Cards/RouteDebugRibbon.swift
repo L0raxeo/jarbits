@@ -2,12 +2,16 @@
 import Routing
 import SwiftUI
 
-/// Debug-only strip over the card: what the router chose and how sure it was.
-/// Tap for every option's probability and an export button for the log.
+/// Debug-only strip over the card: what the router chose, how sure it was,
+/// and, for answer cards, what Gemini did. Tap for every option's
+/// probability, the answer's cost, and an export button for the log.
 struct RouteDebugRibbon: View {
     let decision: RouteDecision
+    let plan: CardPlan?
+    let answer: AnswerSummary?
     let logURL: URL
     @State private var expanded = false
+    @State private var searchesThisMonth: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -38,6 +42,10 @@ struct RouteDebugRibbon: View {
         .background(Color(.secondarySystemBackground).opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .padding(8)
+        .task(id: answer) {
+            guard answer != nil else { return }
+            searchesThisMonth = await DecisionLog.shared.searchesThisMonth()
+        }
     }
 
     private var headline: String {
@@ -45,6 +53,8 @@ struct RouteDebugRibbon: View {
         switch decision.source {
         case .jev where decision.format.stage == .routed:
             parts.append("\(decision.format.rawValue) → web (routed, not built)")
+        case .jev where decision.format.stage >= .built && decision.format != .webResults && isWebPlan:
+            parts.append("\(decision.format.rawValue) → web (no Gemini key)")
         case .jev:
             parts.append(decision.format.rawValue)
         case .confidenceFallback:
@@ -65,15 +75,45 @@ struct RouteDebugRibbon: View {
         if let latency = decision.latencyMs {
             parts.append("\(latency) ms")
         }
+        if let answer {
+            parts.append(answerHeadline(answer))
+        }
         return parts.joined(separator: " · ")
     }
 
+    private func answerHeadline(_ answer: AnswerSummary) -> String {
+        switch answer.outcome {
+        case .completed:
+            var bits = ["gemini"]
+            if let ms = answer.latencyMs { bits.append(seconds(ms)) }
+            bits.append(answer.searched.isEmpty ? "no search" : "searched \(answer.searched.count)")
+            if let usage = answer.usage { bits.append("\(usage.outputTokens + usage.thoughtTokens) out") }
+            return bits.joined(separator: " ")
+        case let .partial(reason):
+            return "gemini partial (\(reason))"
+        case let .fellBackToWeb(reason):
+            return "gemini → web (\(reason))"
+        }
+    }
+
+    private var isWebPlan: Bool {
+        if case .web = plan { return true }
+        return false
+    }
+
     private var tint: Color {
+        if let answer {
+            switch answer.outcome {
+            case .completed: break
+            case .partial: return .orange
+            case .fellBackToWeb: return .red
+            }
+        }
         switch decision.source {
-        case .jev: .green
-        case .confidenceFallback: .orange
-        case .directURL, .noKey: .gray
-        case .error: .red
+        case .jev: return .green
+        case .confidenceFallback: return .orange
+        case .directURL, .noKey: return .gray
+        case .error: return .red
         }
     }
 
@@ -101,12 +141,51 @@ struct RouteDebugRibbon: View {
                 Text("\(model) · \(tokens) input tokens")
                     .foregroundStyle(.secondary)
             }
+            if let answer {
+                answerDetails(answer)
+            }
             ShareLink(item: logURL) {
                 Label("Export decisions.jsonl", systemImage: "square.and.arrow.up")
             }
             .buttonStyle(.plain)
             .padding(.top, 4)
         }
+    }
+
+    @ViewBuilder
+    private func answerDetails(_ answer: AnswerSummary) -> some View {
+        Divider()
+        Text(answer.model)
+            .foregroundStyle(.secondary)
+        if answer.searched.isEmpty {
+            Text("answered without searching")
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(answer.searched, id: \.self) { query in
+                Text("searched: \(query)")
+                    .lineLimit(1)
+            }
+        }
+        if let first = answer.firstTokenMs, let total = answer.latencyMs {
+            Text("first token \(seconds(first)) · total \(seconds(total))")
+                .foregroundStyle(.secondary)
+        }
+        if let usage = answer.usage {
+            Text("\(usage.inputTokens) in · \(usage.outputTokens) out · \(usage.thoughtTokens) thought · \(cents(usage.tokenCostUSD)) in tokens")
+                .foregroundStyle(.secondary)
+        }
+        if let searchesThisMonth {
+            Text("searches this month \(searchesThisMonth) / \(GeminiPricing.freeSearchesPerMonth) free")
+                .foregroundStyle(searchesThisMonth >= GeminiPricing.freeSearchesPerMonth ? .orange : .secondary)
+        }
+    }
+
+    private func seconds(_ ms: Int) -> String {
+        "\((Double(ms) / 1000).formatted(.number.precision(.fractionLength(1)))) s"
+    }
+
+    private func cents(_ usd: Double) -> String {
+        "\((usd * 100).formatted(.number.precision(.fractionLength(3))))¢"
     }
 
     private var sortedProbabilities: [(String, Double)] {

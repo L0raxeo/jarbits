@@ -7,12 +7,15 @@ let package = Package(
     platforms: [.iOS(.v26), .macOS(.v15)],
     products: [
         .library(name: "Routing", targets: ["Routing"]),
+        .library(name: "Answers", targets: ["Answers"]),
         .executable(name: "report", targets: ["ReportCLI"]),
     ],
     targets: [
         .target(name: "Routing"),
-        .executableTarget(name: "ReportCLI", dependencies: ["Routing"]),
+        .target(name: "Answers", dependencies: ["Routing"]),
+        .executableTarget(name: "ReportCLI", dependencies: ["Routing", "Answers"]),
         .testTarget(name: "RoutingTests", dependencies: ["Routing"]),
+        .testTarget(name: "AnswersTests", dependencies: ["Answers"]),
     ],
     swiftLanguageModes: [.v6]
 )

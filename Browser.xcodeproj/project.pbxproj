@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B10000000000000000000016 /* Routing in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000015 /* Routing */; };
+		B10000000000000000000019 /* Answers in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000018 /* Answers */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B10000000000000000000016 /* Routing in Frameworks */,
+				B10000000000000000000019 /* Answers in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -59,6 +61,14 @@
 			);
 			sourceTree = "<group>";
 		};
+		B10000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000001 /* Browser.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		B10000000000000000000013 /* Config */ = {
 			isa = PBXGroup;
 			children = (
@@ -67,14 +77,6 @@
 				B10000000000000000000012 /* Secrets.example.xcconfig */,
 			);
 			path = Config;
-			sourceTree = "<group>";
-		};
-		B10000000000000000000005 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				B10000000000000000000001 /* Browser.app */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -98,6 +100,7 @@
 			name = Browser;
 			packageProductDependencies = (
 				B10000000000000000000015 /* Routing */,
+				B10000000000000000000018 /* Answers */,
 			);
 			productName = Browser;
 			productReference = B10000000000000000000001 /* Browser.app */;
@@ -326,6 +329,10 @@
 		B10000000000000000000015 /* Routing */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Routing;
+		};
+		B10000000000000000000018 /* Answers */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Answers;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

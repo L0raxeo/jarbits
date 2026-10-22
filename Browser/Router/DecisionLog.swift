@@ -1,9 +1,10 @@
 import Foundation
 import Routing
 
-/// Appends every routing decision to a JSON Lines file on the device. The
-/// file is the raw material for the eval set; nothing leaves the phone unless
-/// the user exports it from the debug ribbon.
+/// Appends every routing decision (and, once Gemini has answered, the answer
+/// summary) to a JSON Lines file on the device. The file is the raw material
+/// for the eval set; nothing leaves the phone unless the user exports it
+/// from the debug ribbon.
 actor DecisionLog {
     static let shared = DecisionLog()
 
@@ -36,5 +37,17 @@ actor DecisionLog {
             // A failed log line must never affect the search itself.
             print("DecisionLog: \(error)")
         }
+    }
+
+    /// Google searches Gemini ran this calendar month, for the ribbon's
+    /// running count against the free allowance. Lines that do not parse are skipped.
+    func searchesThisMonth(now: Date = .now) -> Int {
+        guard let data = try? Data(contentsOf: fileURL) else { return 0 }
+        let calendar = Calendar.current
+        return String(decoding: data, as: UTF8.self)
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .compactMap { try? DecisionRecord.decoder.decode(DecisionRecord.self, from: Data($0.utf8)) }
+            .filter { calendar.isDate($0.timestamp, equalTo: now, toGranularity: .month) }
+            .reduce(0) { $0 + ($1.answer?.usage?.searches ?? 0) }
     }
 }

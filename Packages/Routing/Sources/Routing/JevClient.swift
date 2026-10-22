@@ -71,12 +71,12 @@ public enum Question: Sendable, Equatable {
 
 /// Just enough JSON writing to keep object keys in the order given.
 /// Leaf values still go through `JSONEncoder`, so escaping stays Foundation's.
-enum OrderedJSON {
-    static func encode<T: Encodable>(_ value: T) throws -> Data {
+package enum OrderedJSON {
+    package static func encode<T: Encodable>(_ value: T) throws -> Data {
         try JSONEncoder().encode(value)
     }
 
-    static func object(_ pairs: [(String, Data)]) throws -> Data {
+    package static func object(_ pairs: [(String, Data)]) throws -> Data {
         var out = Data("{".utf8)
         for (index, (key, value)) in pairs.enumerated() {
             if index > 0 { out.append(UInt8(ascii: ",")) }
@@ -228,11 +228,13 @@ public struct JevClient: Sendable {
     }
 }
 
-struct TimeoutError: Error {}
+public struct TimeoutError: Error, Sendable {
+    public init() {}
+}
 
 /// Runs `operation` and gives up after `limit`. URLSession's own timeout is
 /// an idle timeout, not a total one, so a slow trickle would otherwise wait.
-func withTimeout<T: Sendable>(
+public func withTimeout<T: Sendable>(
     _ limit: Duration,
     _ operation: @Sendable @escaping () async throws -> T
 ) async throws -> T {

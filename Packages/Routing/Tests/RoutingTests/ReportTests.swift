@@ -28,9 +28,10 @@ import Testing
         #expect(markdown.contains(RoutingReport.regenerateCommand))
     }
 
-    @Test func committedRoutingFileIsCurrent() throws {
+    /// The Jev half must open the file; `AnswersReportTests` checks the whole file.
+    @Test func committedRoutingFileStartsWithTheJevContract() throws {
         let committed = try String(contentsOf: Self.repoRoot.appending(path: "ROUTING.md"), encoding: .utf8)
-        #expect(committed == RoutingReport.markdown(), "ROUTING.md is stale; run: \(RoutingReport.regenerateCommand)")
+        #expect(committed.hasPrefix(RoutingReport.markdown()), "ROUTING.md is stale; run: \(RoutingReport.regenerateCommand)")
     }
 
     @Test func decisionsReportSummarisesALog() throws {

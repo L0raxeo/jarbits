@@ -5,11 +5,15 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     public var timestamp: Date
     public var query: String
     public var decision: RouteDecision
+    /// Filled in once Gemini has answered (or failed to); absent for web plans
+    /// and for lines written before answers existed.
+    public var answer: AnswerSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: RouteDecision) {
+    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
+        self.answer = answer
     }
 
     public static let encoder: JSONEncoder = {
@@ -73,6 +77,43 @@ public enum DecisionsReport {
         }
         out.append("")
 
+        let answered = records.compactMap { record in record.answer.map { (record, $0) } }
+        if !answered.isEmpty {
+            out.append("## Answers")
+            out.append("")
+            let searches = answered.compactMap { $0.1.usage?.searches }.reduce(0, +)
+            let cost = answered.compactMap { $0.1.usage?.tokenCostUSD }.reduce(0, +)
+            out.append("\(answered.count) answered by Gemini, \(searches) Google searches (the first \(GeminiPricing.freeSearchesPerMonth) a month are free, then $\(GeminiPricing.searchPerThousandUSD.formatted()) per 1,000), about $\(cost.formatted(.number.precision(.fractionLength(4)))) in tokens.")
+            out.append("")
+            out.append("| Format | Answers | Completed | Partial | Fell back | Searched | Median first token | Median total | Mean output tokens |")
+            out.append("|---|---|---|---|---|---|---|---|---|")
+            for format in ResponseFormat.allCases {
+                let rows = answered.filter { $0.1.format == format }
+                guard !rows.isEmpty else { continue }
+                let completed = rows.filter { $0.1.outcome == .completed }.count
+                let partial = rows.filter { if case .partial = $0.1.outcome { true } else { false } }.count
+                let fellBack = rows.filter { if case .fellBackToWeb = $0.1.outcome { true } else { false } }.count
+                let searched = rows.filter { !$0.1.searched.isEmpty }.count
+                let outputs = rows.compactMap { $0.1.usage.map { $0.outputTokens + $0.thoughtTokens } }
+                let meanOutput = outputs.isEmpty ? 0 : outputs.reduce(0, +) / outputs.count
+                out.append("| `\(format.rawValue)` | \(rows.count) | \(completed) | \(partial) | \(fellBack) | \(searched) | \(median(rows.compactMap(\.1.firstTokenMs))) | \(median(rows.compactMap(\.1.latencyMs))) | \(meanOutput) |")
+            }
+            out.append("")
+            let failed = answered.filter { $0.1.outcome != .completed }
+            if !failed.isEmpty {
+                out.append("Answer failures:")
+                out.append("")
+                for (record, answer) in failed.suffix(10) {
+                    switch answer.outcome {
+                    case let .partial(reason): out.append("- \"\(record.query)\": partial, \(reason)")
+                    case let .fellBackToWeb(reason): out.append("- \"\(record.query)\": fell back to web, \(reason)")
+                    case .completed: break
+                    }
+                }
+                out.append("")
+            }
+        }
+
         if !errors.isEmpty {
             out.append("## Errors")
             out.append("")
@@ -99,5 +140,10 @@ public enum DecisionsReport {
             out.append("")
         }
         return out.joined(separator: "\n") + "\n"
+    }
+    private static func median(_ values: [Int]) -> String {
+        let sorted = values.sorted()
+        guard !sorted.isEmpty else { return "–" }
+        return "\(sorted[sorted.count / 2]) ms"
     }
 }
