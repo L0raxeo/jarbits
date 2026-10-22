@@ -114,7 +114,7 @@ struct HomeView: View {
                         onTap: openFollowUp,
                         onSubmit: submitFollowUp
                     )
-                    .padding(.bottom, followingUp ? 8 : 2)
+                    .padding(.bottom, followingUp ? 8 : QueryCapsule.bottomPadding)
                     .frame(maxWidth: .infinity)
                 }
             }

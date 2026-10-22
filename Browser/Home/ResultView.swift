@@ -25,8 +25,12 @@ struct ResultView: View {
     }
 
     var body: some View {
-        content
-            .overlay(alignment: .top) {
+        if case .web = plan {
+            // A page is laid out between a solid frost block and the capsule
+            // (see WebResultView); nothing of it goes under the status bar.
+            content
+        } else {
+            content.overlay(alignment: .top) {
                 // Safari's frost: solid behind the clock, then thinning into
                 // the content rather than stopping at a hard edge.
                 ZStack {
@@ -43,13 +47,14 @@ struct ResultView: View {
                 .offset(y: -topInset)
                 .allowsHitTesting(false)
             }
+        }
     }
 
     @ViewBuilder
     private var content: some View {
         switch plan {
         case .web:
-            WebResultView(page: session.page, barCompact: $barCompact)
+            WebResultView(page: session.page, topInset: topInset, barCompact: $barCompact)
         case let .answer(format, _):
             if let answer = session.answer {
                 AnswerView(answer: answer, format: format, orbY: orbY, barCompact: $barCompact)
@@ -77,18 +82,29 @@ struct ResultView: View {
     }
 }
 
-/// The page, below the status bar and down to the home indicator.
+/// The page between a solid frost block over the status bar and a reserve
+/// above the capsule that grows and shrinks with it, so a site's own header
+/// and tab bar stay visible. Nothing of the page goes under either.
 private struct WebResultView: View {
     let page: WebPage
+    let topInset: CGFloat
     @Binding var barCompact: Bool
 
     var body: some View {
-        WebView(page)
-            .webViewBackForwardNavigationGestures(.enabled)
-            .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
-                ResultView.scrolled(from: old, to: new, compact: &barCompact)
-            }
-            .ignoresSafeArea(edges: .bottom)
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .frame(height: topInset)
+            WebView(page)
+                .webViewBackForwardNavigationGestures(.enabled)
+                .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
+                    ResultView.scrolled(from: old, to: new, compact: &barCompact)
+                }
+            Color.clear
+                .frame(height: QueryCapsule.footprint(compact: barCompact))
+                .animation(.spring(duration: 0.35, bounce: 0.1), value: barCompact)
+        }
+        .ignoresSafeArea(edges: .top)
     }
 }
 
