@@ -81,9 +81,10 @@ It prints the pick, the confidence and every option's probability.
 `AnswerSession` streams one answer at a time from Gemini `gemini-3.1-flash-lite`
 (Interactions API, thinking `minimal`, `store: false`, no tools). The system
 instruction is the per-format rule set in `AnswerPrompt`
-(`Packages/Routing/Sources/Answers`): narrative answers only the question in
-two to four plain paragraphs; one-line gives the answer itself in at most
-twelve words, never a sentence restating the question. The input carries the
+(`Packages/Routing/Sources/Answers`): narrative opens with the immediate
+answer and keeps to the scope the query's wording implies, with no target
+length; one-line gives the answer itself in at most twelve words, never a
+sentence restating the question. The input carries the
 query plus the device date, time and zone and the locale, so "today", "now"
 and "the time in X" work without any lookup, and the model's knowledge
 cutoff (January 2025, pinned in `AnswerPrompt.knowledgeCutoff`) with the

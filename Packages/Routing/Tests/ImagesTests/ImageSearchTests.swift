@@ -70,10 +70,13 @@ import Testing
         MockWikipediaTransport.handler = { _ in (200, Data([0x89, 0x50, 0x4E, 0x47])) }
         MockWikipediaTransport.requests = []
         let search = ImageSearch(session: MockWikipediaTransport.session())
-        let data = try await search.data(for: URL(string: "https://thumb.wikimedia.org/x.png")!)
+        let url = URL(string: "https://thumb.wikimedia.org/x.png")!
+        let data = try await search.data(for: url)
         #expect(data.count == 4)
-        #expect(MockWikipediaTransport.requests.first?.value(forHTTPHeaderField: "User-Agent") == ImageSearch.defaultUserAgent)
-        #expect(MockWikipediaTransport.requests.first?.value(forHTTPHeaderField: "Accept") == "image/*")
+        // Found by URL: a request from an earlier, timed-out test can still land in the list.
+        let request = try #require(MockWikipediaTransport.requests.first { $0.url == url })
+        #expect(request.value(forHTTPHeaderField: "User-Agent") == ImageSearch.defaultUserAgent)
+        #expect(request.value(forHTTPHeaderField: "Accept") == "image/*")
     }
 }
 

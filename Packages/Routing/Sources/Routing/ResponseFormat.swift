@@ -63,7 +63,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
             )
         case .narrative:
             Criterion(
-                what: "A written explanation of a few paragraphs. The query asks why or how something happened or works, for the story behind something, where a phrase, slogan, name or meme came from, or for a judgement that needs context, such as whether somewhere is safe.",
+                what: "A written explanation. The query asks why or how something happened or works, what something is or means (a definition, or the expansion of an acronym or term within a field, which needs the full name and a sentence or two of context), for the story behind something, where a phrase, slogan, name or meme came from, or for a judgement that needs context, such as whether somewhere is safe.",
                 notFor: "Questions answered by one line, such as a time, a date, a number or a yes/no, and queries that only want a price chart.",
                 examples: [
                     "at the end of attack on titan why is levi in a wheelchair",
@@ -73,6 +73,9 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
                     "Why is INTR so low?",
                     "Is south africa safe right now",
                     "where did the phrase ok boomer come from",
+                    "whats isi in ipe",
+                    "what does gdp mean",
+                    "define hegemony",
                 ]
             )
         case .map:
@@ -89,8 +92,8 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
             )
         case .oneLine:
             Criterion(
-                what: "A single short answer that fits on one line: a time, a date, a number, a duration, a yes/no, a conversion or a quick fact, including live ones like the weather.",
-                notFor: "Questions that ask why or how and need a few paragraphs, and anything that wants a price chart.",
+                what: "A single short answer that fits on one line: a time, a date, a number, a duration, a yes/no, a conversion, or a quick fact that is itself a name, number or date, including live ones like the weather.",
+                notFor: "Questions that ask why or how and need a few paragraphs; definitions and what-is questions, which need the full name and some context rather than one value; and anything that wants a price chart.",
                 examples: [
                     "what's the time in costa rica",
                     "will it rain today",
