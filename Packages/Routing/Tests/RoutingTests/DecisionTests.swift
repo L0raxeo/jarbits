@@ -31,6 +31,52 @@ import Testing
         #expect(decision.source == .confidenceFallback)
     }
 
+    @Test func recentAnswerFormatIsSentToWeb() throws {
+        let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(jevResponse(
+            choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.92, "web_results": 0.08], recency: 0.8).utf8))
+        let decision = JevRouting.decision(from: response, latencyMs: 1)
+        #expect(decision.format == .webResults)
+        #expect(decision.suggested == .narrative)
+        #expect(decision.recency == 0.8)
+        #expect(decision.source == .recencyFallback)
+    }
+
+    @Test func settledAnswerFormatPasses() throws {
+        let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(jevResponse(
+            choice: "one_line", confidence: 0.9, probabilities: ["one_line": 0.92], recency: 0.2).utf8))
+        let decision = JevRouting.decision(from: response, latencyMs: 1)
+        #expect(decision.format == .oneLine)
+        #expect(decision.source == .jev)
+        #expect(decision.recency == 0.2)
+    }
+
+    @Test func recencyThresholdIsInclusive() throws {
+        let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(jevResponse(
+            choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9], recency: JevRouting.recencyThreshold).utf8))
+        #expect(JevRouting.decision(from: response, latencyMs: 1).source == .recencyFallback)
+    }
+
+    @Test func missingRecencyNeverGates() throws {
+        let response = try response(choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9])
+        let decision = JevRouting.decision(from: response, latencyMs: 1)
+        #expect(decision.source == .jev)
+        #expect(decision.recency == nil)
+    }
+
+    @Test func pageFormatsIgnoreRecency() throws {
+        let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(jevResponse(
+            choice: "stock", confidence: 0.9, probabilities: ["stock": 0.9], recency: 0.99).utf8))
+        let decision = JevRouting.decision(from: response, latencyMs: 1)
+        #expect(decision.format == .stock)
+        #expect(decision.source == .jev)
+    }
+
+    @Test func unsureBeatsRecency() throws {
+        let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(jevResponse(
+            choice: "narrative", confidence: 0.3, probabilities: ["narrative": 0.4], recency: 0.9).utf8))
+        #expect(JevRouting.decision(from: response, latencyMs: 1).source == .confidenceFallback)
+    }
+
     @Test func floorIsInclusive() throws {
         let response = try response(choice: "narrative", confidence: 0.5, probabilities: ["narrative": 0.55, "web_results": 0.45])
         #expect(JevRouting.decision(from: response, latencyMs: 1).source == .jev)

@@ -39,6 +39,19 @@ Options, in the order Jev sees them (it leans toward the first when unsure):
 
 Answer: `choice` (one option name), `probabilities` (one per option), `confidence` (0–1).
 
+### `recent` — type `noul`
+
+A yes/no question answered with the probability of yes. Instructions sent with the question:
+
+> Would the correct answer to this query depend on something that may have changed in the last two years? For example whether a person is alive, who currently holds an office, title or job, a record, a price, a recent event or its aftermath, or a phrase, slogan or meme that became known recently.
+
+| Means | Description |
+|---|---|
+| yes | The right answer could have changed since early 2025: it depends on someone's current status, the current holder of a position, a recent or ongoing event, or a new phrase. |
+| no | A settled fact, history, how something works, a definition, a conversion, a place, a date or time, or anything else that does not go stale. |
+
+Answer: `noul`, the probability of yes (0–1). No confidence field.
+
 ## What comes back
 
 ```json
@@ -57,16 +70,16 @@ Answer: `choice` (one option name), `probabilities` (one per option), `confidenc
 | No API key configured | Web results | `noKey` |
 | Request failed or timed out | Web results | `error(reason)` |
 | `confidence` below 0.5 | Web results | `confidenceFallback` (the pick is kept as `suggested`) |
-| `confidence` at or above 0.5 | The chosen format's card; web results while that module is only `routed` (today: `map`, `stock`) | `jev` |
+| `confidence` at or above 0.5 and `recent` below 0.5 | The chosen format's card; web results while that module is only `routed` (today: `map`, `stock`) | `jev` |
+| `narrative` or `one_line` picked with confidence, but `recent` at or above 0.5 | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |
 
-Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.
+Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.
 
 ## Question types not used yet
 
-- **noul**: a yes/no with a probability, no confidence field. Candidate use: "does this query name a place?" as a companion to the format Choice.
 - **score**: a position on an ordered scale with confidence. Candidate use: how much the query needs a written explanation.
 
-Adding a question is one entry in `JevRouting.request`; this file and `RoutingTests` pick it up.
+Adding a question is one entry in `JevRouting.request`; this file and `RoutingTests` pick it up. The yes/no `recent` question above is a noul.
 
 ## After routing: Gemini answers
 
@@ -83,6 +96,7 @@ Query: <query>
 
 Context (use for "today" and "now"; do not repeat it unless the query asks about it):
 - Date and time: Wednesday 21 October 2026, 11:26 (America/Chicago)
+- Your knowledge ends around January 2025, about 21 months before this date.
 - Locale: en_US
 ```
 
@@ -95,7 +109,7 @@ Rules:
 - Answer only the question that was asked. Do not add background, related facts, caveats, tips, or anything that is not a direct part of the answer.
 - Write two to four short paragraphs of plain prose. No headings, bullet points, numbered lists, tables, emoji, or Markdown other than the emphasis markers below.
 - No preamble and no closing line. Start with the answer. Do not offer further help or suggest follow-up questions.
-- You have no access to the web. If the answer depends on events after what you know, say so in one plain sentence at the start, then answer with what you do know. Do not invent recent developments.
+- Your knowledge ends around January 2025 and you have no access to the web; the context says how long ago that was. Anything that can change over such a gap may have changed: whether a person is alive, who holds an office or title, who leads a company or team, a record, a law, or the meaning of a recent phrase, slogan or meme. For those, say in one plain sentence at the start that your answer is as of January 2025 and may be out of date, then answer with what you knew then. Do not invent developments after that date.
 - Use the context block for "today" and "now". Do not mention the context unless the query is about it.
 - If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
 - Write in the language of the query.
@@ -117,7 +131,7 @@ Rules:
 - Reply with one line only: a number, a word, a name, a date, a time, or a short clause. Examples: "24 days", "Lima", "8:14 PM", "About 92 euros".
 - Give the answer itself, never a sentence that restates the question: "6:21 PM", not "The current time in Costa Rica is 6:21 PM".
 - Never more than twelve words. No explanation, no second sentence, no preamble, no trailing period.
-- You have no access to the web. If the question needs live data you do not have, such as today's weather, a current price or exchange rate, a live score, or the latest news, reply with exactly: NEEDS_LIVE_DATA
+- Your knowledge ends around January 2025 and you have no access to the web. If the question needs live data, such as today's weather, a current price or exchange rate, a live score, or the latest news, or if the answer may have changed since January 2025, such as whether a person is alive or who currently holds a role, reply with exactly: NEEDS_LIVE_DATA
 - You do know the current date and time from the context block. Compute dates, countdowns and the time in other places from it.
 - If the honest answer is a range or depends on something, give the typical value in the line, such as "Usually 7 to 10 days".
 - If the question cannot be answered in one line, answer its most direct version in one line anyway.

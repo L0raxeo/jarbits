@@ -49,22 +49,41 @@ public enum Question: Sendable, Equatable {
     /// Pick one option. `options` keeps declaration order on the wire, which
     /// matters because Jev leans toward the first option when unsure.
     case choice(instructions: String, options: [(name: String, criterion: Criterion)])
+    /// A yes/no question answered with the probability of yes. `criteria`
+    /// describe what a yes and a no mean when the boundary is subtle.
+    case noul(instructions: String, criteria: (yes: String, no: String)?)
 
     public static func == (lhs: Question, rhs: Question) -> Bool {
         switch (lhs, rhs) {
         case let (.choice(li, lo), .choice(ri, ro)):
             li == ri && lo.map(\.name) == ro.map(\.name) && lo.map(\.criterion) == ro.map(\.criterion)
+        case let (.noul(li, lc), .noul(ri, rc)):
+            li == ri && lc?.yes == rc?.yes && lc?.no == rc?.no
+        default:
+            false
         }
     }
 
     func jsonData() throws -> Data {
         switch self {
         case let .choice(instructions, options):
-            try OrderedJSON.object([
+            return try OrderedJSON.object([
                 ("type", OrderedJSON.encode("choice")),
                 ("instructions", OrderedJSON.encode(instructions)),
                 ("criteria", OrderedJSON.object(options.map { ($0.name, try OrderedJSON.encode($0.criterion)) })),
             ])
+        case let .noul(instructions, criteria):
+            var pairs: [(String, Data)] = [
+                ("type", try OrderedJSON.encode("noul")),
+                ("instructions", try OrderedJSON.encode(instructions)),
+            ]
+            if let criteria {
+                pairs.append(("criteria", try OrderedJSON.object([
+                    ("true", try OrderedJSON.encode(criteria.yes)),
+                    ("false", try OrderedJSON.encode(criteria.no)),
+                ])))
+            }
+            return try OrderedJSON.object(pairs)
         }
     }
 }
@@ -120,6 +139,9 @@ public struct Usage: Decodable, Sendable, Equatable {
 
 public enum Answer: Decodable, Sendable, Equatable {
     case choice(ChoiceAnswer)
+    /// The probability of yes, 0 to 1. No confidence field: two outcomes
+    /// are fully described by one number.
+    case noul(Double)
     /// A question type this app does not ask. Kept so one unexpected answer
     /// does not fail the whole decode.
     case other(type: String)
@@ -130,6 +152,8 @@ public enum Answer: Decodable, Sendable, Equatable {
         switch type {
         case "choice":
             self = .choice(try ChoiceAnswer(from: decoder))
+        case "noul":
+            self = .noul(try container.decode(Double.self, forKey: .noul))
         default:
             self = .other(type: type)
         }
@@ -137,6 +161,7 @@ public enum Answer: Decodable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case type
+        case noul
     }
 }
 

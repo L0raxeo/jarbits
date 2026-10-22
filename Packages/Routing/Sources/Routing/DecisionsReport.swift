@@ -53,7 +53,8 @@ public enum DecisionsReport {
         let noKey = records.filter { $0.decision.source == .noKey }
         let latencies = asked.compactMap(\.decision.latencyMs).sorted()
 
-        out.append("\(records.count) queries: \(asked.count) asked Jev, \(direct.count) addresses, \(noKey.count) without a key, \(errors.count) errors.")
+        let gated = asked.filter { $0.decision.source == .recencyFallback }
+        out.append("\(records.count) queries: \(asked.count) asked Jev, \(direct.count) addresses, \(noKey.count) without a key, \(errors.count) errors, \(gated.count) sent to web for recency.")
         if let p50 = latencies.isEmpty ? nil : latencies[latencies.count / 2] {
             out.append("Median Jev latency \(p50) ms.")
         }
@@ -63,19 +64,43 @@ public enum DecisionsReport {
         out.append("")
         out.append("## By format")
         out.append("")
-        out.append("| Format | Picked | Acted on | Fell back (unsure) | Mean confidence | Recent queries |")
-        out.append("|---|---|---|---|---|---|")
+        out.append("| Format | Picked | Acted on | Fell back (unsure) | Sent to web (recent) | Mean confidence | Recent queries |")
+        out.append("|---|---|---|---|---|---|---|")
         for format in ResponseFormat.allCases {
             let picks = asked.filter { $0.decision.suggested == format }
             guard !picks.isEmpty else { continue }
             let acted = picks.filter { $0.decision.source == .jev }.count
             let unsure = picks.filter { $0.decision.source == .confidenceFallback }.count
+            let stale = picks.filter { $0.decision.source == .recencyFallback }.count
             let confidences = picks.compactMap(\.decision.confidence)
             let mean = confidences.isEmpty ? 0 : confidences.reduce(0, +) / Double(confidences.count)
             let recent = picks.sorted { $0.timestamp > $1.timestamp }.prefix(3).map { "\"\($0.query)\"" }.joined(separator: ", ")
-            out.append("| `\(format.rawValue)` | \(picks.count) | \(acted) | \(unsure) | \(mean.formatted(.number.precision(.fractionLength(2)))) | \(recent) |")
+            out.append("| `\(format.rawValue)` | \(picks.count) | \(acted) | \(unsure) | \(stale) | \(mean.formatted(.number.precision(.fractionLength(2)))) | \(recent) |")
         }
         out.append("")
+
+        let withRecency = asked.filter { $0.decision.recency != nil }
+        if !withRecency.isEmpty {
+            let answeredRecency = withRecency.filter { $0.decision.source == .jev && ($0.decision.suggested?.isAnswered ?? false) }.compactMap(\.decision.recency)
+            let gatedRecency = gated.compactMap(\.decision.recency)
+            func mean(_ values: [Double]) -> String {
+                values.isEmpty ? "–" : (values.reduce(0, +) / Double(values.count)).formatted(.number.precision(.fractionLength(2)))
+            }
+            out.append("Recency (threshold \(JevRouting.recencyThreshold.formatted())): mean \(mean(answeredRecency)) for answers shown, \(mean(gatedRecency)) for queries sent to web.")
+            out.append("")
+        }
+        if !gated.isEmpty {
+            out.append("## Sent to web for recency")
+            out.append("")
+            out.append("| Query | Pick | Recency |")
+            out.append("|---|---|---|")
+            for record in gated.sorted(by: { $0.timestamp > $1.timestamp }).prefix(20) {
+                let pick = record.decision.suggested?.rawValue ?? "?"
+                let recency = record.decision.recency.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? "?"
+                out.append("| \"\(record.query)\" | `\(pick)` | \(recency) |")
+            }
+            out.append("")
+        }
 
         let answered = records.compactMap { record in record.answer.map { (record, $0) } }
         if !answered.isEmpty {

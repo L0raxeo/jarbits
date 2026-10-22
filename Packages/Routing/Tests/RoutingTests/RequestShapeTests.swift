@@ -26,6 +26,31 @@ import Testing
         #expect((stock["examples"] as? [String])?.isEmpty == false)
     }
 
+    @Test func recencyQuestionIsANoulAfterTheFormatChoice() throws {
+        let request = JevRouting.request(for: "is charlie kirk alive", locale: Locale(identifier: "en_US"))
+        let data = try request.jsonData()
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let questions = try #require(json["questions"] as? [String: Any])
+        let recent = try #require(questions["recent"] as? [String: Any])
+        #expect(recent["type"] as? String == "noul")
+        #expect((recent["instructions"] as? String)?.contains("changed in the last two years") == true)
+        let criteria = try #require(recent["criteria"] as? [String: String])
+        #expect(Set(criteria.keys) == ["true", "false"])
+
+        let text = String(decoding: data, as: UTF8.self)
+        let formatAt = try #require(text.range(of: "\"format\":")).lowerBound
+        let recentAt = try #require(text.range(of: "\"recent\":")).lowerBound
+        #expect(formatAt < recentAt, "the format choice stays first")
+    }
+
+    @Test func noulAnswerDecodes() throws {
+        let response = try JSONDecoder().decode(
+            SystemOneResponse.self,
+            from: Data(jevResponse(choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9], recency: 0.83).utf8)
+        )
+        #expect(response.answers["recent"] == .noul(0.83))
+    }
+
     @Test func criteriaKeepDeclarationOrderOnTheWire() throws {
         let request = JevRouting.request(for: "anything", locale: Locale(identifier: "en_US"))
         let text = String(decoding: try request.jsonData(), as: UTF8.self)
@@ -77,6 +102,6 @@ import Testing
         #expect(answer.choice == "frustrated")
         #expect(answer.confidence == 0.82)
         #expect(answer.probabilities.count == 3)
-        #expect(response.answers["urgency"] == .other(type: "noul"))
+        #expect(response.answers["urgency"] == .noul(0.99))
     }
 }

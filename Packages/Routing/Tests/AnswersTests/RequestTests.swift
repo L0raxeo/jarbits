@@ -33,6 +33,9 @@ import Testing
         #expect(narrative.contains("Answer only the question that was asked"))
         #expect(narrative.contains("two to four short paragraphs"))
         #expect(narrative.contains("no access to the web"))
+        #expect(narrative.contains("as of \(AnswerPrompt.knowledgeCutoffText) and may be out of date"))
+        #expect(narrative.contains("whether a person is alive"))
+        #expect(oneLine.contains("whether a person is alive"))
         #expect(oneLine.contains("one line only"))
         #expect(oneLine.contains("Never more than twelve words"))
         #expect(oneLine.contains("reply with exactly: \(AnswerPrompt.liveDataMarker)"))
@@ -44,5 +47,10 @@ import Testing
         #expect(input.contains("- Date and time: Wednesday 21 October 2026, 11:26 (America/Chicago)"), "got: \(input)")
         #expect(input.contains("- Locale: en_US"))
         #expect(!input.contains("location"))
+        #expect(input.contains("- Your knowledge ends around January 2025, about 21 months before this date."), "got: \(input)")
+
+        var atCutoff = AnswerContext.example
+        atCutoff.now = Date(timeIntervalSince1970: 1_736_000_000)   // 4 January 2025
+        #expect(AnswerPrompt.input(query: "x", context: atCutoff).contains("about 0 months before"))
     }
 }

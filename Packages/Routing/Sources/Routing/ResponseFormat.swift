@@ -16,6 +16,9 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     /// How far along this module is. Flip it in the same change that adds the
     /// card; `JevRouter.plan(for:query:)` asserts the two agree and the Debug
     /// ribbon shows it.
+    /// Formats a model answers, as opposed to a page the app loads.
+    public var isAnswered: Bool { self == .narrative || self == .oneLine }
+
     public var stage: Stage {
         switch self {
         case .webResults: .verified

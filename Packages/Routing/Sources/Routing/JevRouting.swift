@@ -4,6 +4,12 @@ import Foundation
 /// Jev's answer into a decision. No I/O here, so every branch is testable.
 public enum JevRouting {
     public static let questionID = "format"
+    public static let recencyQuestionID = "recent"
+
+    /// At or above this, a `narrative` or `one_line` pick is shown as web
+    /// results: the model's knowledge is months old, and a confident wrong
+    /// answer costs more than one extra tap. Revisit from the decision log.
+    public static let recencyThreshold = 0.5
 
     /// Below this the answer is treated as "unsure" and the app shows web
     /// results. 0.5 is the floor TypeSafe's docs give for a genuinely unsure
@@ -16,6 +22,18 @@ public enum JevRouting {
         query as typed. If several formats could work, prefer web_results.
         """
 
+    public static let recencyInstructions = """
+        Would the correct answer to this query depend on something that may have \
+        changed in the last two years? For example whether a person is alive, who \
+        currently holds an office, title or job, a record, a price, a recent event \
+        or its aftermath, or a phrase, slogan or meme that became known recently.
+        """
+
+    public static let recencyCriteria = (
+        yes: "The right answer could have changed since early 2025: it depends on someone's current status, the current holder of a position, a recent or ongoing event, or a new phrase.",
+        no: "A settled fact, history, how something works, a definition, a conversion, a place, a date or time, or anything else that does not go stale."
+    )
+
     public static func request(for query: String, locale: Locale = .current, model: String = JevClient.defaultModel) -> SystemOneRequest {
         SystemOneRequest(
             model: model,
@@ -25,6 +43,7 @@ public enum JevRouting {
                     instructions: instructions,
                     options: ResponseFormat.allCases.map { ($0.rawValue, $0.criterion) }
                 )),
+                (recencyQuestionID, .noul(instructions: recencyInstructions, criteria: recencyCriteria)),
             ]
         )
     }
@@ -32,8 +51,11 @@ public enum JevRouting {
     public static func decision(
         from response: SystemOneResponse,
         latencyMs: Int,
-        floor: Double = confidenceFloor
+        floor: Double = confidenceFloor,
+        recencyThreshold: Double = recencyThreshold
     ) -> RouteDecision {
+        var recency: Double?
+        if case let .noul(value)? = response.answers[recencyQuestionID] { recency = value }
         guard case let .choice(answer)? = response.answers[questionID] else {
             return RouteDecision(
                 format: .fallback,
@@ -55,15 +77,19 @@ public enum JevRouting {
             )
         }
         let passes = answer.confidence >= floor
+        // Only formats a model answers are gated; web, map and stock show a page anyway.
+        let stale = passes && suggested.isAnswered && (recency ?? 0) >= recencyThreshold
+        let source: RouteDecision.Source = !passes ? .confidenceFallback : stale ? .recencyFallback : .jev
         return RouteDecision(
-            format: passes ? suggested : .fallback,
+            format: source == .jev ? suggested : .fallback,
             suggested: suggested,
             confidence: answer.confidence,
             probabilities: answer.probabilities,
             model: response.model,
             latencyMs: latencyMs,
             inputTokens: response.usage.inputTokens,
-            source: passes ? .jev : .confidenceFallback
+            recency: recency,
+            source: source
         )
     }
 }

@@ -54,16 +54,16 @@ public enum RoutingReport {
         out.append("| No API key configured | Web results | `noKey` |")
         out.append("| Request failed or timed out | Web results | `error(reason)` |")
         out.append("| `confidence` below \(JevRouting.confidenceFloor.formatted()) | Web results | `confidenceFallback` (the pick is kept as `suggested`) |")
-        out.append("| `confidence` at or above \(JevRouting.confidenceFloor.formatted()) | The chosen format's card; web results while that module is only `routed` (today: \(routedList)) | `jev` |")
+        out.append("| `confidence` at or above \(JevRouting.confidenceFloor.formatted()) and `recent` below \(JevRouting.recencyThreshold.formatted()) | The chosen format's card; web results while that module is only `routed` (today: \(routedList)) | `jev` |")
+        out.append("| `narrative` or `one_line` picked with confidence, but `recent` at or above \(JevRouting.recencyThreshold.formatted()) | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |")
         out.append("")
-        out.append("Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.")
+        out.append("Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.")
         out.append("")
         out.append("## Question types not used yet")
         out.append("")
-        out.append("- **noul**: a yes/no with a probability, no confidence field. Candidate use: \"does this query name a place?\" as a companion to the format Choice.")
         out.append("- **score**: a position on an ordered scale with confidence. Candidate use: how much the query needs a written explanation.")
         out.append("")
-        out.append("Adding a question is one entry in `JevRouting.request`; this file and `RoutingTests` pick it up.")
+        out.append("Adding a question is one entry in `JevRouting.request`; this file and `RoutingTests` pick it up. The yes/no `recent` question above is a noul.")
         return out.joined(separator: "\n") + "\n"
     }
 
@@ -79,6 +79,22 @@ public enum RoutingReport {
     private static func render(id: String, question: Question) -> [String] {
         var out: [String] = []
         switch question {
+        case let .noul(instructions, criteria):
+            out.append("### `\(id)` — type `noul`")
+            out.append("")
+            out.append("A yes/no question answered with the probability of yes. Instructions sent with the question:")
+            out.append("")
+            out.append("> " + instructions.replacingOccurrences(of: "\n", with: " "))
+            out.append("")
+            if let criteria {
+                out.append("| Means | Description |")
+                out.append("|---|---|")
+                out.append("| yes | \(criteria.yes) |")
+                out.append("| no | \(criteria.no) |")
+                out.append("")
+            }
+            out.append("Answer: `noul`, the probability of yes (0–1). No confidence field.")
+            out.append("")
         case let .choice(instructions, options):
             out.append("### `\(id)` — type `choice`")
             out.append("")

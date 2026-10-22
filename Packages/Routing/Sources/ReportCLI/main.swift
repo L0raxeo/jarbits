@@ -38,6 +38,9 @@ case "route":
     print("format: \(decision.format.rawValue)  source: \(decision.source)")
     if let confidence = decision.confidence { print("confidence: \(confidence.formatted(.number.precision(.fractionLength(2))))") }
     if let suggested = decision.suggested { print("suggested: \(suggested.rawValue)") }
+    if let recency = decision.recency {
+        print("recency: \(recency.formatted(.number.precision(.fractionLength(2)))) (threshold \(JevRouting.recencyThreshold.formatted()))")
+    }
     for (name, p) in decision.probabilities.sorted(by: { $0.value > $1.value }) {
         print("  \(name.padding(toLength: 12, withPad: " ", startingAt: 0)) \(p.formatted(.number.precision(.fractionLength(3))))")
     }

@@ -11,6 +11,9 @@ public struct RouteDecision: Codable, Sendable, Equatable {
     public var model: String?
     public var latencyMs: Int?
     public var inputTokens: Int?
+    /// Jev's probability that the right answer may have changed in the last
+    /// two years; nil when the question was not asked or not answered.
+    public var recency: Double?
     public var source: Source
 
     public enum Source: Codable, Sendable, Equatable {
@@ -18,6 +21,9 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         case jev
         /// Jev answered below the confidence floor; `format` is the fallback.
         case confidenceFallback
+        /// Jev picked a model-answered format with confidence, but `recency`
+        /// reached the threshold, so web results are shown instead.
+        case recencyFallback
         /// The query was an address, so Jev was not asked.
         case directURL
         /// No API key is configured, so Jev was not asked.
@@ -34,6 +40,7 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         model: String? = nil,
         latencyMs: Int? = nil,
         inputTokens: Int? = nil,
+        recency: Double? = nil,
         source: Source
     ) {
         self.format = format
@@ -43,6 +50,7 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         self.model = model
         self.latencyMs = latencyMs
         self.inputTokens = inputTokens
+        self.recency = recency
         self.source = source
     }
 

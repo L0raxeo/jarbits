@@ -49,6 +49,12 @@ first text arrives.
   `web_results` first, because Jev leans toward the first option when unsure.
 - Confidence below `JevRouting.confidenceFloor` (0.5) falls back to
   `web_results`. Any error or a 2.5 s timeout does the same.
+- The same request carries a second, yes/no question (`recent`): would the
+  right answer depend on something that may have changed in the last two
+  years, such as whether a person is alive, who holds an office, or a new
+  phrase? A `narrative` or `one_line` pick with that probability at or
+  above `JevRouting.recencyThreshold` (0.5) is shown as web results and
+  logged as `recencyFallback`, because the model's knowledge is months old.
 - The format maps to a plan in `JevRouter.plan(for:query:)`: `web_results`,
   `map` and `stock` load a Google results page; `narrative` and `one_line`
   become `.answer(format:query:)`.
@@ -57,7 +63,7 @@ first text arrives.
   tokens; for answer plans, the answer summary too). Nothing leaves the phone
   unless you export it from the ribbon.
 
-Model is pinned to `jev-1.13.0`. A routing request is roughly 1,000 input
+Model is pinned to `jev-1.13.0`. A routing request is roughly 1,200 input
 tokens at $0.042 per million, so a few hundred searches a month cost under a
 cent. To see what Jev makes of one query from the Mac (one real call):
 
@@ -76,7 +82,9 @@ instruction is the per-format rule set in `AnswerPrompt`
 two to four plain paragraphs; one-line gives the answer itself in at most
 twelve words, never a sentence restating the question. The input carries the
 query plus the device date, time and zone and the locale, so "today", "now"
-and "the time in X" work without any lookup.
+and "the time in X" work without any lookup, and the model's knowledge
+cutoff (January 2025, pinned in `AnswerPrompt.knowledgeCutoff`) with the
+number of months since, so it knows what may have changed.
 
 The model has no web access, on purpose. Grounding with Google Search was
 built and removed: Google's terms require their Search Suggestions bar,
@@ -86,9 +94,13 @@ restyled. So:
   rate, a score, the latest news) makes the model reply with the marker
   `NEEDS_LIVE_DATA`, which the app never shows; it loads the Google results
   page for the query instead and logs `needsLiveData`;
-- a narrative question about recent events gets one plain sentence saying
-  the answer may be out of date, then what the model knows; the Web results
-  button is on every answer card.
+- a one-line question whose answer may have changed since the cutoff, such
+  as whether someone is alive or who holds a role, gets the same marker;
+- a narrative question about anything that can change over that gap gets
+  one plain sentence saying the answer is as of January 2025 and may be out
+  of date, then what the model knew; the Web results link is under every
+  answer. Most such queries never reach the model: the `recent` question at
+  Jev sends them to web results first.
 
 Answers carry four levels of emphasis, written by the model as markers that
 are not Markdown and parsed by `AnswerMarkup` in the package: `==…==` for

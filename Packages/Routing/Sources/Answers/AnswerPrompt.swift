@@ -34,6 +34,13 @@ public enum AnswerPrompt {
     /// The whole reply when a one-line question cannot be answered without live data.
     public static let liveDataMarker = "NEEDS_LIVE_DATA"
 
+    /// When the model's training data ends. Google's model page gives no
+    /// date; every third-party model card for gemini-3.1-flash-lite says
+    /// January 2025 (checked 2026-10-21). Told to the model with the gap to
+    /// today, so it knows what may have changed.
+    public static let knowledgeCutoff = DateComponents(year: 2025, month: 1)
+    public static let knowledgeCutoffText = "January 2025"
+
     public static func system(for format: ResponseFormat) -> String {
         switch format {
         case .narrative: narrative
@@ -59,6 +66,7 @@ public enum AnswerPrompt {
             "",
             "Context (use for \"today\" and \"now\"; do not repeat it unless the query asks about it):",
             "- Date and time: \(dateText(context))",
+            "- Your knowledge ends around \(knowledgeCutoffText), about \(monthsSinceCutoff(context)) months before this date.",
             "- Locale: \(context.locale.identifier)",
         ].joined(separator: "\n")
     }
@@ -84,7 +92,7 @@ public enum AnswerPrompt {
         - Answer only the question that was asked. Do not add background, related facts, caveats, tips, or anything that is not a direct part of the answer.
         - Write two to four short paragraphs of plain prose. No headings, bullet points, numbered lists, tables, emoji, or Markdown other than the emphasis markers below.
         - No preamble and no closing line. Start with the answer. Do not offer further help or suggest follow-up questions.
-        - You have no access to the web. If the answer depends on events after what you know, say so in one plain sentence at the start, then answer with what you do know. Do not invent recent developments.
+        - Your knowledge ends around \(knowledgeCutoffText) and you have no access to the web; the context says how long ago that was. Anything that can change over such a gap may have changed: whether a person is alive, who holds an office or title, who leads a company or team, a record, a law, or the meaning of a recent phrase, slogan or meme. For those, say in one plain sentence at the start that your answer is as of \(knowledgeCutoffText) and may be out of date, then answer with what you knew then. Do not invent developments after that date.
         - Use the context block for "today" and "now". Do not mention the context unless the query is about it.
         - If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
         - Write in the language of the query.
@@ -104,13 +112,22 @@ public enum AnswerPrompt {
         - Reply with one line only: a number, a word, a name, a date, a time, or a short clause. Examples: "24 days", "Lima", "8:14 PM", "About 92 euros".
         - Give the answer itself, never a sentence that restates the question: "6:21 PM", not "The current time in Costa Rica is 6:21 PM".
         - Never more than twelve words. No explanation, no second sentence, no preamble, no trailing period.
-        - You have no access to the web. If the question needs live data you do not have, such as today's weather, a current price or exchange rate, a live score, or the latest news, reply with exactly: \(liveDataMarker)
+        - Your knowledge ends around \(knowledgeCutoffText) and you have no access to the web. If the question needs live data, such as today's weather, a current price or exchange rate, a live score, or the latest news, or if the answer may have changed since \(knowledgeCutoffText), such as whether a person is alive or who currently holds a role, reply with exactly: \(liveDataMarker)
         - You do know the current date and time from the context block. Compute dates, countdowns and the time in other places from it.
         - If the honest answer is a range or depends on something, give the typical value in the line, such as "Usually 7 to 10 days".
         - If the question cannot be answered in one line, answer its most direct version in one line anyway.
         - Answer in the language of the query.
         - You may wrap the key word or number in ==…==, as in "About ==92== euros". No other markers, no Markdown.
         """
+
+    /// Whole months from the knowledge cutoff to the context's date, never negative.
+    static func monthsSinceCutoff(_ context: AnswerContext) -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = context.timeZone
+        guard let cutoff = calendar.date(from: knowledgeCutoff) else { return 0 }
+        let months = calendar.dateComponents([.month], from: cutoff, to: context.now).month ?? 0
+        return max(0, months)
+    }
 
     private static func dateText(_ context: AnswerContext) -> String {
         let formatter = DateFormatter()
