@@ -2,13 +2,17 @@
 
 An iOS browser where a query goes through a router that decides what kind of
 card to show. The router is TypeSafe's Jev, a System One model: it picks one of
-five response formats and reports how sure it is. Three cards exist: a Google
-results web view (`web_results`), and two Gemini answer cards, `narrative`
-(a few paragraphs that answer only the question) and `one_line` (a single
-line such as "24 days"). `map` and `stock` still render web results. The
-decision and the answer's cost are shown in a Debug ribbon and logged on the
-device. Every future format is a new `CardPlan` case, a new SwiftUI card view,
-and a provider behind the router.
+five response formats and reports how sure it is. Two answer providers exist
+behind it: a Google results web view (`web_results`) and Gemini answers for
+`narrative` and `one_line`.
+
+The UI is being redone from scratch. Today the app is the home screen only:
+white, a purple gradient orb above the middle that breathes, and a keyboard
+hint at the bottom. Tapping or swiping up on the hint raises the keyboard and
+stretches the orb into a capsule you type in; return clears it and drops the
+keyboard. Nothing is sent yet: the old web and answer cards are out of the
+view tree, and the routing and answer code below is compiled but not called
+until the result UI is designed.
 
 ## Run
 
@@ -29,6 +33,7 @@ and a provider behind the router.
 ## How a query is routed
 
 `BrowserSession.submit` → `Router.route` → `RouteResult { plan, decision }`.
+(Not reachable from the home screen yet; see the introduction.)
 
 `JevRouter` (used when a key is configured):
 - An address (`example.com`, `https://…`) loads directly; Jev is not asked.
@@ -95,9 +100,8 @@ block without changing the cards.
 | `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`). |
 | `Browser/Router/CardPlan.swift` | The renderable plans. One enum case per card type. |
 | `Browser/Session/BrowserSession.swift` | Owns the single `WebPage` and the `AnswerSession`, runs queries through the router, applies the plan, writes the log. |
-| `Browser/Cards/` | One view per card type (`WebCardView`, `AnswerCardView`), plus the Debug-only `RouteDebugRibbon`. |
-| `Browser/Shell/` | Custom chrome: bottom address bar and navigation buttons. No system toolbars, so no Liquid Glass. |
-| `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the two API keys and `UIDesignRequiresCompatibility`. |
+| `Browser/Home/` | The screen: `HomeView` (white background, focus state, dismissal), `BreathingOrb` (the mesh-gradient circle that morphs into the capsule field) and `KeyboardHint` (the bobbing chevron over a keyboard icon). No system toolbars, so no Liquid Glass. |
+| `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the two API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
 
 ## Modules
@@ -152,8 +156,8 @@ a simulator.
 
 ## Deliberately absent
 
-Tabs, history, bookmarks, content blocking, reader mode, the map and stock
-cards, follow-up questions on an answer, live search behind answers (see
+Dark mode, tabs, history, bookmarks, content blocking, reader mode, the map
+and stock cards, follow-up questions on an answer, live search behind answers (see
 "Answer cards" for why Google's grounding was removed), location, the
 backend (the Jev and Gemini requests move behind it later, taking the keys
 with them).
