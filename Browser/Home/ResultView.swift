@@ -131,6 +131,10 @@ private struct WebResultView: View {
         VStack(spacing: 0) {
             WebView(page)
                 .webViewBackForwardNavigationGestures(.enabled)
+                // Sideways only when the page is wider than the screen; by
+                // default the web view rubber-bands sideways on every page,
+                // so a vertical drag with a little drift wobbles the page.
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                 .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
                     ResultView.scrolled(from: old, to: new, compact: &barCompact)
                 }
