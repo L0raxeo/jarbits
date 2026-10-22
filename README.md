@@ -57,8 +57,15 @@ first text arrives.
   tokens; for answer plans, the answer summary too). Nothing leaves the phone
   unless you export it from the ribbon.
 
-Model is pinned to `jev-1.13.0`. A routing request is roughly 500 input tokens
-at $0.042 per million, so a few hundred searches a month cost under a cent.
+Model is pinned to `jev-1.13.0`. A routing request is roughly 1,000 input
+tokens at $0.042 per million, so a few hundred searches a month cost under a
+cent. To see what Jev makes of one query from the Mac (one real call):
+
+```
+TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "some query"
+```
+
+It prints the pick, the confidence and every option's probability.
 
 ## Answer cards
 

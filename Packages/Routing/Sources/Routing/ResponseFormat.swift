@@ -58,7 +58,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
             )
         case .narrative:
             Criterion(
-                what: "A written explanation of a few paragraphs. The query asks why or how something happened or works, for the story behind something, or for a judgement that needs context, such as whether somewhere is safe.",
+                what: "A written explanation of a few paragraphs. The query asks why or how something happened or works, for the story behind something, where a phrase, slogan, name or meme came from, or for a judgement that needs context, such as whether somewhere is safe.",
                 notFor: "Questions answered by one line, such as a time, a date, a number or a yes/no, and queries that only want a price chart.",
                 examples: [
                     "at the end of attack on titan why is levi in a wheelchair",
@@ -67,6 +67,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
                     "how is gingivitis healed",
                     "Why is INTR so low?",
                     "Is south africa safe right now",
+                    "where did the phrase ok boomer come from",
                 ]
             )
         case .map:
