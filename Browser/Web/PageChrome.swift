@@ -93,8 +93,12 @@ extension PageChrome {
     static let probe = "return window.__pageChrome ? window.__pageChrome.evaluate(true) : null"
 
     /// A page configuration with the watcher installed and `handler` listening.
+    /// Video plays inline, as in Safari: the iPhone default (`.automatic`)
+    /// throws every `<video>` that starts, YouTube's feed previews included,
+    /// into the system full-screen player.
     static func configuration(handler: PageChromeHandler) -> WebPage.Configuration {
         var configuration = WebPage.Configuration()
+        configuration.mediaPlaybackBehavior = .allowsInlinePlayback
         let content = WKUserContentController()
         if let url = Bundle.main.url(forResource: "PageChrome", withExtension: "js"),
            let source = try? String(contentsOf: url, encoding: .utf8) {
