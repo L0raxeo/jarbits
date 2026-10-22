@@ -1,5 +1,6 @@
 import Answers
 import Foundation
+import Images
 import Routing
 
 // Usage:
@@ -17,7 +18,7 @@ func fail(_ message: String) -> Never {
 
 switch arguments.first {
 case "routing":
-    print(RoutingReport.markdown() + "\n" + AnswersReport.markdown(), terminator: "")
+    print(RoutingReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown(), terminator: "")
 case "decisions":
     guard arguments.count == 2 else { fail("usage: report decisions <decisions.jsonl>") }
     do {

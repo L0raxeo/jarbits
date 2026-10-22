@@ -42,7 +42,7 @@ public enum AnswerMarkup {
         switch format {
         case .oneLine: [.highlight]
         case .narrative: [.highlight, .bold, .underline, .italic]
-        case .webResults, .map, .stock: []
+        case .webResults, .map, .stock, .image: []
         }
     }
 

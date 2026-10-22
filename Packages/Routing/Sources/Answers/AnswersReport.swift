@@ -5,7 +5,7 @@ import Routing
 /// model-answered formats, built from the same `AnswerPrompt` the app uses.
 public enum AnswersReport {
     public static func markdown() -> String {
-        let built = ResponseFormat.allCases.filter { $0.stage >= .built && $0 != .webResults }
+        let built = ResponseFormat.allCases.filter(\.isAnswered)
         var out: [String] = []
         out.append("## After routing: Gemini answers")
         out.append("")

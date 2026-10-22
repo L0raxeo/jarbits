@@ -2,9 +2,9 @@
 
 An iOS browser where a query goes through a router that decides what kind of
 card to show. The router is TypeSafe's Jev, a System One model: it picks one of
-five response formats and reports how sure it is. Two answer providers exist
-behind it: a Google results web view (`web_results`) and Gemini answers for
-`narrative` and `one_line`.
+six response formats and reports how sure it is. Three providers exist
+behind it: a Google results web view (`web_results`), Gemini answers for
+`narrative` and `one_line`, and a Wikipedia picture for `image`.
 
 The screen is white with a purple gradient orb above the middle that
 breathes, and a keyboard hint at the bottom. Tapping the orb or the hint, or
@@ -60,7 +60,7 @@ first text arrives.
   logged as `recencyFallback`, because the model's knowledge is months old.
 - The format maps to a plan in `JevRouter.plan(for:query:)`: `web_results`,
   `map` and `stock` load a Google results page; `narrative` and `one_line`
-  become `.answer(format:query:)`.
+  become `.answer(format:query:)`; `image` becomes `.image(query:)`.
 - Each decision is appended to `Application Support/Browser/decisions.jsonl`
   (query, format, confidence, every option's probability, model, latency,
   tokens; for answer plans, the answer summary too). Nothing leaves the phone
@@ -127,14 +127,32 @@ outcome. If live answers are wanted later, a search source such as Serper
 (prepaid, about $1 per 1,000 queries) can feed results into the same input
 block without changing the cards.
 
+## Image cards
+
+`image` is for one specific, named thing with a definitive look: a flag, a
+logo, a landmark, a painting, a person, a species. `ImageSession` asks
+Wikipedia, free and without a key: the REST page search turns the query
+into article candidates, the page summary of the first three with a
+thumbnail gives each article's lead image, and disambiguation pages and
+articles without an image are skipped. The first picture is downloaded and
+decoded before the card fades in, so the wave line lasts until it is on
+screen; the others are alternates, up to two, shown as thumbnails under the
+title and description with a "Wikipedia" link to the article (which carries
+the image's licence and author) and the usual "Web results". Nothing found,
+or nothing within 10 s, falls back to web results. The log records the
+article, the candidate count, the latency and the outcome; if misses turn
+out to be common, the upgrade is to let Gemini turn the query into an
+article title before searching.
+
 ## Where things live
 
 | Path | Role |
 |---|---|
-| `Packages/Routing/` | Foundation-only Swift package with two libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence gate, `QueryParser`, the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, and the per-format prompts. Tests run on macOS. |
+| `Packages/Routing/` | Foundation-only Swift package with three libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence and recency gates, `QueryParser`, the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client. Tests run on macOS. |
 | `Browser/Router/Router.swift` | The seam: query in, `RouteResult` out. |
 | `Browser/Router/JevRouter.swift` | Asks Jev, maps format → `CardPlan`. Also `BrowserSession.makeRouter()` and `makeAnswerClient()`. |
 | `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
+| `Browser/Images/ImageSession.swift` | Loads one Wikipedia picture (and its alternates) for an image plan, and the summary for the log. |
 | `Browser/Router/LocalRouter.swift` | No-network fallback used when no key is configured. |
 | `Browser/Router/DecisionLog.swift` | JSON Lines log of every decision and answer. |
 | `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`). |
@@ -149,8 +167,8 @@ block without changing the cards.
 Each response format is a module with a stage recorded in code
 (`ResponseFormat.stage` in `Packages/Routing`): `routed` (Jev can pick it,
 web results stand in), `built` (a real card renders), `verified` (used on a
-device and accepted). Today: `web_results` verified; `narrative` and
-`one_line` built; `map` and `stock` routed. A routed pick shows web
+device and accepted). Today: `web_results` verified; `narrative`,
+`one_line` and `image` built; `map` and `stock` routed. A routed pick shows web
 results and is logged as the pick it was, and `JevRouter` asserts the stage
 and the switch agree. Flip the stage in the same change that adds the card.
 

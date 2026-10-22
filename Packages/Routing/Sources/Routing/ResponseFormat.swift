@@ -9,20 +9,20 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     case map
     case stock
     case oneLine = "one_line"
+    case image
 
     /// What the app shows when the router cannot or should not decide.
     public static let fallback: ResponseFormat = .webResults
 
-    /// How far along this module is. Flip it in the same change that adds the
-    /// card; `JevRouter.plan(for:query:)` asserts the two agree and the Debug
-    /// ribbon shows it.
-    /// Formats a model answers, as opposed to a page the app loads.
+    /// Formats a model answers, as opposed to a page or a picture the app loads.
     public var isAnswered: Bool { self == .narrative || self == .oneLine }
 
+    /// How far along this module is. Flip it in the same change that adds the
+    /// card; `JevRouter.plan(for:query:)` asserts the two agree.
     public var stage: Stage {
         switch self {
         case .webResults: .verified
-        case .narrative, .oneLine: .built
+        case .narrative, .oneLine, .image: .built
         case .map, .stock: .routed
         }
     }
@@ -35,6 +35,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .map: "Map"
         case .stock: "Stock"
         case .oneLine: "One-line answer"
+        case .image: "Image"
         }
     }
 
@@ -46,6 +47,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .map: "MapKit card with an MKLocalSearch pin"
         case .stock: "Ticker resolution, a market-data provider, Swift Charts card"
         case .oneLine: nil
+        case .image: nil
         }
     }
 
@@ -55,8 +57,8 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         switch self {
         case .webResults:
             Criterion(
-                what: "A standard page of web search results. The default for broad, vague, navigational or multi-part queries, for a specific website the user names, for pictures or videos, and for anything the other formats do not clearly fit.",
-                notFor: "A question that asks why or how something happened, a single short fact, a specific place to find, or a ticker.",
+                what: "A standard page of web search results. The default for broad, vague, navigational or multi-part queries, for a specific website the user names, for browsing many pictures or videos, and for anything the other formats do not clearly fit.",
+                notFor: "A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, or the bare name of one famous thing the user wants to see.",
                 examples: ["best laptops 2026", "news", "python tutorial reddit", "github login", "dune part 3 trailer", "golden retriever puppies"]
             )
         case .narrative:
@@ -95,6 +97,20 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
                     "how long do cold sores last",
                     "capital of peru",
                     "100 usd to eur",
+                ]
+            )
+        case .image:
+            Criterion(
+                what: "A single picture of one specific, named thing with a definitive look: a flag, a logo or emblem, a landmark or monument, a painting, a person, a product, a species, a chemical structure. The bare name of such a thing, with no other words, means the user wants to see it, not read about it.",
+                notFor: "Browsing many pictures of a category, mood or idea, which wants web results; and questions about why something looks the way it does, which want an explanation.",
+                examples: [
+                    "dominican flag",
+                    "eiffel tower",
+                    "starry night painting",
+                    "nvidia logo",
+                    "what does a capybara look like",
+                    "mona lisa",
+                    "aston martin db5",
                 ]
             )
         }

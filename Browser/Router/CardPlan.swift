@@ -10,4 +10,6 @@ enum CardPlan: Hashable, Sendable {
     case web(URL)
     /// A model-written answer for `narrative` or `one_line`, streamed by `AnswerSession`.
     case answer(format: ResponseFormat, query: String)
+    /// A Wikipedia picture of the thing named, loaded by `ImageSession`.
+    case image(query: String)
 }

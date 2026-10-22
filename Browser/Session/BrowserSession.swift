@@ -1,5 +1,6 @@
 import Answers
 import Foundation
+import Images
 import Observation
 import Routing
 import WebKit
@@ -26,6 +27,8 @@ final class BrowserSession {
     /// Streams Gemini answers; nil when no Gemini key is configured, in which
     /// case the router never produces an answer plan.
     let answer: AnswerSession?
+    /// Loads Wikipedia pictures for image plans.
+    let images = ImageSession()
     private(set) var plans: [CardPlan] = []
     private(set) var lastQuery = ""
     private(set) var stage: Stage = .idle
@@ -49,6 +52,12 @@ final class BrowserSession {
         self.answer?.onFinish = { [weak self] summary in
             self?.answerFinished(summary)
         }
+        images.onReady = { [weak self] in
+            self?.imageReady()
+        }
+        images.onFinish = { [weak self] summary in
+            self?.imageFinished(summary)
+        }
     }
 
     func submit(_ query: String) {
@@ -69,9 +78,15 @@ final class BrowserSession {
         load(QueryParser.searchURL(for: lastQuery))
     }
 
+    /// A page the result links to, such as the Wikipedia article behind an image.
+    func open(_ url: URL) {
+        load(url)
+    }
+
     /// Back to the idle screen: whatever is in flight stops, the result goes.
     func reset() {
         answer?.cancel()
+        images.cancel()
         loadTask?.cancel()
         loadGeneration += 1
         page.stopLoading()
@@ -100,6 +115,28 @@ final class BrowserSession {
             stage = .loading
             answer.start(format: format, query: query)
             // Recorded when the answer finishes, with its summary attached.
+        case let .image(query):
+            answer?.cancel()
+            plans = [result.plan]
+            stage = .loading
+            images.start(query: query)
+            // Recorded when the image loads or fails, with its summary attached.
+        }
+    }
+
+    /// The first picture is decoded: fade the line out, the card in.
+    private func imageReady() {
+        guard images.query == lastQuery, case .image = plans.first else { return }
+        stage = .ready
+    }
+
+    private func imageFinished(_ summary: ImageSummary) {
+        guard images.query == lastQuery, case .image = plans.first else { return }
+        if let decision = lastDecision {
+            record(decision, query: images.query, image: summary)
+        }
+        if case .fellBackToWeb = summary.outcome {
+            load(QueryParser.searchURL(for: images.query))
         }
     }
 
@@ -128,6 +165,7 @@ final class BrowserSession {
     /// commits its first content, fails, or `commitTimeout` passes.
     private func load(_ url: URL) {
         answer?.cancel()
+        images.cancel()
         plans = [.web(url)]
         stage = .loading
         loadGeneration += 1
@@ -152,8 +190,8 @@ final class BrowserSession {
         }
     }
 
-    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil) {
-        let record = DecisionRecord(query: query, decision: decision, answer: answer)
+    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil) {
+        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image)
         Task { await log.append(record) }
     }
 

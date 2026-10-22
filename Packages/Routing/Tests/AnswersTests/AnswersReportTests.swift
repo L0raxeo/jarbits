@@ -20,11 +20,10 @@ import Testing
         #expect(markdown.contains("### `narrative` — system instruction, max \(AnswerPrompt.maxOutputTokens(for: .narrative)) output tokens"))
     }
 
-    /// `ROUTING.md` is both halves: the Jev contract, then the Gemini prompts.
-    @Test func committedRoutingFileIsCurrent() throws {
+    /// The Gemini half must be in the file; `ImagesTests` checks the whole file.
+    @Test func committedRoutingFileHasTheGeminiPrompts() throws {
         let committed = try String(contentsOf: Self.repoRoot.appending(path: "ROUTING.md"), encoding: .utf8)
-        let expected = RoutingReport.markdown() + "\n" + AnswersReport.markdown()
-        #expect(committed == expected, "ROUTING.md is stale; run: \(RoutingReport.regenerateCommand)")
+        #expect(committed.contains(AnswersReport.markdown()), "ROUTING.md is stale; run: \(RoutingReport.regenerateCommand)")
     }
 
     @Test func oldLogLinesWithoutAnswersStillDecode() throws {

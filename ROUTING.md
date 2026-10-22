@@ -31,11 +31,12 @@ Options, in the order Jev sees them (it leans toward the first when unsure):
 
 | # | Option | What it is for | Not for | Queries meant to trigger it |
 |---|---|---|---|---|
-| 1 | `web_results` | A standard page of web search results. The default for broad, vague, navigational or multi-part queries, for a specific website the user names, for pictures or videos, and for anything the other formats do not clearly fit. | A question that asks why or how something happened, a single short fact, a specific place to find, or a ticker. | "best laptops 2026", "news", "python tutorial reddit", "github login", "dune part 3 trailer", "golden retriever puppies" |
+| 1 | `web_results` | A standard page of web search results. The default for broad, vague, navigational or multi-part queries, for a specific website the user names, for browsing many pictures or videos, and for anything the other formats do not clearly fit. | A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, or the bare name of one famous thing the user wants to see. | "best laptops 2026", "news", "python tutorial reddit", "github login", "dune part 3 trailer", "golden retriever puppies" |
 | 2 | `narrative` | A written explanation of a few paragraphs. The query asks why or how something happened or works, for the story behind something, where a phrase, slogan, name or meme came from, or for a judgement that needs context, such as whether somewhere is safe. | Questions answered by one line, such as a time, a date, a number or a yes/no, and queries that only want a price chart. | "at the end of attack on titan why is levi in a wheelchair", "how did simon cowell get famous", "why are highschool students protesting france?", "how is gingivitis healed", "Why is INTR so low?", "Is south africa safe right now", "where did the phrase ok boomer come from" |
 | 3 | `map` | A map with a pin. The query names a physical place to locate or get to: an address, a shop, a city, a landmark, directions, or something near me. | Places mentioned only as the subject of a question or a fact, such as whether a country is safe or what time it is there. | "coffee near me", "directions to austin airport", "where is machu picchu", "blue bottle coffee san francisco" |
 | 4 | `stock` | A price chart for a security. The query names a ticker, a public company's stock or share price, a market index, or a cryptocurrency price, and wants the price. | Questions about why a price moved or company news, which want an explanation, and currency conversion. | "nasdaq", "AAPL", "tesla stock", "bitcoin price", "s&p 500 today" |
 | 5 | `one_line` | A single short answer that fits on one line: a time, a date, a number, a duration, a yes/no, a conversion or a quick fact, including live ones like the weather. | Questions that ask why or how and need a few paragraphs, and anything that wants a price chart. | "what's the time in costa rica", "will it rain today", "how long do cold sores last", "capital of peru", "100 usd to eur" |
+| 6 | `image` | A single picture of one specific, named thing with a definitive look: a flag, a logo or emblem, a landmark or monument, a painting, a person, a product, a species, a chemical structure. The bare name of such a thing, with no other words, means the user wants to see it, not read about it. | Browsing many pictures of a category, mood or idea, which wants web results; and questions about why something looks the way it does, which want an explanation. | "dominican flag", "eiffel tower", "starry night painting", "nvidia logo", "what does a capybara look like", "mona lisa", "aston martin db5" |
 
 Answer: `choice` (one option name), `probabilities` (one per option), `confidence` (0–1).
 
@@ -152,3 +153,20 @@ Server-sent events: `step.delta` text pieces, then `interaction.completed` with 
 | No Gemini key configured | Web results; Jev's pick is still logged | the decision alone |
 
 The answer summary (model, tokens, first-token and total latency, outcome) is appended to the same `decisions.jsonl` line as the routing decision.
+
+## After routing: Wikipedia images
+
+An `image` pick is filled from Wikipedia, free and without a key, by `ImageSearch` in `Packages/Routing/Sources/Images`. Every request sends `User-Agent: Browser/0.1 (com.lorcancheng.browser)`.
+
+1. `GET https://en.wikipedia.org/w/rest.php/v1/search/page?q=<query>&limit=5`: article candidates in rank order. Hits without a `thumbnail` are dropped; the first 3 remain.
+2. `GET https://en.wikipedia.org/api/rest_v1/page/summary/<key>` for each, in parallel: `type` must be `standard` (disambiguation pages are dropped) and `originalimage` must exist. An SVG comes back as a PNG render of about 960 px.
+3. The first remaining article's picture is downloaded and decoded before the card is shown; the others, up to two, are alternates.
+
+No candidate with a picture, any failure, or 6 s without a reply per step falls back to web results.
+
+| Outcome | Shown | Logged as |
+|---|---|---|
+| A picture decoded | The image card, with alternates when there are any | `shown(alternates:)` with the article, candidate count and latency |
+| Nothing with a picture, or an error | Web results | `fellBackToWeb(reason)` |
+
+The article's page carries the image's licence and author; the card links to it.

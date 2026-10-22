@@ -8,12 +8,15 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     /// Filled in once Gemini has answered (or failed to); absent for web plans
     /// and for lines written before answers existed.
     public var answer: AnswerSummary?
+    /// Filled in once the image card has loaded (or failed to); absent otherwise.
+    public var image: ImageSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
         self.answer = answer
+        self.image = image
     }
 
     public static let encoder: JSONEncoder = {
@@ -142,6 +145,27 @@ public enum DecisionsReport {
                     case let .partial(reason): out.append("- \"\(record.query)\": partial, \(reason)")
                     case let .fellBackToWeb(reason): out.append("- \"\(record.query)\": fell back to web, \(reason)")
                     case .completed, .needsLiveData: break
+                    }
+                }
+                out.append("")
+            }
+        }
+
+        let imaged = records.compactMap { record in record.image.map { (record, $0) } }
+        if !imaged.isEmpty {
+            out.append("## Images")
+            out.append("")
+            let shown = imaged.filter { if case .shown = $0.1.outcome { true } else { false } }
+            let withAlternates = shown.filter { if case let .shown(alternates) = $0.1.outcome { alternates > 0 } else { false } }.count
+            out.append("\(imaged.count) image queries: \(shown.count) shown (\(withAlternates) with alternates), \(imaged.count - shown.count) fell back to web. Median latency \(median(imaged.compactMap(\.1.latencyMs))).")
+            out.append("")
+            let missed = imaged.filter { if case .fellBackToWeb = $0.1.outcome { true } else { false } }
+            if !missed.isEmpty {
+                out.append("Image misses:")
+                out.append("")
+                for (record, image) in missed.suffix(10) {
+                    if case let .fellBackToWeb(reason) = image.outcome {
+                        out.append("- \"\(record.query)\": \(reason)")
                     }
                 }
                 out.append("")
