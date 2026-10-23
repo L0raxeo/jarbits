@@ -78,6 +78,16 @@ home screen reads to show the line or the result; a page counts as ready
 when WebKit commits its first content (or after 8 s), an answer when its
 first text arrives.
 
+`LocalFirstRouter` wraps whichever router is behind it:
+- A query the device can answer itself is a card at once, with no model and
+  no network: today, the time in a named place ("what time is it in Mexico?").
+  `LocalAnswers` in the package holds the rules: a fixed grammar
+  (`TimeQuery`), a place resolver over the device's own zone database plus
+  hand tables for countries, US states and common aliases (`PlaceTimeZones`),
+  and the clock arithmetic (`LocalTimeAnswer`). A place the tables do not
+  know, or any other phrasing, goes on to Jev unchanged. Logged as
+  `local("time")`; an older `report` build cannot decode a log that holds it.
+
 `JevRouter` (used when a key is configured):
 - An address (`example.com`, `https://…`) loads directly; Jev is not asked.
 - Anything else is sent as `{ query, locale }` with one Choice question over
@@ -182,8 +192,9 @@ article title before searching.
 
 | Path | Role |
 |---|---|
-| `Packages/Routing/` | Foundation-only Swift package with three libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence and recency gates, `QueryParser`, the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client. Tests run on macOS. |
+| `Packages/Routing/` | Foundation-only Swift package with three libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence and recency gates, `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`), the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client. Tests run on macOS. |
 | `Browser/Router/Router.swift` | The seam: query in, `RouteResult` out. |
+| `Browser/Router/LocalFirstRouter.swift` | Tries `LocalAnswers` before the router it wraps; a hit is a `.localAnswer` plan. |
 | `Browser/Router/JevRouter.swift` | Asks Jev, maps format → `CardPlan`. Also `BrowserSession.makeRouter()` and `makeAnswerClient()`. |
 | `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
 | `Browser/Images/ImageSession.swift` | Loads one Wikipedia picture (and its alternates) for an image plan, and the summary for the log. |
@@ -240,7 +251,9 @@ swift test --package-path Packages/Routing
 
 Covers the Jev request body against TypeSafe's documented shape and option
 order, decoding of their example response, the confidence gate, every failure
-path falling back to web results, and the address bypass; and for Gemini, the
+path falling back to web results, and the address bypass; the on-device time
+rule (its grammar, every alias and country row resolving to a real zone, and
+the day shift and clock format against a fixed instant); and for Gemini, the
 request body and key order (and that no tool is sent), the per-format prompts
 and budgets, the context block, SSE parsing, a canned stream end to end,
 error frames, timeouts, and old log lines without answers. Nothing here needs

@@ -17,7 +17,17 @@ State (what Jev reads):
 | `query` | The text as typed, trimmed. |
 | `locale` | The device locale identifier, e.g. `en_US`. |
 
-Before any request: text that parses as an address (`example.com`, `https://…`) loads directly and Jev is not asked.
+Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can answer itself becomes a card at once; Jev is not asked either way.
+
+## Answered on the device
+
+The time in a named place needs no model. A query that is exactly one opener, a place and at most one trailer (case, accents and punctuation aside) is answered from the device clock when the place is a country, a US state or a city in the device's zone database; otherwise it goes on to Jev like any other query. English only.
+
+- Openers before a place: "what time is it in", "what's the time in", "what is the time in", "what time is in", "what time in", "current time in", "local time in", "the time in", "time now in", "time in"
+- Whole queries meaning the time here: "what time is it", "what's the time", "what is the time", "current time", "local time", "the time", "time now"
+- Trailers, at the end or between "is it" and "in": "at the moment", "right now", "currently", "now", "today"
+
+Shown as `==7:56 PM==`, with `tomorrow` or `yesterday` when the date there differs, and `in Mexico City` when the place spans zones. Logged as `local("time")` with none of the Jev fields.
 
 ## The questions
 
@@ -67,6 +77,7 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 
 | Outcome | Shown | Logged as |
 |---|---|---|
+| The time in a named place (see above) | A one-line card computed on the device | `local("time")` |
 | Address typed | That page | `directURL` |
 | No API key configured | Web results | `noKey` |
 | Request failed or timed out | Web results | `error(reason)` |

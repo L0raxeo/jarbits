@@ -28,6 +28,8 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         case directURL
         /// No API key is configured, so Jev was not asked.
         case noKey
+        /// Answered on the device by the named rule (see `LocalAnswers`); no model was asked.
+        case local(String)
         /// The request failed; `format` is the fallback.
         case error(String)
     }
@@ -60,6 +62,10 @@ public struct RouteDecision: Codable, Sendable, Equatable {
 
     public static func noKey() -> RouteDecision {
         RouteDecision(format: .webResults, source: .noKey)
+    }
+
+    public static func local(_ rule: String, format: ResponseFormat) -> RouteDecision {
+        RouteDecision(format: format, source: .local(rule))
     }
 
     /// The second most likely format, for the debug ribbon.

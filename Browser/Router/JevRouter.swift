@@ -40,10 +40,10 @@ struct JevRouter: Router {
 }
 
 extension BrowserSession {
-    /// Jev when a key is configured, the local fallback otherwise.
+    /// The device's own rules first; behind them Jev when a key is configured, the local fallback otherwise.
     static func makeRouter() -> any Router {
-        guard let key = Secrets.typeSafeAPIKey else { return LocalRouter() }
-        return JevRouter(formatRouter: FormatRouter(client: JevClient(apiKey: key)), canAnswer: Secrets.geminiAPIKey != nil)
+        guard let key = Secrets.typeSafeAPIKey else { return LocalFirstRouter(inner: LocalRouter()) }
+        return LocalFirstRouter(inner: JevRouter(formatRouter: FormatRouter(client: JevClient(apiKey: key)), canAnswer: Secrets.geminiAPIKey != nil))
     }
 
     /// Gemini when a key is configured; nil leaves the answer formats on web results.

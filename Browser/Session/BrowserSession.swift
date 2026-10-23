@@ -209,6 +209,12 @@ final class BrowserSession {
             stage = .loading
             answer.start(format: format, query: query)
             // Recorded when the answer finishes, with its summary attached.
+        case let .localAnswer(_, query, _):
+            answer?.cancel()
+            images.cancel()
+            plans = [result.plan]
+            stage = .ready
+            record(result.decision, query: query)
         case let .image(query):
             answer?.cancel()
             plans = [result.plan]

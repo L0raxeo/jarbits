@@ -34,6 +34,9 @@ import Testing
         #expect(markdown.contains("### `recent` — type `noul`"))
         #expect(markdown.contains(JevRouting.recencyCriteria.yes))
         #expect(markdown.contains("`recencyFallback`"))
+        #expect(markdown.contains("`local(\"time\")`"))
+        #expect(markdown.contains("\"\(TimeQuery.placeOpeners[0])\""))
+        #expect(markdown.contains("\"\(TimeQuery.trailers[0])\""))
         #expect(!markdown.contains("**noul**: a yes/no"), "noul is in use now")
         #expect(markdown.contains(JevClient.defaultModel))
         #expect(markdown.contains("2500 ms"))
@@ -61,13 +64,15 @@ import Testing
             DecisionRecord(timestamp: now.addingTimeInterval(240), query: "is charlie kirk alive", decision: RouteDecision(
                 format: .webResults, suggested: .oneLine, confidence: 0.9,
                 probabilities: ["one_line": 0.92, "web_results": 0.05], model: "jev-1.13.0", latencyMs: 150, inputTokens: 1100, recency: 0.91, source: .recencyFallback)),
+            DecisionRecord(timestamp: now.addingTimeInterval(300), query: "what time is it in tokyo", decision: .local("time", format: .oneLine)),
         ]
         let lines = try records.map { String(decoding: try DecisionRecord.encoder.encode($0), as: UTF8.self) }.joined(separator: "\n") + "\n"
         let parsed = try DecisionsReport.parse(Data(lines.utf8))
         #expect(parsed == records)
 
         let markdown = DecisionsReport.markdown(records: parsed)
-        #expect(markdown.contains("5 queries: 3 asked Jev, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("6 queries: 3 asked Jev, 1 answered on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("- `time`: 1, most recent \"what time is it in tokyo\""))
         #expect(markdown.contains("| `stock` | 1 | 1 | 0 | 0 | 0.91 | \"nasdaq stock\" |"))
         #expect(markdown.contains("| `map` | 1 | 0 | 1 | 0 | 0.30 | \"coffee\" |"))
         #expect(markdown.contains("| `one_line` | 1 | 0 | 0 | 1 | 0.90 | \"is charlie kirk alive\" |"))

@@ -54,10 +54,11 @@ public enum DecisionsReport {
         let errors = records.filter { if case .error = $0.decision.source { true } else { false } }
         let direct = records.filter { $0.decision.source == .directURL }
         let noKey = records.filter { $0.decision.source == .noKey }
+        let local = records.filter { if case .local = $0.decision.source { true } else { false } }
         let latencies = asked.compactMap(\.decision.latencyMs).sorted()
 
         let gated = asked.filter { $0.decision.source == .recencyFallback }
-        out.append("\(records.count) queries: \(asked.count) asked Jev, \(direct.count) addresses, \(noKey.count) without a key, \(errors.count) errors, \(gated.count) sent to web for recency.")
+        out.append("\(records.count) queries: \(asked.count) asked Jev, \(local.count) answered on the device, \(direct.count) addresses, \(noKey.count) without a key, \(errors.count) errors, \(gated.count) sent to web for recency.")
         if let p50 = latencies.isEmpty ? nil : latencies[latencies.count / 2] {
             out.append("Median Jev latency \(p50) ms.")
         }
@@ -101,6 +102,20 @@ public enum DecisionsReport {
                 let pick = record.decision.suggested?.rawValue ?? "?"
                 let recency = record.decision.recency.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? "?"
                 out.append("| \"\(record.query)\" | `\(pick)` | \(recency) |")
+            }
+            out.append("")
+        }
+
+        if !local.isEmpty {
+            out.append("## Answered on the device")
+            out.append("")
+            var byRule: [String: [DecisionRecord]] = [:]
+            for record in local {
+                if case let .local(rule) = record.decision.source { byRule[rule, default: []].append(record) }
+            }
+            for (rule, rows) in byRule.sorted(by: { $0.key < $1.key }) {
+                let recent = rows.sorted { $0.timestamp > $1.timestamp }.prefix(10).map { "\"\($0.query)\"" }.joined(separator: ", ")
+                out.append("- `\(rule)`: \(rows.count), most recent \(recent)")
             }
             out.append("")
         }

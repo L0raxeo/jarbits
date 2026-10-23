@@ -30,10 +30,15 @@ case "decisions":
     }
 case "route":
     guard arguments.count == 2 else { fail("usage: report route <query>") }
+    let query = arguments[1]
+    if let local = LocalAnswers.answer(query, locale: Locale(identifier: "en_US")) {
+        print("query: \"\(query)\"")
+        print("answered on the device by rule \(local.rule): \(local.text)")
+        exit(0)
+    }
     guard let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty else {
         fail("set TYPESAFE_API_KEY in the environment (never paste it on the command line)")
     }
-    let query = arguments[1]
     let decision = await FormatRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query)
     print("query: \"\(query)\"")
     print("format: \(decision.format.rawValue)  source: \(decision.source)")

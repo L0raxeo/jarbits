@@ -12,4 +12,6 @@ enum CardPlan: Hashable, Sendable {
     case answer(format: ResponseFormat, query: String)
     /// A Wikipedia picture of the thing named, loaded by `ImageSession`.
     case image(query: String)
+    /// A one-line answer computed on the device by a `LocalAnswers` rule; `text` carries the format's markup.
+    case localAnswer(format: ResponseFormat, query: String, text: String)
 }

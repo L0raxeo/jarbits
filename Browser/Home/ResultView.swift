@@ -82,8 +82,10 @@ struct ResultView: View {
             WebResultView(page: session.page, bottomInset: bottomInset, chrome: session.chrome, barCompact: $barCompact)
         case let .answer(format, _):
             if let answer = session.answer {
-                AnswerView(answer: answer, format: format, clayY: clayY, barCompact: $barCompact)
+                AnswerView(spans: answer.styledSpans, stoppedEarly: answer.stoppedEarly, format: format, clayY: clayY, barCompact: $barCompact)
             }
+        case let .localAnswer(format, _, text):
+            AnswerView(spans: AnswerMarkup.styled(text, for: format), stoppedEarly: false, format: format, clayY: clayY, barCompact: $barCompact)
         case .image:
             ImageCardView(images: session.images, clayY: clayY)
         }
@@ -199,7 +201,9 @@ private struct WebResultView: View {
 /// A plain "Web results" link under either loads the Google page instead.
 private struct AnswerView: View {
     @Environment(BrowserSession.self) private var session
-    let answer: AnswerSession
+    let spans: [StyledSpan]
+    /// The stream failed after some text had arrived.
+    let stoppedEarly: Bool
     let format: ResponseFormat
     let clayY: CGFloat
     @Binding var barCompact: Bool
@@ -229,7 +233,7 @@ private struct AnswerView: View {
 
     private func oneLine(in proxy: GeometryProxy) -> some View {
         VStack(spacing: 20) {
-            Text(AttributedString(spans: answer.styledSpans, ink: ink))
+            Text(AttributedString(spans: spans, ink: ink))
                 .font(.largeTitle.weight(.semibold))
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
@@ -244,7 +248,7 @@ private struct AnswerView: View {
     private func narrative(in proxy: GeometryProxy) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text(AttributedString(spans: answer.styledSpans, ink: ink))
+                Text(AttributedString(spans: spans, ink: ink))
                     .font(.body)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -262,7 +266,7 @@ private struct AnswerView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if case .failed = answer.phase, !answer.displayText.isEmpty {
+            if stoppedEarly {
                 Text("Stopped early.")
                     .font(.footnote)
                     .foregroundStyle(quiet)

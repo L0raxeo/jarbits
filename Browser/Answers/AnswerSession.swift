@@ -49,9 +49,14 @@ final class AnswerSession {
         return phase == .streaming ? AnswerMarkup.trimmingPartialMarker(trimmed) : trimmed
     }
 
+    /// The stream failed after some text had arrived; the card says so under it.
+    var stoppedEarly: Bool {
+        if case .failed = phase { !displayText.isEmpty } else { false }
+    }
+
     /// `displayText` with the format's emphasis markers applied.
     var styledSpans: [StyledSpan] {
-        AnswerMarkup.paddingHighlights(AnswerMarkup.spans(displayText, allowed: Set(AnswerMarkup.markers(for: format))))
+        AnswerMarkup.styled(displayText, for: format)
     }
 
     func start(format: ResponseFormat, query: String) {

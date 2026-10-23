@@ -29,8 +29,10 @@ public enum RoutingReport {
         out.append("| `query` | The text as typed, trimmed. |")
         out.append("| `locale` | The device locale identifier, e.g. `en_US`. |")
         out.append("")
-        out.append("Before any request: text that parses as an address (`example.com`, `https://…`) loads directly and Jev is not asked.")
+        out.append("Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can answer itself becomes a card at once; Jev is not asked either way.")
         out.append("")
+        out += answeredOnTheDevice()
+
         out.append("## The questions")
         out.append("")
         for (id, question) in request.questions {
@@ -50,6 +52,7 @@ public enum RoutingReport {
         out.append("")
         out.append("| Outcome | Shown | Logged as |")
         out.append("|---|---|---|")
+        out.append("| The time in a named place (see above) | A one-line card computed on the device | `local(\"time\")` |")
         out.append("| Address typed | That page | `directURL` |")
         out.append("| No API key configured | Web results | `noKey` |")
         out.append("| Request failed or timed out | Web results | `error(reason)` |")
@@ -65,6 +68,23 @@ public enum RoutingReport {
         out.append("")
         out.append("Adding a question is one entry in `JevRouting.request`; this file and `RoutingTests` pick it up. The yes/no `recent` question above is a noul.")
         return out.joined(separator: "\n") + "\n"
+    }
+
+    /// The grammar `LocalAnswers` matches, from the same lists the code uses.
+    private static func answeredOnTheDevice() -> [String] {
+        func quoted(_ phrases: [String]) -> String { phrases.map { "\"\($0)\"" }.joined(separator: ", ") }
+        var out: [String] = []
+        out.append("## Answered on the device")
+        out.append("")
+        out.append("The time in a named place needs no model. A query that is exactly one opener, a place and at most one trailer (case, accents and punctuation aside) is answered from the device clock when the place is a country, a US state or a city in the device's zone database; otherwise it goes on to Jev like any other query. English only.")
+        out.append("")
+        out.append("- Openers before a place: \(quoted(TimeQuery.placeOpeners))")
+        out.append("- Whole queries meaning the time here: \(quoted(TimeQuery.bareOpeners))")
+        out.append("- Trailers, at the end or between \"is it\" and \"in\": \(quoted(TimeQuery.trailers))")
+        out.append("")
+        out.append("Shown as `==7:56 PM==`, with `tomorrow` or `yesterday` when the date there differs, and `in Mexico City` when the place spans zones. Logged as `local(\"time\")` with none of the Jev fields.")
+        out.append("")
+        return out
     }
 
     private static var routedList: String {

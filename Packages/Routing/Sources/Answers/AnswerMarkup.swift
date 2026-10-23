@@ -46,6 +46,11 @@ public enum AnswerMarkup {
         }
     }
 
+    /// `text` as the card shows it: split on the markers the format allows, highlights padded.
+    public static func styled(_ text: String, for format: ResponseFormat) -> [StyledSpan] {
+        paddingHighlights(spans(text, allowed: Set(markers(for: format))))
+    }
+
     /// Splits `text` into spans. A marker toggles its style; styles nest. An
     /// opener with no closer styles to the end of the text, so a style shows
     /// as soon as its opener has streamed in. Markers not in `allowed` are
