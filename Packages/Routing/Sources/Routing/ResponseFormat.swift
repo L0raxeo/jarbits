@@ -73,9 +73,9 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         switch self {
         case .webResults:
             Criterion(
-                what: "A standard page of web search results. The default for broad, vague, navigational or multi-part queries, for a specific website the user names, for browsing many pictures or videos, and for anything the other formats do not clearly fit.",
-                notFor: "A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, or the bare name of one famous thing the user wants to see.",
-                examples: ["best laptops 2026", "news", "python tutorial reddit", "github login", "dune part 3 trailer", "golden retriever puppies"]
+                what: "A standard page of web search results. The default for broad, vague, navigational or multi-part queries, for a specific website the user names, for browsing many pictures or videos, and for anything the other formats do not clearly fit. A bare topic with no ask, such as \"chocolate milk\" or \"quantum computing\", is one of these: the user wants the general spread, not one answer.",
+                notFor: "A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, or the bare name of one specific thing with a definitive look, which wants a picture.",
+                examples: ["best laptops 2026", "news", "chocolate milk", "python tutorial reddit", "github login", "quantum computing", "dune part 3 trailer", "golden retriever puppies"]
             )
         case .narrative:
             Criterion(
