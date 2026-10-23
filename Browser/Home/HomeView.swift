@@ -236,10 +236,12 @@ struct HomeView: View {
                             onSubmit: submitFollowUp
                         )
                         if hearing {
-                            // The circle at the left corner, the buttons at the right.
+                            // The circle at the left corner, the buttons as a pair at the right.
                             Spacer(minLength: 16)
-                            DisregardButton(compact: true, action: session.disregardSpoken)
-                            DoneTalkingButton(compact: true, action: submitSpokenFollowUp)
+                            HStack(spacing: 8) {
+                                DisregardButton(compact: true, action: session.disregardSpoken)
+                                DoneTalkingButton(compact: true, action: submitSpokenFollowUp)
+                            }
                         }
                     }
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { footFrame = $0 }
