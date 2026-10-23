@@ -33,6 +33,14 @@ final class BrowserSession {
     let images = ImageSession()
     /// The microphone on the idle screen; what it hears is never shown.
     let dictation = DictationSession()
+    /// Every result the user saw, for `recall` queries.
+    private let memory: MemoryStore
+    /// A memory's query being asked again: Jev may not answer `recall` for
+    /// it, or a memory could replay itself forever.
+    private var replayingQuery: String?
+    /// A look through the memories that has not resolved by then goes to
+    /// the web, so the wave line never waits on it.
+    private let recallTimeout: Duration = .seconds(3)
     private(set) var plans: [CardPlan] = []
     private(set) var lastQuery = ""
     private(set) var stage: Stage = .idle
@@ -78,9 +86,10 @@ final class BrowserSession {
     /// A navigation that has not finished by then stops showing as loading.
     private let finishTimeout: Duration = .seconds(20)
 
-    init(router: any Router, answerClient: GeminiClient? = nil, log: DecisionLog = .shared) {
+    init(router: any Router, answerClient: GeminiClient? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared) {
         let handler = PageChromeHandler()
         chromeHandler = handler
+        self.memory = memory
         page = WebPage(configuration: PageChrome.configuration(handler: handler))
         // Never `page.isInspectable = true`, not even in Debug: an inspectable
         // page under SwiftUI's WebView crashes UIKit's touch delivery on the
@@ -221,6 +230,98 @@ final class BrowserSession {
             stage = .loading
             images.start(query: query)
             // Recorded when the image loads or fails, with its summary attached.
+        case let .recall(query):
+            answer?.cancel()
+            images.cancel()
+            let decision = result.decision
+            if query == replayingQuery {
+                // A replayed query is never a recall of itself: web results.
+                replayingQuery = nil
+                record(decision, query: query)
+                load(QueryParser.searchURL(for: query))
+                return
+            }
+            Task { [weak self] in
+                guard let self else { return }
+                let found = await memory.search(query)
+                guard query == lastQuery, stage == .routing else { return }
+                recalled(found, for: query, decision: decision)
+            }
+            Task { [weak self, timeout = recallTimeout] in
+                try? await Task.sleep(for: timeout)
+                guard let self, query == lastQuery, stage == .routing else { return }
+                recalled([], for: query, decision: decision)
+            }
+        case .recallPicker, .memory:
+            // Only ever made by `recalled` and `replay`, never by a router.
+            assertionFailure("\(result.plan) is not a routed plan")
+        }
+    }
+
+    // MARK: Memories
+
+    /// What the memories held for a recall: nothing, so the words go to the
+    /// web as a plain search; one thing, shown at once; several, a picker.
+    private func recalled(_ found: [MemoryRecord], for query: String, decision: RouteDecision) {
+        #if DEBUG
+        print("recall \"\(query)\": \(found.count) matched \(found.map { "\($0.kind.rawValue) \"\($0.title)\"" })")
+        #endif
+        switch found.count {
+        case 0:
+            record(decision, query: query, recall: RecallSummary(matches: 0))
+            load(QueryParser.searchURL(for: query))
+        case 1:
+            record(decision, query: query, recall: RecallSummary(matches: 1, picked: found[0].kind))
+            replay(found[0])
+        default:
+            record(decision, query: query, recall: RecallSummary(matches: found.count))
+            plans = [.recallPicker(found)]
+            stage = .ready
+        }
+    }
+
+    /// Shows a memory again. A page loads; a results page loads its query's
+    /// results, no router asked; a narrative shows its saved text, no model
+    /// asked; a one-line answer or a picture asks its query again, since
+    /// those are cheap and may have gone stale. The capsule and the "Web
+    /// results" link follow the memory's own query.
+    func replay(_ record: MemoryRecord) {
+        lastQuery = record.query
+        switch record.kind {
+        case .page:
+            guard let url = record.url else { load(QueryParser.searchURL(for: record.query)); return }
+            load(url)
+        case .search:
+            load(QueryParser.searchURL(for: record.query))
+        case .narrative:
+            answer?.cancel()
+            images.cancel()
+            plans = [.memory(record)]
+            stage = .ready
+        case .oneLine, .image:
+            replayingQuery = record.query
+            submit(record.query)
+        }
+    }
+
+    private func remember(_ record: MemoryRecord) {
+        Task { await memory.remember(record) }
+    }
+
+    /// The document that just finished: a page with a title, by address; a
+    /// results page, by its query. Error pages and untitled documents are
+    /// not worth remembering, nor is the results page a recall fell through
+    /// to: that would memorise the recall phrase itself, and the next recall
+    /// of the same words would find it and loop.
+    private func rememberPage() {
+        guard let url = page.url, let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
+        if QueryParser.isSearchResults(url) {
+            guard !lastQuery.isEmpty, lastDecision?.format != .recall else { return }
+            remember(MemoryRecord(kind: .search, query: lastQuery))
+        } else {
+            let title = page.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty else { return }
+            remember(MemoryRecord(kind: .page, query: lastQuery, title: title, url: url))
         }
     }
 
@@ -228,6 +329,7 @@ final class BrowserSession {
     private func imageReady() {
         guard images.query == lastQuery, case .image = plans.first else { return }
         stage = .ready
+        remember(MemoryRecord(kind: .image, query: images.query))
     }
 
     private func imageFinished(_ summary: ImageSummary) {
@@ -256,7 +358,13 @@ final class BrowserSession {
             let url = QueryParser.searchURL(for: answer.query)
             plans = [.web(url)]
             load(url)
-        case .completed, .partial:
+        case .completed:
+            if answer.format == .narrative {
+                remember(MemoryRecord(kind: .narrative, query: answer.query, text: answer.text))
+            } else {
+                remember(MemoryRecord(kind: .oneLine, query: answer.query))
+            }
+        case .partial:
             break
         }
     }
@@ -360,6 +468,7 @@ final class BrowserSession {
             // Headers often arrive a beat after the load event.
             try? await Task.sleep(for: .milliseconds(250))
             guard let self, generation == documentGeneration else { return }
+            rememberPage()
             await settleDocument()
         }
     }
@@ -440,8 +549,8 @@ final class BrowserSession {
         }
     }
 
-    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil) {
-        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image)
+    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil) {
+        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image, recall: recall)
         Task { await log.append(record) }
     }
 

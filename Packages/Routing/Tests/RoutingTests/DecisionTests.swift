@@ -23,6 +23,16 @@ import Testing
         #expect(decision.runnerUp?.format == .webResults)
     }
 
+    @Test func recallPassesTheGateLikeAnyFormat() throws {
+        let sure = try response(choice: "recall", confidence: 0.88, probabilities: ["recall": 0.88, "web_results": 0.1, "narrative": 0.02])
+        #expect(JevRouting.decision(from: sure, latencyMs: 1).format == .recall)
+        let unsure = try response(choice: "recall", confidence: 0.45, probabilities: ["recall": 0.45, "web_results": 0.4, "narrative": 0.15])
+        let decision = JevRouting.decision(from: unsure, latencyMs: 1)
+        #expect(decision.format == .webResults)
+        #expect(decision.suggested == .recall)
+        #expect(decision.source == .confidenceFallback)
+    }
+
     @Test func unsureAnswerFallsBackToWeb() throws {
         let response = try response(choice: "map", confidence: 0.4, probabilities: ["map": 0.46, "web_results": 0.3, "narrative": 0.24])
         let decision = JevRouting.decision(from: response, latencyMs: 180)

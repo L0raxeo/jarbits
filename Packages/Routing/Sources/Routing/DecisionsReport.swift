@@ -10,13 +10,16 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     public var answer: AnswerSummary?
     /// Filled in once the image card has loaded (or failed to); absent otherwise.
     public var image: ImageSummary?
+    /// How a recall fared: how many memories matched and which was shown.
+    public var recall: RecallSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
         self.answer = answer
         self.image = image
+        self.recall = recall
     }
 
     public static let encoder: JSONEncoder = {
@@ -185,6 +188,20 @@ public enum DecisionsReport {
                 }
                 out.append("")
             }
+        }
+
+        let recalls = records.compactMap { record in record.recall.map { (record, $0) } }
+        if !recalls.isEmpty {
+            out.append("## Recalls")
+            out.append("")
+            let none = recalls.filter { $0.1.matches == 0 }
+            let one = recalls.filter { $0.1.matches == 1 }.count
+            let several = recalls.count - none.count - one
+            out.append("\(recalls.count) recalls: \(one) opened one memory, \(several) showed a picker, \(none.count) matched nothing and went to web.")
+            if !none.isEmpty {
+                out.append("Matched nothing: " + none.suffix(10).map { "\"\($0.0.query)\"" }.joined(separator: ", "))
+            }
+            out.append("")
         }
 
         if !errors.isEmpty {

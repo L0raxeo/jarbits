@@ -14,4 +14,11 @@ enum CardPlan: Hashable, Sendable {
     case image(query: String)
     /// A one-line answer computed on the device by a `LocalAnswers` rule; `text` carries the format's markup.
     case localAnswer(format: ResponseFormat, query: String, text: String)
+    /// Jev's pick for a query that wants something seen before; the session
+    /// resolves it from the memories into one of the plans below.
+    case recall(query: String)
+    /// Several memories matched; a card lists them and a tap replays one.
+    case recallPicker([MemoryRecord])
+    /// A remembered narrative, shown from its saved text with its date.
+    case memory(MemoryRecord)
 }

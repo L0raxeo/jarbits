@@ -2,9 +2,10 @@
 
 An iOS browser where a query goes through a router that decides what kind of
 card to show. The router is TypeSafe's Jev, a System One model: it picks one of
-six response formats and reports how sure it is. Three providers exist
+seven response formats and reports how sure it is. Four providers exist
 behind it: a Google results web view (`web_results`), Gemini answers for
-`narrative` and `one_line`, and a Wikipedia picture for `image`.
+`narrative` and `one_line`, a Wikipedia picture for `image`, and the phone's
+own memories for `recall` (something seen before, brought back).
 
 The screen is white with a purple gradient clay above the middle that
 breathes, and a keyboard hint at the bottom. Tapping the clay or the hint, or
@@ -103,11 +104,14 @@ first text arrives.
   logged as `recencyFallback`, because the model's knowledge is months old.
 - The format maps to a plan in `JevRouter.plan(for:query:)`: `web_results`,
   `map` and `stock` load a Google results page; `narrative` and `one_line`
-  become `.answer(format:query:)`; `image` becomes `.image(query:)`.
+  become `.answer(format:query:)`; `image` becomes `.image(query:)`;
+  `recall` becomes `.recall(query:)`, which the session resolves from the
+  memories (see "Recall").
 - Each decision is appended to `Application Support/Browser/decisions.jsonl`
   (query, format, confidence, every option's probability, model, latency,
-  tokens; for answer plans, the answer summary too). Nothing leaves the phone
-  unless you export it from the ribbon.
+  tokens; for answer plans, the answer summary too; for recalls, how many
+  memories matched). Nothing leaves the phone unless you export it from
+  the ribbon.
 
 Model is pinned to `jev-1.13.0`. A routing request is roughly 1,200 input
 tokens at $0.042 per million, so a few hundred searches a month cost under a
@@ -188,6 +192,45 @@ article, the candidate count, the latency and the outcome; if misses turn
 out to be common, the upgrade is to let Gemini turn the query into an
 article title before searching.
 
+## Recall
+
+`recall` is for something the user saw in this app before and wants back:
+"where's my grocery list", "remember that convo on the dyson pencilvac",
+"pull up that youtube page from earlier". Jev picks it like any other
+format, through the same confidence floor, so there is no phrase list in
+the app and no extra request.
+
+Every result the user sees is written to `Application Support/Browser/memories.jsonl`
+as it appears: a page that finished loading with a title (its address and
+title), a narrative answer (its text), a one-line answer, a picture or a
+results page (the query only). Error pages, redirects and untitled
+documents are skipped. Seeing the same thing again within a day refreshes
+its record; past 5 000 records the oldest go, which keeps the file in the
+tens of megabytes at most. Nothing in it leaves the phone, and Google's
+interaction storage stays off.
+
+A recall drops the phrasing ("remember", "that", "my", "pull up") and
+searches the records for the words left, in their queries, titles,
+addresses and text. Records holding every word win, else records holding
+any; newest first among equals; at most ten. One match opens at once;
+several show a picker, one row each with the title, the kind and when, and
+a tap opens that one; none falls through to a Google search for the same
+words, so a wrong pick by Jev costs nothing visible. Opening a memory
+reuses the ordinary plans: a page loads its address; a results page loads
+its query's results, no router asked; a narrative shows its saved text
+with its date, no model asked; a one-line answer or a picture asks its
+query again, since those are cheap and may have gone stale, and Jev may
+not answer `recall` for that asking. The results page a recall falls
+through to is not memorised, so the recall phrase never becomes a memory
+that the next recall of the same words would find and loop on; and a
+look through the memories that has not resolved in 3 s goes to the web.
+
+The decision log notes each recall's match count. If recalls keep matching
+nothing or too much, the upgrade is to send the candidates to Jev as one
+yes/no question each in a single request; word matching stays as the
+prefilter. A "clear memory" control does not exist yet; deleting the app
+clears the file.
+
 ## Where things live
 
 | Path | Role |
@@ -198,6 +241,7 @@ article title before searching.
 | `Browser/Router/JevRouter.swift` | Asks Jev, maps format → `CardPlan`. Also `BrowserSession.makeRouter()` and `makeAnswerClient()`. |
 | `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
 | `Browser/Images/ImageSession.swift` | Loads one Wikipedia picture (and its alternates) for an image plan, and the summary for the log. |
+| `Browser/Memory/MemoryStore.swift` | The memories file: load once, append as results appear, refresh a repeat within a day, drop the oldest past the cap, search by words (`MemorySearch` in the package). |
 | `Browser/Router/LocalRouter.swift` | No-network fallback used when no key is configured. |
 | `Browser/Router/DecisionLog.swift` | JSON Lines log of every decision and answer. |
 | `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`). |
@@ -214,7 +258,7 @@ Each response format is a module with a stage recorded in code
 (`ResponseFormat.stage` in `Packages/Routing`): `routed` (Jev can pick it,
 web results stand in), `built` (a real card renders), `verified` (used on a
 device and accepted). Today: `web_results` verified; `narrative`,
-`one_line` and `image` built; `map` and `stock` routed. A routed pick shows web
+`one_line`, `recall` and `image` built; `map` and `stock` routed. A routed pick shows web
 results and is logged as the pick it was, and `JevRouter` asserts the stage
 and the switch agree. Flip the stage in the same change that adds the card.
 

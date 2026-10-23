@@ -88,6 +88,13 @@ struct ResultView: View {
             AnswerView(spans: AnswerMarkup.styled(text, for: format), stoppedEarly: false, format: format, clayY: clayY, barCompact: $barCompact)
         case .image:
             ImageCardView(images: session.images, clayY: clayY)
+        case let .memory(record):
+            AnswerView(spans: AnswerMarkup.styled(record.text ?? "", for: .narrative), stoppedEarly: false, format: .narrative, clayY: clayY, barCompact: $barCompact, recalledOn: record.date)
+        case let .recallPicker(records):
+            RecallPickerView(records: records, clayY: clayY, barCompact: $barCompact)
+        case .recall:
+            // Resolved by the session before it reaches a card.
+            EmptyView()
         }
     }
 
@@ -207,6 +214,8 @@ private struct AnswerView: View {
     let format: ResponseFormat
     let clayY: CGFloat
     @Binding var barCompact: Bool
+    /// A remembered answer: when it was given, so a stale one reads as old.
+    var recalledOn: Date? = nil
 
     private let ink = Palette.ink
     private let quiet = Palette.quiet
@@ -271,12 +280,80 @@ private struct AnswerView: View {
                     .font(.footnote)
                     .foregroundStyle(quiet)
             }
+            if let recalledOn {
+                Text("From \(recalledOn.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.footnote)
+                    .foregroundStyle(quiet)
+            }
             Button("Web results") { session.showWebResults() }
                 .buttonStyle(.plain)
                 .font(.subheadline)
                 .foregroundStyle(quiet)
         }
         .frame(maxWidth: .infinity, alignment: format == .oneLine ? .center : .leading)
+    }
+}
+
+/// Several memories matched a recall: one row each, the title, the kind in
+/// words and when; a tap replays that one. Laid out like the narrative
+/// card, and dismissed the same way.
+private struct RecallPickerView: View {
+    @Environment(BrowserSession.self) private var session
+    let records: [MemoryRecord]
+    let clayY: CGFloat
+    @Binding var barCompact: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("\(records.count) things from before")
+                        .font(.footnote)
+                        .foregroundStyle(Palette.quiet)
+                        .padding(.bottom, 8)
+                    ForEach(records) { record in
+                        Button { session.replay(record) } label: { row(record) }
+                            .buttonStyle(.plain)
+                        Divider()
+                    }
+                    Button("Web results") { session.showWebResults() }
+                        .buttonStyle(.plain)
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.quiet)
+                        .padding(.top, 20)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, proxy.size.height * 0.15)
+                .padding(.bottom, 120)   // room for the query capsule
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .onScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
+                ResultView.scrolled(from: old, to: new, compact: &barCompact)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 30)
+                    .onEnded { value in
+                        if value.translation.height > 80 { session.reset() }
+                    }
+            )
+        }
+    }
+
+    private func row(_ record: MemoryRecord) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(record.title)
+                .font(.body)
+                .foregroundStyle(Palette.ink)
+                .lineLimit(2)
+            Text("\(record.kind.label) · \(record.date.formatted(.relative(presentation: .named)))")
+                .font(.footnote)
+                .foregroundStyle(Palette.quiet)
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 

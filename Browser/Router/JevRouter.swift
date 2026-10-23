@@ -4,8 +4,8 @@ import Routing
 
 /// Asks Jev which format answers the query and maps the format to a plan.
 /// `narrative` and `one_line` become answer cards when a Gemini key is
-/// configured, `image` a Wikipedia picture; `map` and `stock` still render
-/// web results.
+/// configured, `image` a Wikipedia picture, `recall` a look through the
+/// memories; `map` and `stock` still render web results.
 struct JevRouter: Router {
     var formatRouter: FormatRouter
     /// Without a Gemini key the answer formats fall back to web results and
@@ -30,6 +30,9 @@ struct JevRouter: Router {
         case .image:
             assert(decision.format.stage == .built, "image is marked \(decision.format.stage)")
             return .image(query: query)
+        case .recall:
+            assert(decision.format.stage == .built, "recall is marked \(decision.format.stage)")
+            return .recall(query: query)
         case .map, .stock:
             // Not built yet: web results stand in. Moving a format out of this
             // branch and flipping its `stage` happen in the same change.

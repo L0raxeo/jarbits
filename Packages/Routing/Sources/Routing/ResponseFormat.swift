@@ -9,6 +9,9 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     case map
     case stock
     case oneLine = "one_line"
+    /// Something the user saw in this app before and wants back. Resolved
+    /// on the device from the memories file; see `MemorySearch`.
+    case recall
     case image
 
     /// What the app shows when the router cannot or should not decide.
@@ -22,7 +25,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     public var stage: Stage {
         switch self {
         case .webResults: .verified
-        case .narrative, .oneLine, .image: .built
+        case .narrative, .oneLine, .image, .recall: .built
         case .map, .stock: .routed
         }
     }
@@ -36,6 +39,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .stock: "Stock"
         case .oneLine: "One-line answer"
         case .image: "Image"
+        case .recall: "Recall"
         }
     }
 
@@ -48,6 +52,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .stock: "Ticker resolution, a market-data provider, Swift Charts card"
         case .oneLine: nil
         case .image: nil
+        case .recall: nil
         }
     }
 
@@ -114,6 +119,18 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
                     "what does a capybara look like",
                     "mona lisa",
                     "aston martin db5",
+                ]
+            )
+        case .recall:
+            Criterion(
+                what: "Something the user saw in this app before and wants back: a page they were on, an answer they got, a list they made. The query points at the past (\"that\", \"again\", \"my\", \"remember\", \"pull up\", \"where's\", \"go back to\") instead of asking something new.",
+                notFor: "A new question or search that merely contains such a word, like a film title or a package delivery; anything the user has not seen in this app.",
+                examples: [
+                    "where's my grocery list",
+                    "remember that convo on the dyson pencilvac",
+                    "pull up that youtube page from earlier",
+                    "that thing about gingivitis again",
+                    "go back to the reddit thread",
                 ]
             )
         }

@@ -45,7 +45,7 @@ public enum AnswerPrompt {
         switch format {
         case .narrative: narrative
         case .oneLine: oneLine
-        case .webResults, .map, .stock, .image:
+        case .webResults, .map, .stock, .image, .recall:
             preconditionFailure("\(format) is not answered by a model")
         }
     }
@@ -55,7 +55,7 @@ public enum AnswerPrompt {
         switch format {
         case .narrative: 800
         case .oneLine: 160
-        case .webResults, .map, .stock, .image:
+        case .webResults, .map, .stock, .image, .recall:
             preconditionFailure("\(format) is not answered by a model")
         }
     }
