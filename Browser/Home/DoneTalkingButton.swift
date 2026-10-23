@@ -21,3 +21,21 @@ struct DoneTalkingButton: View {
         .accessibilityHint("Sends what you said")
     }
 }
+
+/// Under the done button: what was heard is forgotten and listening goes on.
+struct DisregardButton: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("Disregard what you just heard")
+                .font(.footnote)
+                .foregroundStyle(Color(white: 0.45))
+                .padding(.horizontal, 28)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Forgets what you said and keeps listening")
+    }
+}

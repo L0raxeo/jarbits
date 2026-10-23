@@ -153,8 +153,11 @@ struct HomeView: View {
                         VStack {
                             Spacer()
                             if session.dictation.heardSpeech {
-                                DoneTalkingButton(action: session.submitSpoken)
-                                    .padding(.bottom, 8)
+                                VStack(spacing: 0) {
+                                    DoneTalkingButton(action: session.submitSpoken)
+                                    DisregardButton(action: session.disregardSpoken)
+                                }
+                                .padding(.bottom, 8)
                             } else {
                                 KeyboardHint(onOpen: openKeyboard)
                                     .padding(.bottom, 8)

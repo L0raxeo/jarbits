@@ -195,6 +195,13 @@ final class BrowserSession {
         dictation.stop()
     }
 
+    /// The "Disregard what you just heard" button: the words go, listening
+    /// goes on.
+    func disregardSpoken() {
+        guard stage == .idle else { return }
+        dictation.discard()
+    }
+
     /// The "I'm done talking" button: capture stops, the last words are
     /// finalised and cleaned under the wave line, and the result goes through
     /// `submit(_:)` like anything typed. Nothing said is shown anywhere.

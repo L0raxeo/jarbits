@@ -101,6 +101,15 @@ final class DictationSession {
         phase = .idle
     }
 
+    /// "Disregard what you just heard": everything heard so far goes and
+    /// listening starts afresh, so no tail of the old words can come back
+    /// as a late result. The button goes with the words.
+    func discard() {
+        guard phase == .listening else { return }
+        stop()
+        start()
+    }
+
     /// Done talking. Capture stops here, synchronously, so that nothing the
     /// screen does next can discard the words; the task finalises them and
     /// returns the transcript, or nil when nothing was said.
