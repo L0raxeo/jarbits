@@ -119,6 +119,8 @@ struct ClayCapsule: View {
                     .animation(editing ? .easeIn(duration: 0.25).delay(0.15) : .easeOut(duration: 0.15), value: editing)
             }
             .shadow(color: Palette.glow.opacity(loading ? 0.25 : 0.3), radius: 12, y: 6)
+            // As the listening circle, the same shadow as the buttons beside it.
+            .shadow(color: ListeningCapsule.shadowColor.opacity(circular ? 1 : 0), radius: ListeningCapsule.shadowRadius, y: ListeningCapsule.shadowY)
         }
         .fixedSize(horizontal: !editing && !loading, vertical: false)
         // The circle takes no more than its own width, so the buttons beside

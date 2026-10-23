@@ -3,7 +3,7 @@ import SwiftUI
 /// The foot of the idle screen once a word has been heard: pressing it means
 /// the user is done talking. Plain text there, in the keyboard hint's slot
 /// so the foot does not jump. `compact` is the same button beside the small
-/// circle over a result, on a frosted capsule whose edge fades into the page.
+/// circle over a result, on a white capsule.
 struct DoneTalkingButton: View {
     var compact = false
     var action: () -> Void
@@ -46,20 +46,30 @@ struct DisregardButton: View {
     }
 }
 
-/// The shape the two buttons share over a result.
+/// The shape the two buttons share over a result, and the shadow they and
+/// the listening circle beside them cast.
 enum ListeningCapsule {
     static let height: CGFloat = 40
     static let sidePadding: CGFloat = 16
+    static let shadowColor = Color.black.opacity(0.22)
+    static let shadowRadius: CGFloat = 14
+    static let shadowY: CGFloat = 5
 }
 
 private extension View {
-    /// Over a result, a frosted capsule behind the label and a capsule to
-    /// tap; on the idle screen, plain text with a rectangular tap area.
+    /// Over a result, a white capsule with a black border and a soft shadow
+    /// behind the label, and a capsule to tap; on the idle screen, plain
+    /// text with a rectangular tap area.
     @ViewBuilder
     func listeningCapsule(_ on: Bool) -> some View {
         if on {
-            background { FrostedCapsule() }
-                .contentShape(Capsule())
+            background {
+                Capsule()
+                    .fill(.white)
+                    .overlay(Capsule().strokeBorder(.black, lineWidth: 1))
+                    .shadow(color: ListeningCapsule.shadowColor, radius: ListeningCapsule.shadowRadius, y: ListeningCapsule.shadowY)
+            }
+            .contentShape(Capsule())
         } else {
             contentShape(Rectangle())
         }
