@@ -147,10 +147,10 @@ restyled. So:
   page for the query instead and logs `needsLiveData`;
 - a one-line question whose answer may have changed since the cutoff, such
   as whether someone is alive or who holds a role, gets the same marker;
-- a narrative question about anything that can change over that gap gets
-  one plain sentence saying the answer is as of January 2025 and may be out
-  of date, then what the model knew; the Web results link is under every
-  answer. Most such queries never reach the model: the `recent` question at
+- a narrative question is answered with what the model knew, stated as
+  plain fact, with no sentence about the cutoff: the Web results link under
+  every answer is the way to check. Most queries that could have gone stale
+  never reach the model anyway: the `recent` question at
   Jev sends them to web results first.
 
 Answers carry four levels of emphasis, written by the model as markers that
