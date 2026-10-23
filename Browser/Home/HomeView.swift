@@ -24,8 +24,12 @@ struct HomeView: View {
     @State private var followSelection: TextSelection?
     /// The query capsule shrinks while the result scrolls down, grows on the way up.
     @State private var barCompact = false
-    /// A follow-up was sent from the capsule: it shows the wave line at the
-    /// foot until the result is ready, and the clay stays out of it.
+    /// A follow-up was sent from the capsule: it stays on screen, as the wave
+    /// line, while the old result fades out, and the clay stays out of it.
+    /// Only visibility hangs on this flag; whether the capsule waves follows
+    /// the session's stage directly (`capsuleLoading`), because an answer
+    /// computed on the device goes routing → ready between two frames, and a
+    /// flag cleared on observing `.ready` would never see the change.
     @State private var capsuleSubmitted = false
 
     private var mode: ClayForm {
@@ -42,6 +46,16 @@ struct HomeView: View {
     private var listening: Bool { mode == .circle && scenePhase != .background }
     /// Over a result, or standing in for the clay while a follow-up loads.
     private var showsCapsule: Bool { showsResult || capsuleSubmitted }
+    /// The wave while a query is in flight, or while the page behind a web
+    /// result is still loading (a tapped link). An answer or image card has
+    /// no page to wait for.
+    private var capsuleLoading: Bool {
+        switch session.stage {
+        case .routing, .loading: true
+        case .ready: if case .web = session.plans.first { session.pageLoading } else { false }
+        case .idle, .cleaning: false
+        }
+    }
 
     /// What the capsule reads: the page's query or host for a web plan, the
     /// query otherwise. Also what a web follow-up starts with.
@@ -159,7 +173,7 @@ struct HomeView: View {
                         text: capsuleText,
                         compact: barCompact && !followingUp,
                         editing: followingUp,
-                        loading: capsuleSubmitted || session.pageLoading,
+                        loading: capsuleLoading,
                         maxWidth: proxy.size.width - 32,
                         fieldWidth: proxy.size.width - 48,
                         draft: $followDraft,
