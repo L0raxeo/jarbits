@@ -72,5 +72,8 @@ import Testing
         #expect(!MemoryRecord(kind: .page, query: "", title: "Lisbon guide", url: URL(string: "https://www.ricksteves.com/")).isVideo)
         #expect(MemoryRecord(kind: .page, query: "", title: "Launch video: the new thing", url: URL(string: "https://example.com/")).isVideo)
         #expect(!MemoryRecord(kind: .search, query: "youtube video").isVideo, "only pages are videos")
+        #expect(!MemoryRecord(kind: .page, query: "go to youtube", title: "YouTube", url: URL(string: "https://m.youtube.com")).isVideo, "the front page is the site, not a video")
+        #expect(!MemoryRecord(kind: .page, query: "", title: "YouTube", url: URL(string: "https://m.youtube.com/")).isVideo)
+        #expect(MemoryRecord(kind: .page, query: "", title: "YouTube", url: URL(string: "https://m.youtube.com/shorts/a")).isVideo)
     }
 }

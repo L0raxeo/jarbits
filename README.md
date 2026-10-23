@@ -288,7 +288,8 @@ interaction storage stays off.
 A recall is resolved in three steps. First the query's kind and time
 words become filters over what each record stores (`RecallFilters`):
 "video" or "watching" keeps pages on a video host (a short list in
-`MemoryRecord.videoHosts`) or titled as one, "answer" or "chat" keeps
+`MemoryRecord.videoHosts`; a host's front page, as "go to youtube" opens
+it, is the site and not a video) or titled as one, "answer" or "chat" keeps
 answers, "picture" keeps pictures, and "yesterday", "this morning", "last
 week" or "three days ago" keep what was seen then. Then the phrasing is
 dropped ("remember", "that", "my", "pull up", "can") and the records left

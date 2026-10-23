@@ -95,11 +95,15 @@ extension MemoryRecord {
     /// Hosts whose pages are videos. Short and visible; grow it from the log.
     static let videoHosts = ["youtube.com", "youtu.be", "vimeo.com", "tiktok.com", "twitch.tv", "dailymotion.com", "netflix.com"]
 
-    /// A page on a video host, or a page whose title says it is a video.
+    /// A page on a video host, or a page whose title says it is a video. A
+    /// video host's front page (no path, as "go to youtube" opens it) is not
+    /// one: it is the site, not something watched, and it would otherwise
+    /// be the newest "video" every time.
     public var isVideo: Bool {
         guard kind == .page else { return false }
-        if let host = url?.host()?.lowercased(),
-           Self.videoHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }) {
+        if let url, let host = url.host()?.lowercased(),
+           Self.videoHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }),
+           url.path().trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty == false {
             return true
         }
         return title.lowercased().contains("video")
