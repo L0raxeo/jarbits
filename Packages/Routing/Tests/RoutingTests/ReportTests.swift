@@ -38,6 +38,9 @@ import Testing
         #expect(markdown.contains(JevRouting.followUpInstructions))
         #expect(markdown.contains("`previous_queries`"))
         #expect(markdown.contains("`continuation` (the pick is kept as `suggested`)"))
+        #expect(markdown.contains("## After routing: recall"))
+        #expect(markdown.contains(RecallRouting.recallCriteria.yes))
+        #expect(markdown.contains("web page from yesterday (m.youtube.com)"))
         #expect(markdown.contains("`recencyFallback`"))
         #expect(markdown.contains("`local(\"time\")`"))
         #expect(markdown.contains("\"\(TimeQuery.placeOpeners[0])\""))
@@ -73,13 +76,20 @@ import Testing
             DecisionRecord(timestamp: now.addingTimeInterval(360), query: "can I use water", decision: RouteDecision(
                 format: .narrative, suggested: .webResults, confidence: 0.3,
                 probabilities: ["web_results": 0.4, "narrative": 0.35], model: "jev-1.13.0", latencyMs: 230, inputTokens: 900, continuation: 0.8, source: .continuation)),
+            DecisionRecord(timestamp: now.addingTimeInterval(420), query: "pull up the videos from yesterday", decision: RouteDecision(
+                format: .recall, suggested: .recall, confidence: 0.9,
+                probabilities: ["recall": 0.9, "web_results": 0.1], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, source: .jev),
+                recall: RecallSummary(matches: 1, picked: .page, shortlisted: 4, judged: 1, source: "jev", latencyMs: 310)),
         ]
         let lines = try records.map { String(decoding: try DecisionRecord.encoder.encode($0), as: UTF8.self) }.joined(separator: "\n") + "\n"
         let parsed = try DecisionsReport.parse(Data(lines.utf8))
         #expect(parsed == records)
 
         let markdown = DecisionsReport.markdown(records: parsed)
-        #expect(markdown.contains("7 queries: 4 asked Jev, 1 answered on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("8 queries: 5 asked Jev, 1 answered on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("1 recalls: 1 opened one memory, 0 showed a picker, 0 matched nothing and went to web. Jev judged 1, median 310 ms; 0 fell back to word order."))
+        let old = #"{"matches":2}"#
+        #expect(try DecisionRecord.decoder.decode(RecallSummary.self, from: Data(old.utf8)).source == nil, "old recall lines decode")
         #expect(markdown.contains("| `web_results` | 1 | 1 | 0 | 0 | 0.30 | \"can I use water\" |"), "a continuation counts as acted on")
         #expect(markdown.contains("Follow-ups over a narrative: 1 asked, 1 continued it, 0 went to another card, mean continuation 0.80."))
         #expect(markdown.contains("- `time`: 1, most recent \"what time is it in tokyo\""))

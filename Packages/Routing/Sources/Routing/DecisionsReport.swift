@@ -206,7 +206,15 @@ public enum DecisionsReport {
             let none = recalls.filter { $0.1.matches == 0 }
             let one = recalls.filter { $0.1.matches == 1 }.count
             let several = recalls.count - none.count - one
-            out.append("\(recalls.count) recalls: \(one) opened one memory, \(several) showed a picker, \(none.count) matched nothing and went to web.")
+            var line = "\(recalls.count) recalls: \(one) opened one memory, \(several) showed a picker, \(none.count) matched nothing and went to web."
+            let judged = recalls.filter { $0.1.source == "jev" }
+            if !judged.isEmpty {
+                let latencies = judged.compactMap(\.1.latencyMs).sorted()
+                let median = latencies.isEmpty ? "–" : "\(latencies[latencies.count / 2]) ms"
+                let fellBack = recalls.filter { $0.1.source.map { $0 != "jev" && $0 != "words" } ?? false }.count
+                line += " Jev judged \(judged.count), median \(median); \(fellBack) fell back to word order."
+            }
+            out.append(line)
             if !none.isEmpty {
                 out.append("Matched nothing: " + none.suffix(10).map { "\"\($0.0.query)\"" }.joined(separator: ", "))
             }

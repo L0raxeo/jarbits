@@ -112,6 +112,19 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 
 Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.
 
+## After routing: recall
+
+A `recall` pick is resolved on the device first. Kind and time words in the query ("video", "answer", "picture", "yesterday", "this morning", "three days ago") filter the memories by kind, host and date; word matches, then recency, shortlist at most 10 (`RecallFilters`, `MemorySearch.shortlist`). With no filter and no content word there is nothing to go on, and the words go to web results. Otherwise the shortlist goes to Jev in one request, a yes/no question per memory:
+
+> Is this the memory the query asks for? A web page from yesterday (m.youtube.com): "Rick Steves' Europe: Lisbon".
+
+| Means | Description |
+|---|---|
+| yes | The query describes this memory: by what it is, when it was seen, what it was about, or a word of its title. |
+| no | A different thing, even if it shares a word with the query or is of the same kind. |
+
+A memory at or above 0.5 is the one asked for: alone, it opens at once. Otherwise every memory at or above 0.3 is plausible: one opens, several show the picker in Jev's order, so an unsure Jev leaves the choice to the user; none goes to web results. A failed or slow request, or no key, shows the shortlist in word order. The record's `recall` logs the shortlist size, how many were plausible, the path (`jev`, `words`, or the error) and the latency.
+
 ## Question types not used yet
 
 - **score**: a position on an ordered scale with confidence. Candidate use: how much the query needs a written explanation.

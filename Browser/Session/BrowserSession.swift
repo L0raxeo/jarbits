@@ -96,10 +96,14 @@ final class BrowserSession {
     /// A navigation that has not finished by then stops showing as loading.
     private let finishTimeout: Duration = .seconds(20)
 
-    init(router: any Router, answerClient: GeminiClient? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared) {
+    /// Jev judging a recall shortlist; nil shows the shortlist in word order.
+    private let recall: RecallResolver?
+
+    init(router: any Router, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared) {
         let handler = PageChromeHandler()
         chromeHandler = handler
         self.memory = memory
+        self.recall = recall
         page = WebPage(configuration: PageChrome.configuration(handler: handler))
         // Never `page.isInspectable = true`, not even in Debug: an inspectable
         // page under SwiftUI's WebView crashes UIKit's touch delivery on the
@@ -292,14 +296,34 @@ final class BrowserSession {
             }
             Task { [weak self] in
                 guard let self else { return }
-                let found = await memory.search(query)
+                let shortlist = await memory.shortlist(query)
                 guard query == lastQuery, stage == .routing else { return }
-                recalled(found, for: query, decision: decision)
+                guard !shortlist.isEmpty else {
+                    recalled([], shortlisted: 0, source: "words", for: query, decision: decision)
+                    return
+                }
+                guard let recall else {
+                    recalled(shortlist, shortlisted: shortlist.count, source: "words", for: query, decision: decision)
+                    return
+                }
+                let verdict = await recall.resolve(query, candidates: shortlist)
+                guard query == lastQuery, stage == .routing else { return }
+                switch verdict {
+                case let .picked(picks, latencyMs):
+                    // One sure pick opens; otherwise everything plausible goes
+                    // to the picker, so an unsure Jev leaves the choice to the user.
+                    let sure = picks.filter { $0.probability >= RecallRouting.recallThreshold }
+                    let shown = sure.count == 1 ? [sure[0].record] : picks.map(\.record)
+                    recalled(shown, shortlisted: shortlist.count, source: "jev", latencyMs: latencyMs, for: query, decision: decision)
+                case let .failed(reason):
+                    // Jev's own timeout is shorter than ours: the shortlist stands in, in word order.
+                    recalled(shortlist, shortlisted: shortlist.count, source: "error: \(reason)", for: query, decision: decision)
+                }
             }
             Task { [weak self, timeout = recallTimeout] in
                 try? await Task.sleep(for: timeout)
                 guard let self, query == lastQuery, stage == .routing else { return }
-                recalled([], for: query, decision: decision)
+                recalled([], shortlisted: nil, source: "error: timeout", for: query, decision: decision)
             }
         case .recallPicker, .memory:
             // Only ever made by `recalled` and `replay`, never by a router.
@@ -309,21 +333,24 @@ final class BrowserSession {
 
     // MARK: Memories
 
-    /// What the memories held for a recall: nothing, so the words go to the
-    /// web as a plain search; one thing, shown at once; several, a picker.
-    private func recalled(_ found: [MemoryRecord], for query: String, decision: RouteDecision) {
+    /// What a recall found, in the order to show: nothing, so the words go
+    /// to the web as a plain search; one thing, shown at once; several, a
+    /// picker. `source` says which path chose them, for the log.
+    private func recalled(_ found: [MemoryRecord], shortlisted: Int?, source: String, latencyMs: Int? = nil, for query: String, decision: RouteDecision) {
         #if DEBUG
-        print("recall \"\(query)\": \(found.count) matched \(found.map { "\($0.kind.rawValue) \"\($0.title)\"" })")
+        print("recall \"\(query)\" by \(source): \(found.count) of \(shortlisted.map(String.init) ?? "?") \(found.map { "\($0.kind.rawValue) \"\($0.title)\"" })")
         #endif
+        let summary = RecallSummary(
+            matches: found.count, picked: found.count == 1 ? found[0].kind : nil,
+            shortlisted: shortlisted, judged: source == "jev" ? found.count : nil, source: source, latencyMs: latencyMs
+        )
+        record(decision, query: query, recall: summary)
         switch found.count {
         case 0:
-            record(decision, query: query, recall: RecallSummary(matches: 0))
             load(QueryParser.searchURL(for: query))
         case 1:
-            record(decision, query: query, recall: RecallSummary(matches: 1, picked: found[0].kind))
             replay(found[0])
         default:
-            record(decision, query: query, recall: RecallSummary(matches: found.count))
             plans = [.recallPicker(found)]
             stage = .ready
         }

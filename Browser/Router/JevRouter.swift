@@ -52,6 +52,12 @@ extension BrowserSession {
         return LocalFirstRouter(inner: JevRouter(formatRouter: FormatRouter(client: JevClient(apiKey: key)), canAnswer: Secrets.geminiAPIKey != nil))
     }
 
+    /// Jev judging a recall shortlist, when a key is configured; nil shows
+    /// the shortlist in word order.
+    static func makeRecallResolver() -> RecallResolver? {
+        Secrets.typeSafeAPIKey.map { RecallResolver(client: JevClient(apiKey: $0)) }
+    }
+
     /// Gemini when a key is configured; nil leaves the answer formats on web results.
     static func makeAnswerClient() -> GeminiClient? {
         Secrets.geminiAPIKey.map { GeminiClient(apiKey: $0) }

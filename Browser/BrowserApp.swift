@@ -2,7 +2,11 @@ import SwiftUI
 
 @main
 struct BrowserApp: App {
-    @State private var session = BrowserSession(router: BrowserSession.makeRouter(), answerClient: BrowserSession.makeAnswerClient())
+    @State private var session = BrowserSession(
+        router: BrowserSession.makeRouter(),
+        answerClient: BrowserSession.makeAnswerClient(),
+        recall: BrowserSession.makeRecallResolver()
+    )
 
     var body: some Scene {
         WindowGroup {

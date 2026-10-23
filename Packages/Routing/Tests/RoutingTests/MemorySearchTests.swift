@@ -26,6 +26,22 @@ import Testing
         #expect(MemorySearch.matches([first, next], query: "pull up the video I was watching about muse") == [next])
     }
 
+    @Test func theKindAndTimeWordsFindTheVideoNotTheWordCan() {
+        let now = Date()
+        let video = MemoryRecord(date: now.addingTimeInterval(-86_400), kind: .page, query: "", title: "Rick Steves' Europe: Lisbon", url: URL(string: "https://m.youtube.com/watch?v=a"))
+        let recipe = MemoryRecord(date: now.addingTimeInterval(-3_600), kind: .narrative, query: "how do you make hot chocolate", text: "You can whisk cocoa into milk.")
+        let microwave = MemoryRecord(date: now.addingTimeInterval(-3_000), kind: .search, query: "can you microwave chocolate milk")
+        let water = MemoryRecord(date: now.addingTimeInterval(-2_000), kind: .search, query: "can you use water?")
+        let all = [video, recipe, microwave, water]
+        let query = "Can you pull up the videos I was watching yesterday"
+        #expect(MemorySearch.terms(from: query).isEmpty, "\"can\" is phrasing, not a thing to find")
+        #expect(MemorySearch.shortlist(all, query: query, now: now) == [video])
+        #expect(MemorySearch.shortlist(all, query: "that chocolate thing", now: now) == [microwave, recipe], "no filter: word matches, newest first")
+        #expect(MemorySearch.shortlist(all, query: "pull up what I was looking at", now: now).isEmpty, "no filter and no content word")
+        #expect(MemorySearch.shortlist(all, query: "the answers from today", now: now) == [recipe], "a filter alone: the filtered set, newest first")
+        #expect(MemorySearch.shortlist(all, query: "that chocolate search from today", now: now) == [microwave, water], "words first, then the rest of the filtered set")
+    }
+
     @Test func aLaterTurnOfAConversationIsFound() {
         let thread = MemoryRecord(kind: .narrative, query: "how do you make hot chocolate", text: "Heat milk.", turns: [
             AnswerTurn(query: "how do you make hot chocolate", answer: "Heat milk."),

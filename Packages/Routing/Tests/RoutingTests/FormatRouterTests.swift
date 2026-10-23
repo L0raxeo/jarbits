@@ -83,6 +83,36 @@ import Testing
         #expect(message.hasPrefix("decoding"))
     }
 
+    @Test func aRecallShortlistComesBackJudgedOrFailed() async throws {
+        let now = Date(timeIntervalSince1970: 1_792_685_600)
+        let video = MemoryRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, date: now.addingTimeInterval(-86_400), kind: .page, query: "", title: "Rick Steves' Europe: Lisbon", url: URL(string: "https://m.youtube.com/watch?v=a"))
+        let recipe = MemoryRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, date: now.addingTimeInterval(-3_600), kind: .narrative, query: "how do you make hot chocolate", text: "Heat milk.")
+        let body = #"{ "model": "jev-1.13.0", "answers": { "m0": { "type": "noul", "noul": 0.95 }, "m1": { "type": "noul", "noul": 0.1 } }, "usage": { "input_tokens": 300, "output_tokens": 4 } }"#
+        let client = MockTransport.client(status: 200, body: body)
+
+        let verdict = await RecallResolver(client: client, locale: Locale(identifier: "en_US")).resolve("the video from yesterday", candidates: [video, recipe], now: now)
+
+        guard case let .picked(picks, latencyMs) = verdict else {
+            Issue.record("expected picks, got \(verdict)")
+            return
+        }
+        #expect(picks.map(\.record) == [video])
+        #expect(latencyMs >= 0)
+        let sent = try #require(MockTransport.requests.first?.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: sent) as? [String: Any])
+        #expect((json["questions"] as? [String: Any])?.count == 2)
+        #expect((json["state"] as? [String: Any])?["query"] as? String == "the video from yesterday")
+
+        MockTransport.handler = { _ in
+            Thread.sleep(forTimeInterval: 0.5)
+            return (200, Data())
+        }
+        MockTransport.requests = []
+        let slow = JevClient(apiKey: "sk-test", timeout: .milliseconds(50), session: MockTransport.session())
+        #expect(await RecallResolver(client: slow).resolve("x", candidates: [video], now: now) == .failed("timeout"))
+        #expect(await RecallResolver(client: slow).resolve("x", candidates: [], now: now) == .picked([], latencyMs: 0), "nothing to ask about")
+    }
+
     @Test func slowAnswerTimesOut() async {
         MockTransport.handler = { _ in
             Thread.sleep(forTimeInterval: 0.5)

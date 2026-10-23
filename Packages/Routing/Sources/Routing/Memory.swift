@@ -90,16 +90,28 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// How a recall fared, for the decision log: the evidence for whether
-/// word matching is enough.
+/// How a recall fared, for the decision log: what was shortlisted, what
+/// Jev picked, and which path answered.
 public struct RecallSummary: Codable, Sendable, Equatable {
+    /// How many memories were shown: none (web), one (opened), or the picker's count.
     public var matches: Int
     /// The kind of the memory shown, when one was.
     public var picked: MemoryRecord.Kind?
+    /// How many candidates the filters and words shortlisted.
+    public var shortlisted: Int?
+    /// How many of them Jev said yes to, when Jev was asked.
+    public var judged: Int?
+    /// `jev`, `words` (no key, or nothing to judge), or the error Jev's request met.
+    public var source: String?
+    public var latencyMs: Int?
 
-    public init(matches: Int, picked: MemoryRecord.Kind? = nil) {
+    public init(matches: Int, picked: MemoryRecord.Kind? = nil, shortlisted: Int? = nil, judged: Int? = nil, source: String? = nil, latencyMs: Int? = nil) {
         self.matches = matches
         self.picked = picked
+        self.shortlisted = shortlisted
+        self.judged = judged
+        self.source = source
+        self.latencyMs = latencyMs
     }
 }
 
@@ -118,14 +130,16 @@ public enum MemorySearch {
         "pull", "bring", "up", "again", "go", "back", "the", "a", "an", "to", "from", "earlier",
         "yesterday", "thing", "about", "on", "of", "page", "site", "one", "i", "was", "had", "saw",
         "looked", "at", "open", "show", "me", "find", "get", "it", "and", "with", "for", "in", "you",
-        "we", "did", "do", "what", "which", "s",
+        "we", "did", "do", "what", "which", "s", "can", "could", "would", "please",
         // What the user did with it, not what it was.
         "watching", "watched", "watch", "reading", "read", "seen", "see", "looking", "visited",
         "opened", "searched", "asked", "told", "said", "talking", "talked", "mentioned", "earlier",
-        "before", "ago", "last", "time", "other", "day", "night", "week", "recently", "just",
-        // The kind of thing, which its title rarely says.
-        "video", "videos", "clip", "article", "post", "link", "website", "answer", "question",
-        "picture", "photo", "image",
+        "before", "ago", "last", "time", "other", "day", "days", "night", "week", "weeks", "recently", "just",
+        "this", "today", "tonight", "morning", "afternoon", "evening", "hours",
+        // The kind of thing, which its title rarely says. These and the time
+        // words above are read by `RecallFilters` before they are dropped.
+        "video", "videos", "clip", "clips", "article", "articles", "post", "link", "website",
+        "answer", "answers", "question", "picture", "pictures", "photo", "photos", "image", "images",
     ]
 
     /// At least this long before a term may match inside joined-up text.
@@ -137,6 +151,21 @@ public enum MemorySearch {
     public static func terms(from query: String) -> [String] {
         var seen = Set<String>()
         return tokens(of: query).filter { !filler.contains($0) && $0.count >= 2 && seen.insert($0).inserted }
+    }
+
+    /// The candidates for a recall: the records the query's kind and time
+    /// words allow (`RecallFilters`), ranked by word matches, then the rest
+    /// of the filtered set newest first, so a judge still sees "the videos
+    /// from yesterday" when no word matches a title. With no filter and no
+    /// content word there is nothing to go on.
+    public static func shortlist(_ records: [MemoryRecord], query: String, now: Date, calendar: Calendar = .current, limit: Int = limit) -> [MemoryRecord] {
+        let filters = RecallFilters.parse(query, now: now, calendar: calendar)
+        let allowed = filters.isEmpty ? records : records.filter(filters.allows)
+        let byWords = matches(allowed, query: query, limit: limit)
+        guard !filters.isEmpty else { return byWords }
+        let hit = Set(byWords.map(\.id))
+        let rest = allowed.filter { !hit.contains($0.id) }.sorted { $0.date > $1.date }
+        return Array((byWords + rest).prefix(limit))
     }
 
     public static func matches(_ records: [MemoryRecord], query: String, limit: Int = limit) -> [MemoryRecord] {

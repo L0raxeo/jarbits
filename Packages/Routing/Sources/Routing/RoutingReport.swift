@@ -81,6 +81,7 @@ public enum RoutingReport {
         out.append("")
         out.append("Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.")
         out.append("")
+        out += recallSection()
         out.append("## Question types not used yet")
         out.append("")
         out.append("- **score**: a position on an ordered scale with confidence. Candidate use: how much the query needs a written explanation.")
@@ -102,6 +103,34 @@ public enum RoutingReport {
         out.append("- Trailers, at the end or between \"is it\" and \"in\": \(quoted(TimeQuery.trailers))")
         out.append("")
         out.append("Shown as `==7:56 PM==`, with `tomorrow` or `yesterday` when the date there differs, and `in Mexico City` when the place spans zones. Logged as `local(\"time\")` with none of the Jev fields.")
+        out.append("")
+        return out
+    }
+
+    /// How a `recall` pick is resolved: the filters and shortlist on the
+    /// device, then one yes/no question per candidate, quoted from the same
+    /// builder the app uses.
+    private static func recallSection() -> [String] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Chicago")!
+        let now = Date(timeIntervalSince1970: 1_792_685_600)
+        let sample = MemoryRecord(
+            date: now.addingTimeInterval(-86_400), kind: .page, query: "rick steves lisbon",
+            title: "Rick Steves' Europe: Lisbon", url: URL(string: "https://m.youtube.com/watch?v=a")
+        )
+        var out: [String] = []
+        out.append("## After routing: recall")
+        out.append("")
+        out.append("A `recall` pick is resolved on the device first. Kind and time words in the query (\"video\", \"answer\", \"picture\", \"yesterday\", \"this morning\", \"three days ago\") filter the memories by kind, host and date; word matches, then recency, shortlist at most \(MemorySearch.limit) (`RecallFilters`, `MemorySearch.shortlist`). With no filter and no content word there is nothing to go on, and the words go to web results. Otherwise the shortlist goes to Jev in one request, a yes/no question per memory:")
+        out.append("")
+        out.append("> " + RecallRouting.instructions(for: sample, now: now, calendar: calendar))
+        out.append("")
+        out.append("| Means | Description |")
+        out.append("|---|---|")
+        out.append("| yes | \(RecallRouting.recallCriteria.yes) |")
+        out.append("| no | \(RecallRouting.recallCriteria.no) |")
+        out.append("")
+        out.append("A memory at or above \(RecallRouting.recallThreshold.formatted()) is the one asked for: alone, it opens at once. Otherwise every memory at or above \(RecallRouting.maybeThreshold.formatted()) is plausible: one opens, several show the picker in Jev's order, so an unsure Jev leaves the choice to the user; none goes to web results. A failed or slow request, or no key, shows the shortlist in word order. The record's `recall` logs the shortlist size, how many were plausible, the path (`jev`, `words`, or the error) and the latency.")
         out.append("")
         return out
     }

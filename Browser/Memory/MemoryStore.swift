@@ -88,6 +88,12 @@ actor MemoryStore {
         MemorySearch.matches(records(), query: query)
     }
 
+    /// The candidates for a recall: filtered by the query's kind and time
+    /// words, ranked by words then recency; see `MemorySearch.shortlist`.
+    func shortlist(_ query: String, now: Date = .now) -> [MemoryRecord] {
+        MemorySearch.shortlist(records(), query: query, now: now)
+    }
+
     /// Everything goes: the file and every picture. Debug builds offer this
     /// from the idle screen; there is no user-facing control yet.
     func clear() {

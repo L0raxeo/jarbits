@@ -247,16 +247,29 @@ its record; past 5 000 records the oldest go, which keeps the file in the
 tens of megabytes at most. Nothing in it leaves the phone, and Google's
 interaction storage stays off.
 
-A recall drops the phrasing ("remember", "that", "my", "pull up") and
-searches the records for the words left, in their queries, titles,
-addresses and text; a name spelt nearly right still counts ("hennessy"
-finds "hennessey", as dictation spells names). Records holding every word
-win, else records holding any; newest first among equals; at most ten.
+A recall is resolved in three steps. First the query's kind and time
+words become filters over what each record stores (`RecallFilters`):
+"video" or "watching" keeps pages on a video host (a short list in
+`MemoryRecord.videoHosts`) or titled as one, "answer" or "chat" keeps
+answers, "picture" keeps pictures, and "yesterday", "this morning", "last
+week" or "three days ago" keep what was seen then. Then the phrasing is
+dropped ("remember", "that", "my", "pull up", "can") and the records left
+are ranked by the words that remain, in their queries, titles, addresses
+and text; a name spelt nearly right still counts ("hennessy" finds
+"hennessey", as dictation spells names); records holding every word win,
+then records holding any, then the rest of the filtered set newest first;
+at most ten (`MemorySearch.shortlist`). With no filter and no content word
+there is nothing to go on, and the words go to the web. Last, the
+shortlist goes to Jev in one request, a yes/no question per memory naming
+its kind, when, its host and its title (`RecallRouting`, see ROUTING.md).
+A memory at or above 0.5 is the one asked for and, alone, opens at once;
+otherwise everything at or above 0.3 is plausible: one opens, several show
+the picker in Jev's order, so an unsure Jev leaves the choice to the user; nothing
+plausible falls through to a Google search for the same words, so a wrong
+judgement costs nothing visible. A failed or slow Jev request, or no key,
+shows the shortlist in word order instead.
 A page's address is kept without Google's click code or `utm_` tags, so
-the same page tapped twice from results is one memory. One match opens at once;
-several show a picker, one row each with the title, the kind and when, and
-a tap opens that one; none falls through to a Google search for the same
-words, so a wrong pick by Jev costs nothing visible. The picker is a
+the same page tapped twice from results is one memory. The picker is a
 two-wide grid of tiles, like Safari's tab overview: a page shows the
 picture taken when it was memorised (a 360-px JPEG of about 30 KB in
 `Application Support/Browser/memories/`, kept for the newest 1 000 pages
@@ -271,10 +284,12 @@ through to is not memorised, so the recall phrase never becomes a memory
 that the next recall of the same words would find and loop on; and a
 look through the memories that has not resolved in 3 s goes to the web.
 
-The decision log notes each recall's match count. If recalls keep matching
-nothing or too much, the upgrade is to send the candidates to Jev as one
-yes/no question each in a single request; word matching stays as the
-prefilter. Debug builds show a "Clear memory" link at the top of the idle
+The decision log notes each recall's shortlist size, how many Jev picked,
+which path answered (`jev`, `words`, or the error) and Jev's latency.
+`swift run --package-path Packages/Routing report recall <memories.jsonl>
+"<query>"` runs the filters, the shortlist and, with `TYPESAFE_API_KEY`,
+Jev's judgement from the Mac, so a recall phrasing can be tried against an
+exported memories file. Debug builds show a "Clear memory" link at the top of the idle
 screen that deletes the file and every picture; there is no user-facing
 control yet.
 
