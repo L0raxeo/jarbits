@@ -49,7 +49,8 @@ answer, and if so the card grows into a conversation instead of being
 replaced (see "How a query is routed"). The capsule itself
 becomes the wave line, small, at the foot, until the new result is ready; a
 link tapped inside a page shows the same line while the page loads. Tapping
-the line while it waves returns to the circle. Over a result the microphone
+the line while it waves returns to the circle. Pulling down at the top of
+a page reloads it, with the system's spinner. Over a result the microphone
 listens too, but only while you do nothing: no finger on the screen, no
 scroll moving, no video playing, no keyboard. Once a word is heard the
 capsule rounds into a small circle at the left with "Disregard" and "I'm

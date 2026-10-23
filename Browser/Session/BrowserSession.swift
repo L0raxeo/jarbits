@@ -891,6 +891,24 @@ final class BrowserSession {
         _ = page.reload()
     }
 
+    /// Pull to refresh: reloads and returns when the page has finished (or
+    /// failed, or `finishTimeout` has passed), so the spinner knows when to
+    /// stop. The navigation watcher handles the clay and the chrome as for
+    /// any other load.
+    func reloadAndWait() async {
+        let reload = Task { [page] in
+            do {
+                for try await event in page.reload() where event == .finished { break }
+            } catch {}
+        }
+        _ = await withTaskGroup(of: Void.self) { group in
+            group.addTask { await reload.value }
+            group.addTask { [timeout = finishTimeout] in try? await Task.sleep(for: timeout) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
     func stop() {
         page.stopLoading()
     }

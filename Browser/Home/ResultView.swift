@@ -158,6 +158,8 @@ private struct WebResultView: View {
                 // default the web view rubber-bands sideways on every page,
                 // so a vertical drag with a little drift wobbles the page.
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                // Pull to refresh: the web view installs the system control.
+                .refreshable { await session.reloadAndWait() }
                 .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
                     session.attention.touched()
                     ResultView.scrolled(from: old, to: new, compact: &barCompact)
