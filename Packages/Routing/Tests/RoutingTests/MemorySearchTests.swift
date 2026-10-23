@@ -26,6 +26,15 @@ import Testing
         #expect(MemorySearch.matches([first, next], query: "pull up the video I was watching about muse") == [next])
     }
 
+    @Test func aLaterTurnOfAConversationIsFound() {
+        let thread = MemoryRecord(kind: .narrative, query: "how do you make hot chocolate", text: "Heat milk.", turns: [
+            AnswerTurn(query: "how do you make hot chocolate", answer: "Heat milk."),
+            AnswerTurn(query: "and with oat milk?", answer: "Oat milk scorches faster, so keep it under a simmer."),
+        ])
+        let other = record(.narrative, "capital of peru", text: "Lima.")
+        #expect(MemorySearch.matches([other, thread], query: "that answer about oat milk") == [thread])
+    }
+
     @Test func aNameSpeltNearlyRightStillMatches() {
         let hennessey = record(.page, "", title: "Hennessey Performance | Official Website", url: "https://www.hennesseyperformance.com/")
         let other = record(.page, "", title: "Henley Royal Regatta", url: "https://www.hrr.co.uk/")

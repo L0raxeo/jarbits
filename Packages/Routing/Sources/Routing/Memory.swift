@@ -49,8 +49,12 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
     public var url: URL?
     /// Narratives only: the answer's markup, as `AnswerMarkup` renders it.
     public var text: String?
+    /// A narrative that grew into a conversation: every turn, first to last.
+    /// `query` and `text` stay the first turn's, so the record is still the
+    /// same thing as the answer it began as.
+    public var turns: [AnswerTurn]?
 
-    public init(id: UUID = UUID(), date: Date = .now, kind: Kind, query: String, title: String? = nil, url: URL? = nil, text: String? = nil) {
+    public init(id: UUID = UUID(), date: Date = .now, kind: Kind, query: String, title: String? = nil, url: URL? = nil, text: String? = nil, turns: [AnswerTurn]? = nil) {
         self.id = id
         self.date = date
         self.kind = kind
@@ -58,6 +62,7 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         self.title = title ?? query
         self.url = url
         self.text = text
+        self.turns = turns
     }
 
     /// Two records of the same thing: a page by address, anything else by
@@ -190,7 +195,7 @@ public enum MemorySearch {
 
 extension MemoryRecord {
     /// Everything a term may match: the query, the title, the page's host
-    /// and path, the answer's text.
+    /// and path, the answer's text, and every later turn of a conversation.
     var haystack: String {
         var parts = [query, title]
         if let url {
@@ -198,6 +203,10 @@ extension MemoryRecord {
             parts.append(url.path())
         }
         if let text { parts.append(text) }
+        for turn in turns ?? [] {
+            parts.append(turn.query)
+            parts.append(turn.answer)
+        }
         return parts.joined(separator: " ")
     }
 }

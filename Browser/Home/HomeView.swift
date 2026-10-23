@@ -39,7 +39,9 @@ struct HomeView: View {
         }
     }
 
-    private var showsResult: Bool { session.stage == .ready }
+    /// Ready, or a narrative conversation that stays up while a follow-up
+    /// over it is routed and its next turn arrives.
+    private var showsResult: Bool { session.stage == .ready || session.showsThread }
     private var showsHint: Bool { mode == .circle }
     /// The microphone is on exactly while the circle is on screen. The
     /// inactive phase is ignored: the permission alert itself causes it.
@@ -99,9 +101,13 @@ struct HomeView: View {
                     // Mounted as soon as there is a plan and hidden until ready,
                     // rather than removed and re-added: WebKit's content process
                     // can assert when its view is torn down and re-attached while
-                    // a page is still laying out.
+                    // a page is still laying out. Identity follows the card
+                    // (`cardID`): web pages share one, a conversation keeps its
+                    // own as it grows, and a held conversation replaced by a
+                    // fresh card leaves through the transition below.
                     if let plan = session.plans.first, session.stage != .idle {
                         ResultView(plan: plan, clayY: clayY, topInset: insets.top, bottomInset: insets.bottom, barCompact: $barCompact)
+                            .id(plan.cardID)
                             .opacity(showsResult ? 1 : 0)
                             .allowsHitTesting(showsResult)
                             .animation(.easeIn(duration: 0.4), value: showsResult)

@@ -16,6 +16,7 @@ State (what Jev reads):
 |---|---|
 | `query` | The text as typed, trimmed. |
 | `locale` | The device locale identifier, e.g. `en_US`. |
+| `previous_queries`, `previous_answer` | Only while a narrative answer is on screen and the query was typed over it: every query of that conversation, oldest first, and the last answer cut to 1500 characters. The format question then reads differently and a third question is asked; see "When a narrative is on screen". |
 
 Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can answer itself becomes a card at once; Jev is not asked either way.
 
@@ -64,6 +65,27 @@ A yes/no question answered with the probability of yes. Instructions sent with t
 
 Answer: `noul`, the probability of yes (0–1). No confidence field.
 
+## When a narrative is on screen
+
+A follow-up typed over a narrative answer is read as the conversation makes it. The `format` question's instructions become:
+
+> Which response format best answers this web search query? The state carries the conversation so far: the earlier queries and the answer on screen. Judge the query as that conversation makes it, not as typed on its own. A reply, a reaction or a question that leans on the answer, however short, wants narrative, the format of the answer it replies to. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, each described below; or web_results for a page to browse.
+
+and a third question is asked:
+
+### `continues` — type `noul`
+
+A yes/no question answered with the probability of yes. Instructions sent with the question:
+
+> The state carries the previous query and the answer the user is looking at. Is this query a continuation of that exchange: a reply, a reaction, a request to go on or to clarify, or a question that only makes sense given that answer?
+
+| Means | Description |
+|---|---|
+| yes | The query answers, reacts to, questions or builds on the previous answer, or would be incomplete without it, however short: "why?", "can I use water", "and with oat milk", "tell me more", "is that true for cats too". |
+| no | A new question that stands on its own, even about a nearby topic: it would mean the same thing with no previous answer. |
+
+Answer: `noul`, the probability of yes (0–1). No confidence field.
+
 ## What comes back
 
 ```json
@@ -85,6 +107,8 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 | `confidence` below 0.5 | Web results | `confidenceFallback` (the pick is kept as `suggested`) |
 | `confidence` at or above 0.5 and `recent` below 0.5 | The chosen format's card; web results while that module is only `routed` (today: `map`, `stock`) | `jev` |
 | `narrative` or `one_line` picked with confidence, but `recent` at or above 0.5 | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |
+| Over a narrative on screen, `continues` at or above 0.5 and a card format (`map`, `stock`, `recall`, `image`) picked with confidence | That card | `jev` |
+| Over a narrative on screen, `continues` at or above 0.5 and any other pick, sure or not, with `recent` below 0.5 | The narrative on screen grows: the query as a line, then a reply written with the earlier turns in view | `continuation` (the pick is kept as `suggested`) |
 
 Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.
 
@@ -113,6 +137,10 @@ Context (use for "today" and "now"; do not repeat it unless the query asks about
 - Locale: en_US
 ```
 
+### Input for a narrative that continues
+
+When Jev judged the query a continuation of the narrative on screen (`continuation` in the decision), `input` is a list of `user_input` and `model_output` steps instead of a string, Google's stateless shape; `store` stays false. Oldest first: `{"type": "user_input", "content": [{"type": "text", "text": "<earlier query>"}]}`, `{"type": "model_output", "content": [{"type": "text", "text": "<earlier answer, markup included>"}]}`, and so on, then one last `user_input` step holding the block above. At most 6 earlier turns are sent.
+
 ### `narrative` — system instruction, max 800 output tokens
 
 ```
@@ -123,13 +151,14 @@ Rules:
 - Match the scope to the wording of the query. "What is X" wants what X is: the full name and a sentence or two of meaning, not how it works, examples or history. "How does X work" wants how it works and nothing adjacent: not its background, its context in the field, or why it rose or declined. Add nothing the query did not ask for: no related facts, caveats or tips.
 - There is no target length. Stop when the question is answered. Never pad, ramble, or add a closing thought. Plain prose in short paragraphs; no headings, bullet points, numbered lists, tables, emoji, or Markdown other than the emphasis markers below.
 - No preamble and no closing line. Start with the answer. Do not offer further help or suggest follow-up questions.
+- Earlier turns of this conversation may come before the query, oldest first; the context block applies to all of them. Then the query is a reply to your last answer: resolve "it", "that", "why" and the like against the conversation, do not repeat what you already said, and answer only the new question.
 - Your knowledge ends around January 2025 and you have no access to the web; the context says how long ago that was. Answer with what you knew then, stated as plain fact. Never say when your knowledge ends, that the answer may be out of date, or that you cannot check: the browser puts a web link under every answer. Do not invent developments after that date.
 - Use the context block for "today" and "now". Do not mention the context unless the query is about it.
 - If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
 - Write in the language of the query.
 
 Emphasis. Mark it with exactly these markers and nothing else:
-- ==…== for the single most important thing the user should take away, at most once in the whole answer.
+- ==…== for the single most important thing the user should take away, at most once in the whole answer (each answer in a conversation has its own).
 - **…** for the facts that directly answer the question, a few at most.
 - __…__ for a condition or caveat that changes the answer.
 - _…_ for a name, title or term you are introducing.

@@ -80,16 +80,25 @@ struct ResultView: View {
         switch plan {
         case .web:
             WebResultView(page: session.page, bottomInset: bottomInset, chrome: session.chrome, barCompact: $barCompact)
-        case let .answer(format, _):
+        case let .answer(format, query, history):
             if let answer = session.answer {
-                AnswerView(spans: answer.styledSpans, stoppedEarly: answer.stoppedEarly, format: format, clayY: clayY, barCompact: $barCompact)
+                AnswerView(
+                    spans: answer.styledSpans, stoppedEarly: answer.stoppedEarly, format: format, clayY: clayY, barCompact: $barCompact,
+                    history: history, query: query, failed: answer.failedBeforeText
+                )
             }
         case let .localAnswer(format, _, text):
             AnswerView(spans: AnswerMarkup.styled(text, for: format), stoppedEarly: false, format: format, clayY: clayY, barCompact: $barCompact)
         case .image:
             ImageCardView(images: session.images, clayY: clayY)
         case let .memory(record):
-            AnswerView(spans: AnswerMarkup.styled(record.text ?? "", for: .narrative), stoppedEarly: false, format: .narrative, clayY: clayY, barCompact: $barCompact, recalledOn: record.date)
+            // A remembered conversation shows its earlier turns and ends on its last.
+            let turns = record.turns ?? []
+            AnswerView(
+                spans: AnswerMarkup.styled(turns.last?.answer ?? record.text ?? "", for: .narrative), stoppedEarly: false, format: .narrative,
+                clayY: clayY, barCompact: $barCompact, recalledOn: record.date,
+                history: Array(turns.dropLast()), query: turns.count > 1 ? turns.last?.query : nil
+            )
         case let .recallPicker(records):
             RecallGridView(records: records, topInset: topInset, barCompact: $barCompact)
         case .recall:
@@ -205,7 +214,10 @@ private struct WebResultView: View {
 
 /// Gemini's answer in dark text on the white screen. One-line answers sit at
 /// the clay's spot; narrative text starts near the top and grows as it streams.
-/// A plain "Web results" link under either loads the Google page instead.
+/// A narrative that became a conversation reads as a transcript: each
+/// earlier query as a quiet line over its answer, then the latest query and
+/// the answer streaming under it. A plain "Web results" link under either
+/// loads the Google page instead.
 private struct AnswerView: View {
     @Environment(BrowserSession.self) private var session
     let spans: [StyledSpan]
@@ -216,6 +228,12 @@ private struct AnswerView: View {
     @Binding var barCompact: Bool
     /// A remembered answer: when it was given, so a stale one reads as old.
     var recalledOn: Date? = nil
+    /// The earlier turns of a conversation, oldest first; empty for one answer.
+    var history: [AnswerTurn] = []
+    /// The query `spans` answer; shown as a line only inside a conversation.
+    var query: String? = nil
+    /// A turn of a conversation that brought nothing back.
+    var failed: Bool = false
 
     private let ink = Palette.ink
     private let quiet = Palette.quiet
@@ -248,22 +266,60 @@ private struct AnswerView: View {
     }
 
     private func narrative(in proxy: GeometryProxy) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text(AttributedString(spans: spans, ink: ink))
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                footer
+        ScrollViewReader { scroller in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    ForEach(history.indices, id: \.self) { index in
+                        queryLine(history[index].query)
+                        prose(AnswerMarkup.styled(history[index].answer, for: .narrative))
+                    }
+                    if !history.isEmpty, let query {
+                        queryLine(query).id(Self.latestTurn)
+                    }
+                    if failed {
+                        Text("Nothing came back.")
+                            .font(.footnote)
+                            .foregroundStyle(quiet)
+                    } else {
+                        prose(spans)
+                    }
+                    footer
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, proxy.size.height * 0.15)
+                .padding(.bottom, 120)   // room for the query capsule
             }
-            .padding(.horizontal, 24)
-            .padding(.top, proxy.size.height * 0.15)
-            .padding(.bottom, 120)   // room for the query capsule
+            .scrollBounceBehavior(.basedOnSize)
+            .onScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
+                ResultView.scrolled(from: old, to: new, compact: &barCompact)
+            }
+            .onChange(of: history.count) { _, count in
+                // A new turn: bring its query line up, and keep the capsule
+                // open, since this scroll is ours and not the reader's.
+                guard count > 0 else { return }
+                withAnimation(.smooth(duration: 0.45)) {
+                    scroller.scrollTo(Self.latestTurn, anchor: UnitPoint(x: 0.5, y: 0.12))
+                }
+                barCompact = false
+            }
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .onScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
-            ResultView.scrolled(from: old, to: new, compact: &barCompact)
-        }
+    }
+
+    private static let latestTurn = "latest-turn"
+
+    private func prose(_ spans: [StyledSpan]) -> some View {
+        Text(AttributedString(spans: spans, ink: ink))
+            .font(.body)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// What the user asked, over its answer: quiet, so the answers carry the page.
+    private func queryLine(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(quiet)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var footer: some View {

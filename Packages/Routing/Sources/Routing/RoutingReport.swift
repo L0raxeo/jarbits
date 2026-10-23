@@ -8,6 +8,11 @@ public enum RoutingReport {
 
     public static func markdown() -> String {
         let request = JevRouting.request(for: "<query>", locale: Locale(identifier: "en_US"), model: JevClient.defaultModel)
+        // The same request over a narrative, for the follow-up section.
+        let followUp = JevRouting.request(
+            for: "<query>", locale: Locale(identifier: "en_US"), model: JevClient.defaultModel,
+            thread: [AnswerTurn(query: "<earlier query>", answer: "<earlier answer>")]
+        )
         var out: [String] = []
 
         out.append("# Routing contract")
@@ -28,6 +33,7 @@ public enum RoutingReport {
         out.append("|---|---|")
         out.append("| `query` | The text as typed, trimmed. |")
         out.append("| `locale` | The device locale identifier, e.g. `en_US`. |")
+        out.append("| `previous_queries`, `previous_answer` | Only while a narrative answer is on screen and the query was typed over it: every query of that conversation, oldest first, and the last answer cut to \(JevRouting.maxPreviousAnswerCharacters) characters. The format question then reads differently and a third question is asked; see \"When a narrative is on screen\". |")
         out.append("")
         out.append("Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can answer itself becomes a card at once; Jev is not asked either way.")
         out.append("")
@@ -36,6 +42,17 @@ public enum RoutingReport {
         out.append("## The questions")
         out.append("")
         for (id, question) in request.questions {
+            out += render(id: id, question: question)
+        }
+        out.append("## When a narrative is on screen")
+        out.append("")
+        out.append("A follow-up typed over a narrative answer is read as the conversation makes it. The `format` question's instructions become:")
+        out.append("")
+        out.append("> " + JevRouting.followUpInstructions)
+        out.append("")
+        out.append("and a third question is asked:")
+        out.append("")
+        for (id, question) in followUp.questions where id == JevRouting.continuesQuestionID {
             out += render(id: id, question: question)
         }
         out.append("## What comes back")
@@ -59,6 +76,8 @@ public enum RoutingReport {
         out.append("| `confidence` below \(JevRouting.confidenceFloor.formatted()) | Web results | `confidenceFallback` (the pick is kept as `suggested`) |")
         out.append("| `confidence` at or above \(JevRouting.confidenceFloor.formatted()) and `recent` below \(JevRouting.recencyThreshold.formatted()) | The chosen format's card; web results while that module is only `routed` (today: \(routedList)) | `jev` |")
         out.append("| `narrative` or `one_line` picked with confidence, but `recent` at or above \(JevRouting.recencyThreshold.formatted()) | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |")
+        out.append("| Over a narrative on screen, `continues` at or above \(JevRouting.continuationThreshold.formatted()) and a card format (\(cardList)) picked with confidence | That card | `jev` |")
+        out.append("| Over a narrative on screen, `continues` at or above \(JevRouting.continuationThreshold.formatted()) and any other pick, sure or not, with `recent` below \(JevRouting.recencyThreshold.formatted()) | The narrative on screen grows: the query as a line, then a reply written with the earlier turns in view | `continuation` (the pick is kept as `suggested`) |")
         out.append("")
         out.append("Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.")
         out.append("")
@@ -85,6 +104,10 @@ public enum RoutingReport {
         out.append("Shown as `==7:56 PM==`, with `tomorrow` or `yesterday` when the date there differs, and `in Mexico City` when the place spans zones. Logged as `local(\"time\")` with none of the Jev fields.")
         out.append("")
         return out
+    }
+
+    private static var cardList: String {
+        ResponseFormat.allCases.filter(\.outranksConversation).map { "`\($0.rawValue)`" }.joined(separator: ", ")
     }
 
     private static var routedList: String {

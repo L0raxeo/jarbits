@@ -20,6 +20,8 @@ final class AnswerSession {
 
     private(set) var format: ResponseFormat = .narrative
     private(set) var query = ""
+    /// The conversation this answer continues, oldest first; empty for a fresh one.
+    private(set) var history: [AnswerTurn] = []
     private(set) var text = ""
     private(set) var phase: Phase = .idle
     private(set) var summary: AnswerSummary?
@@ -54,19 +56,26 @@ final class AnswerSession {
         if case .failed = phase { !displayText.isEmpty } else { false }
     }
 
+    /// The stream failed before any text arrived. A fresh answer then goes
+    /// to web results; a turn of a conversation says so in its place.
+    var failedBeforeText: Bool {
+        if case .failed = phase { displayText.isEmpty } else { false }
+    }
+
     /// `displayText` with the format's emphasis markers applied.
     var styledSpans: [StyledSpan] {
         AnswerMarkup.styled(displayText, for: format)
     }
 
-    func start(format: ResponseFormat, query: String) {
+    func start(format: ResponseFormat, query: String, history: [AnswerTurn] = []) {
         task?.cancel()
         self.format = format
         self.query = query
+        self.history = history
         text = ""
         summary = nil
         phase = .waiting
-        task = Task { await run(format: format, query: query) }
+        task = Task { await run(format: format, query: query, history: history) }
     }
 
     func cancel() {
@@ -77,11 +86,11 @@ final class AnswerSession {
         }
     }
 
-    private func run(format: ResponseFormat, query: String) async {
+    private func run(format: ResponseFormat, query: String, history: [AnswerTurn]) async {
         let clock = ContinuousClock()
         let start = clock.now
         let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
-        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model)
+        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history)
 
         var usage: AnswerUsage?
         var firstTokenMs: Int?

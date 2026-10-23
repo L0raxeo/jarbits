@@ -53,9 +53,10 @@ final class MockTransport: URLProtocol {
 }
 
 /// A response in the shape TypeSafe documents, with `format` as the question id.
-func jevResponse(choice: String, confidence: Double, probabilities: [String: Double], recency: Double? = nil, model: String = "jev-1.13.0") -> String {
+func jevResponse(choice: String, confidence: Double, probabilities: [String: Double], recency: Double? = nil, continues: Double? = nil, model: String = "jev-1.13.0") -> String {
     let probs = probabilities.map { "\"\($0.key)\": \($0.value)" }.joined(separator: ", ")
-    let recent = recency.map { ", \"recent\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? ""
+    let recent = (recency.map { ", \"recent\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
+        + (continues.map { ", \"continues\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
     return """
     {
       "model": "\(model)",

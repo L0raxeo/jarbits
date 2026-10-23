@@ -76,7 +76,7 @@ public enum DecisionsReport {
         for format in ResponseFormat.allCases {
             let picks = asked.filter { $0.decision.suggested == format }
             guard !picks.isEmpty else { continue }
-            let acted = picks.filter { $0.decision.source == .jev }.count
+            let acted = picks.filter { $0.decision.source == .jev || $0.decision.source == .continuation }.count
             let unsure = picks.filter { $0.decision.source == .confidenceFallback }.count
             let stale = picks.filter { $0.decision.source == .recencyFallback }.count
             let confidences = picks.compactMap(\.decision.confidence)
@@ -94,6 +94,15 @@ public enum DecisionsReport {
                 values.isEmpty ? "–" : (values.reduce(0, +) / Double(values.count)).formatted(.number.precision(.fractionLength(2)))
             }
             out.append("Recency (threshold \(JevRouting.recencyThreshold.formatted())): mean \(mean(answeredRecency)) for answers shown, \(mean(gatedRecency)) for queries sent to web.")
+            out.append("")
+        }
+        let followUps = asked.filter { $0.decision.continuation != nil }
+        if !followUps.isEmpty {
+            let continued = followUps.filter(\.decision.continuesNarrative).count
+            let otherCard = followUps.filter { $0.decision.source == .jev && ($0.decision.continuation ?? 0) >= JevRouting.continuationThreshold }.count
+            let values = followUps.compactMap(\.decision.continuation)
+            let mean = (values.reduce(0, +) / Double(values.count)).formatted(.number.precision(.fractionLength(2)))
+            out.append("Follow-ups over a narrative: \(followUps.count) asked, \(continued) continued it, \(otherCard) went to another card, mean continuation \(mean).")
             out.append("")
         }
         if !gated.isEmpty {

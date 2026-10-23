@@ -34,14 +34,29 @@ public struct SystemOneRequest: Sendable, Equatable {
 }
 
 /// What Jev is asked about. Kept to the query and the user's locale so the
-/// model has nothing irrelevant to be distracted by.
+/// model has nothing irrelevant to be distracted by; the previous exchange
+/// rides along only while a narrative answer is on screen, for the
+/// `continues` question.
 public struct RouteState: Codable, Sendable, Equatable {
     public var query: String
     public var locale: String
+    /// Every query of the conversation on screen, oldest first, and the text
+    /// of the last answer. Left out of the JSON when nil, so an ordinary
+    /// request is unchanged.
+    public var previousQueries: [String]?
+    public var previousAnswer: String?
 
-    public init(query: String, locale: String) {
+    enum CodingKeys: String, CodingKey {
+        case query, locale
+        case previousQueries = "previous_queries"
+        case previousAnswer = "previous_answer"
+    }
+
+    public init(query: String, locale: String, previousQueries: [String]? = nil, previousAnswer: String? = nil) {
         self.query = query
         self.locale = locale
+        self.previousQueries = previousQueries
+        self.previousAnswer = previousAnswer
     }
 }
 
@@ -104,6 +119,16 @@ package enum OrderedJSON {
             out.append(value)
         }
         out.append(UInt8(ascii: "}"))
+        return out
+    }
+
+    package static func array(_ items: [Data]) -> Data {
+        var out = Data("[".utf8)
+        for (index, item) in items.enumerated() {
+            if index > 0 { out.append(UInt8(ascii: ",")) }
+            out.append(item)
+        }
+        out.append(UInt8(ascii: "]"))
         return out
     }
 }

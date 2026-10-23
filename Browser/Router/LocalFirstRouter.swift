@@ -9,13 +9,13 @@ import Routing
 struct LocalFirstRouter: Router {
     let inner: any Router
 
-    func route(_ query: String) async -> RouteResult {
+    func route(_ query: String, thread: [AnswerTurn]) async -> RouteResult {
         if let local = LocalAnswers.answer(query) {
             return RouteResult(
                 plan: .localAnswer(format: local.format, query: query, text: local.text),
                 decision: .local(local.rule, format: local.format)
             )
         }
-        return await inner.route(query)
+        return await inner.route(query, thread: thread)
     }
 }

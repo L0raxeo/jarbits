@@ -132,13 +132,48 @@ final class BrowserSession {
     func submit(_ query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        let thread = thread   // the narrative under the query, if any, before anything moves
         lastQuery = trimmed
         queryForNextPage = trimmed
         stage = .routing
         Task {
-            let result = await router.route(trimmed)
+            let result = await router.route(trimmed, thread: thread)
             guard trimmed == lastQuery, stage == .routing else { return }   // a newer query won, or cancelled
             apply(result)
+        }
+    }
+
+    /// The conversation on screen, oldest first: a narrative card whose
+    /// answer is in (or stopped with some text), or a remembered narrative.
+    /// What a follow-up typed over it may continue. Empty for anything else,
+    /// including a narrative still streaming.
+    var thread: [AnswerTurn] {
+        switch plans.first {
+        case let .answer(.narrative, query, history):
+            guard let answer, answer.query == query, !answer.text.isEmpty else { return [] }
+            switch answer.phase {
+            case .done, .failed: return history + [AnswerTurn(query: query, answer: answer.text)]
+            case .idle, .waiting, .streaming: return []
+            }
+        case let .memory(record) where record.kind == .narrative:
+            return record.turns ?? record.text.map { [AnswerTurn(query: record.query, answer: $0)] } ?? []
+        default:
+            return []
+        }
+    }
+
+    /// The narrative card has nothing to fade out for: a follow-up over it is
+    /// being routed, or a turn that continues it is on its way. The stage is
+    /// `routing` or `loading`, but the home screen keeps the card up.
+    var showsThread: Bool {
+        switch stage {
+        case .routing:
+            return !thread.isEmpty
+        case .loading:
+            if case let .answer(_, _, history) = plans.first { return !history.isEmpty }
+            return false
+        case .idle, .cleaning, .ready:
+            return false
         }
     }
 
@@ -220,7 +255,7 @@ final class BrowserSession {
             plans = [result.plan]
             load(url)
             record(result.decision, query: lastQuery)
-        case let .answer(format, query):
+        case let .answer(format, query, history):
             guard let answer else {
                 // Should not happen: the router only plans answers when a client exists.
                 plans = [.web(QueryParser.searchURL(for: query))]
@@ -230,7 +265,7 @@ final class BrowserSession {
             }
             plans = [result.plan]
             stage = .loading
-            answer.start(format: format, query: query)
+            answer.start(format: format, query: query, history: history)
             // Recorded when the answer finishes, with its summary attached.
         case let .localAnswer(_, query, _):
             answer?.cancel()
@@ -419,13 +454,25 @@ final class BrowserSession {
             record(decision, query: answer.query, answer: summary)
         }
         switch summary.outcome {
+        case .fellBackToWeb where !answer.history.isEmpty:
+            // A turn of a conversation that brought nothing: the thread stays
+            // and the card says so in the turn's place. "why?" alone would be
+            // a poor web search, and the thread is the context the user is in.
+            break
         case .fellBackToWeb, .needsLiveData:
             let url = QueryParser.searchURL(for: answer.query)
             plans = [.web(url)]
             load(url)
         case .completed:
             if answer.format == .narrative {
-                remember(MemoryRecord(kind: .narrative, query: answer.query, text: answer.text))
+                let turns = answer.history + [AnswerTurn(query: answer.query, answer: answer.text)]
+                if turns.count > 1, let first = turns.first {
+                    // One memory per conversation, under its first query: the
+                    // store's repeat rule updates it in place as the thread grows.
+                    remember(MemoryRecord(kind: .narrative, query: first.query, text: first.answer, turns: turns))
+                } else {
+                    remember(MemoryRecord(kind: .narrative, query: answer.query, text: answer.text))
+                }
             } else {
                 remember(MemoryRecord(kind: .oneLine, query: answer.query))
             }

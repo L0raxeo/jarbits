@@ -4,7 +4,7 @@ import Routing
 /// Every query becomes a web card: URL-looking input loads directly,
 /// anything else becomes a Google search. No model is consulted.
 struct LocalRouter: Router {
-    func route(_ query: String) async -> RouteResult {
+    func route(_ query: String, thread: [AnswerTurn]) async -> RouteResult {
         if let url = QueryParser.directURL(from: query) {
             return RouteResult(plan: .web(url), decision: .directURL())
         }

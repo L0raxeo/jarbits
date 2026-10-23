@@ -8,6 +8,9 @@ import Routing
 //   swift run --package-path Packages/Routing report decisions path/to/decisions.jsonl
 //   TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "some query"
 //     (one real Jev call, the same request the app sends; prints every option's probability)
+//   TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "can I use water" \
+//       --after "how do you make chocolate milk" "Heat milk and whisk in cocoa."
+//     (the same, typed over a narrative; one --after pair per earlier turn, oldest first)
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 
@@ -29,8 +32,16 @@ case "decisions":
         fail("could not read \(arguments[1]): \(error)")
     }
 case "route":
-    guard arguments.count == 2 else { fail("usage: report route <query>") }
-    let query = arguments[1]
+    let usage = "usage: report route <query> [--after <earlier query> <earlier answer>]..."
+    var rest = Array(arguments.dropFirst())
+    guard let query = rest.first else { fail(usage) }
+    rest.removeFirst()
+    var thread: [AnswerTurn] = []
+    while let flag = rest.first {
+        guard flag == "--after", rest.count >= 3 else { fail(usage) }
+        thread.append(AnswerTurn(query: rest[1], answer: rest[2]))
+        rest.removeFirst(3)
+    }
     if let local = LocalAnswers.answer(query, locale: Locale(identifier: "en_US")) {
         print("query: \"\(query)\"")
         print("answered on the device by rule \(local.rule): \(local.text)")
@@ -39,13 +50,19 @@ case "route":
     guard let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty else {
         fail("set TYPESAFE_API_KEY in the environment (never paste it on the command line)")
     }
-    let decision = await FormatRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query)
+    let decision = await FormatRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query, thread: thread)
     print("query: \"\(query)\"")
     print("format: \(decision.format.rawValue)  source: \(decision.source)")
     if let confidence = decision.confidence { print("confidence: \(confidence.formatted(.number.precision(.fractionLength(2))))") }
     if let suggested = decision.suggested { print("suggested: \(suggested.rawValue)") }
     if let recency = decision.recency {
         print("recency: \(recency.formatted(.number.precision(.fractionLength(2)))) (threshold \(JevRouting.recencyThreshold.formatted()))")
+    }
+    if let continuation = decision.continuation {
+        let verdict = decision.continuesNarrative ? "continues the narrative"
+            : continuation >= JevRouting.continuationThreshold ? "related, but another card"
+            : "fresh"
+        print("continuation: \(continuation.formatted(.number.precision(.fractionLength(2)))) (threshold \(JevRouting.continuationThreshold.formatted())), \(verdict)")
     }
     for (name, p) in decision.probabilities.sorted(by: { $0.value > $1.value }) {
         print("  \(name.padding(toLength: 12, withPad: " ", startingAt: 0)) \(p.formatted(.number.precision(.fractionLength(3))))")

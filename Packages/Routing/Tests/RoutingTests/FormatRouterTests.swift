@@ -22,6 +22,27 @@ import Testing
         let body = try #require(sent.httpBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect((json["state"] as? [String: Any])?["query"] as? String == "what's the time in costa rica")
+        #expect((json["questions"] as? [String: Any])?["continues"] == nil, "no narrative on screen, no continues question")
+    }
+
+    @Test func aPreviousTurnReachesJevAndTheAnswerComesBack() async throws {
+        let client = MockTransport.client(status: 200, body: jevResponse(
+            choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9, "web_results": 0.1], recency: 0.1, continues: 0.85))
+        let router = FormatRouter(client: client, locale: Locale(identifier: "en_US"))
+
+        let decision = await router.decide("why?", thread: [
+            AnswerTurn(query: "how do you make hot chocolate", answer: "Heat milk, whisk in cocoa."),
+            AnswerTurn(query: "why low heat?", answer: "Milk scorches above a simmer."),
+        ])
+
+        #expect(decision.continuation == 0.85)
+        #expect(decision.continuesNarrative)
+        let body = try #require(MockTransport.requests.first?.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let state = try #require(json["state"] as? [String: Any])
+        #expect(state["previous_queries"] as? [String] == ["how do you make hot chocolate", "why low heat?"])
+        #expect(state["previous_answer"] as? String == "Milk scorches above a simmer.")
+        #expect((json["questions"] as? [String: Any])?["continues"] != nil)
     }
 
     @Test func addressBypassesJev() async {

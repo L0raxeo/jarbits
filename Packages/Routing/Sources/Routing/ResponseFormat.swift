@@ -20,6 +20,17 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     /// Formats a model answers, as opposed to a page or a picture the app loads.
     public var isAnswered: Bool { self == .narrative || self == .oneLine }
 
+    /// A card of its own kind that a follow-up may ask for even in the middle
+    /// of a conversation ("pictures of it"): picked with confidence, it beats
+    /// continuing the narrative. Everything but the three conversational
+    /// formats, so a format added later counts without another edit.
+    public var outranksConversation: Bool {
+        switch self {
+        case .narrative, .oneLine, .webResults: false
+        case .map, .stock, .recall, .image: true
+        }
+    }
+
     /// How far along this module is. Flip it in the same change that adds the
     /// card; `JevRouter.plan(for:query:)` asserts the two agree.
     public var stage: Stage {

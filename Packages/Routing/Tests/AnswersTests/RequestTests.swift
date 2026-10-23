@@ -26,6 +26,51 @@ import Testing
         #expect(positions == positions.sorted())
     }
 
+    @Test func withoutHistoryTheInputIsAString() throws {
+        let request = AnswerPrompt.request(format: .narrative, query: "q", context: .example)
+        #expect(request.history.isEmpty)
+        let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
+        #expect(json["input"] is String)
+    }
+
+    @Test func historyBecomesSteps() throws {
+        let history = [
+            AnswerTurn(query: "how do you make hot chocolate", answer: "You **heat milk** and whisk in cocoa."),
+            AnswerTurn(query: "why low heat?", answer: "Milk ==scorches== above a simmer."),
+        ]
+        let request = AnswerPrompt.request(format: .narrative, query: "and with water?", context: .example, history: history)
+        let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
+        let steps = try #require(json["input"] as? [[String: Any]])
+        #expect(steps.count == 5)
+        #expect(steps.map { $0["type"] as? String } == ["user_input", "model_output", "user_input", "model_output", "user_input"])
+        func text(_ step: [String: Any]) -> String? {
+            (step["content"] as? [[String: Any]])?.first?["text"] as? String
+        }
+        #expect((steps[0]["content"] as? [[String: Any]])?.first?["type"] as? String == "text")
+        #expect(text(steps[0]) == "how do you make hot chocolate", "earlier queries go bare")
+        #expect(text(steps[1]) == "You **heat milk** and whisk in cocoa.")
+        #expect(text(steps[3]) == "Milk ==scorches== above a simmer.", "markup goes back as it was shown")
+        #expect(text(steps[4])?.hasPrefix("Query: and with water?\n") == true, "only the last turn carries the context block")
+        #expect(json["store"] as? Bool == false)
+    }
+
+    @Test func historyIsCappedToTheLastTurns() throws {
+        let history = (0..<10).map { AnswerTurn(query: "q\($0)", answer: "a\($0)") }
+        let request = AnswerPrompt.request(format: .narrative, query: "q10", context: .example, history: history)
+        #expect(request.history.count == AnswerPrompt.maxHistoryTurns)
+        #expect(request.history.first?.query == "q\(10 - AnswerPrompt.maxHistoryTurns)")
+        let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
+        #expect((json["input"] as? [Any])?.count == 2 * AnswerPrompt.maxHistoryTurns + 1)
+    }
+
+    @Test func keyOrderIsStableWithHistory() throws {
+        let request = AnswerPrompt.request(format: .narrative, query: "q", context: .example, history: [AnswerTurn(query: "a", answer: "b")])
+        let body = String(decoding: try request.jsonData(), as: UTF8.self)
+        let order = ["\"model\"", "\"system_instruction\"", "\"input\"", "\"generation_config\"", "\"stream\"", "\"store\""]
+        let positions = order.map { body.range(of: $0)!.lowerBound }
+        #expect(positions == positions.sorted())
+    }
+
     @Test func eachFormatHasItsOwnRulesAndBudget() {
         let narrative = AnswerPrompt.system(for: .narrative)
         let oneLine = AnswerPrompt.system(for: .oneLine)
@@ -38,6 +83,8 @@ import Testing
         #expect(narrative.contains("no access to the web"))
         #expect(narrative.contains("Never say when your knowledge ends"), "no cutoff disclaimer in a narrative")
         #expect(!narrative.contains("may be out of date, then"))
+        #expect(narrative.contains("Earlier turns of this conversation"), "a continued narrative reads as a reply")
+        #expect(narrative.contains("each answer in a conversation has its own"))
         #expect(oneLine.contains("whether a person is alive"))
         #expect(oneLine.contains("one line only"))
         #expect(oneLine.contains("Never more than twelve words"))

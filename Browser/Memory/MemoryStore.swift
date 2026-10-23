@@ -42,6 +42,7 @@ actor MemoryStore {
             all[i].date = record.date
             all[i].title = record.title
             all[i].text = record.text ?? all[i].text
+            all[i].turns = record.turns ?? all[i].turns
             loaded = all
             rewrite(all)
             return all[i].id

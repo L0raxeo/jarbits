@@ -33,6 +33,11 @@ import Testing
         }
         #expect(markdown.contains("### `recent` — type `noul`"))
         #expect(markdown.contains(JevRouting.recencyCriteria.yes))
+        #expect(markdown.contains("### `continues` — type `noul`"))
+        #expect(markdown.contains(JevRouting.continuesCriteria.yes))
+        #expect(markdown.contains(JevRouting.followUpInstructions))
+        #expect(markdown.contains("`previous_queries`"))
+        #expect(markdown.contains("`continuation` (the pick is kept as `suggested`)"))
         #expect(markdown.contains("`recencyFallback`"))
         #expect(markdown.contains("`local(\"time\")`"))
         #expect(markdown.contains("\"\(TimeQuery.placeOpeners[0])\""))
@@ -65,20 +70,25 @@ import Testing
                 format: .webResults, suggested: .oneLine, confidence: 0.9,
                 probabilities: ["one_line": 0.92, "web_results": 0.05], model: "jev-1.13.0", latencyMs: 150, inputTokens: 1100, recency: 0.91, source: .recencyFallback)),
             DecisionRecord(timestamp: now.addingTimeInterval(300), query: "what time is it in tokyo", decision: .local("time", format: .oneLine)),
+            DecisionRecord(timestamp: now.addingTimeInterval(360), query: "can I use water", decision: RouteDecision(
+                format: .narrative, suggested: .webResults, confidence: 0.3,
+                probabilities: ["web_results": 0.4, "narrative": 0.35], model: "jev-1.13.0", latencyMs: 230, inputTokens: 900, continuation: 0.8, source: .continuation)),
         ]
         let lines = try records.map { String(decoding: try DecisionRecord.encoder.encode($0), as: UTF8.self) }.joined(separator: "\n") + "\n"
         let parsed = try DecisionsReport.parse(Data(lines.utf8))
         #expect(parsed == records)
 
         let markdown = DecisionsReport.markdown(records: parsed)
-        #expect(markdown.contains("6 queries: 3 asked Jev, 1 answered on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("7 queries: 4 asked Jev, 1 answered on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("| `web_results` | 1 | 1 | 0 | 0 | 0.30 | \"can I use water\" |"), "a continuation counts as acted on")
+        #expect(markdown.contains("Follow-ups over a narrative: 1 asked, 1 continued it, 0 went to another card, mean continuation 0.80."))
         #expect(markdown.contains("- `time`: 1, most recent \"what time is it in tokyo\""))
         #expect(markdown.contains("| `stock` | 1 | 1 | 0 | 0 | 0.91 | \"nasdaq stock\" |"))
         #expect(markdown.contains("| `map` | 1 | 0 | 1 | 0 | 0.30 | \"coffee\" |"))
         #expect(markdown.contains("| `one_line` | 1 | 0 | 0 | 1 | 0.90 | \"is charlie kirk alive\" |"))
         #expect(markdown.contains("| \"is charlie kirk alive\" | `one_line` | 0.91 |"))
         #expect(markdown.contains("Recency (threshold 0.5): mean – for answers shown, 0.91 for queries sent to web."))
-        #expect(!markdown.contains("| `narrative` |"), "formats never picked are left out")
+        #expect(!markdown.contains("| `image` |"), "formats never picked are left out")
         #expect(markdown.contains("- \"tesla\": timeout"))
         #expect(markdown.contains("| \"coffee\" | `map` | 0.30 | `web_results` 0.33 |"))
     }

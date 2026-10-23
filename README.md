@@ -42,7 +42,10 @@ shows the query, shrinks while you scroll down and grows on the way up;
 tapping it raises the keyboard and the capsule rises with it, morphing into
 the field, with the result still behind; on a web result the field holds
 the page's query, selected, so typing replaces it. Return sends the
-follow-up as a new query, routed like any other, and the capsule itself
+follow-up as a new query, routed like any other; over a narrative answer
+Jev is also asked whether it continues that answer, and if so the card grows
+into a conversation instead of being replaced (see "How a query is
+routed"). The capsule itself
 becomes the wave line, small, at the foot, until the new result is ready; a
 link tapped inside a page shows the same line while the page loads. Tapping
 the line while it waves returns to the circle.
@@ -102,9 +105,25 @@ first text arrives.
   phrase? A `narrative` or `one_line` pick with that probability at or
   above `JevRouting.recencyThreshold` (0.5) is shown as web results and
   logged as `recencyFallback`, because the model's knowledge is months old.
-- The format maps to a plan in `JevRouter.plan(for:query:)`: `web_results`,
+- A follow-up typed over a narrative answer sends the conversation along in
+  the state (`previous_queries`, every query so far, and `previous_answer`,
+  the last answer cut to `JevRouting.maxPreviousAnswerCharacters`), swaps
+  the format question's instructions for ones that judge the query as the
+  conversation makes it (`JevRouting.followUpInstructions`), and asks a
+  third yes/no question (`continues`): is this a reply to, or a continuation
+  of, that exchange? At or above `JevRouting.continuationThreshold` (0.5)
+  the continuation decides the frame and the pick decides the card: a card
+  format (`ResponseFormat.outranksConversation`: `image`, `map`, `stock`,
+  `recall`, and whatever is added later) picked with confidence shows that
+  card; any other pick, sure or not, grows the thread, logged as
+  `continuation` with the pick kept as `suggested`. So "can I use water"
+  after a recipe threads, and "pictures of chocolate milk" becomes a
+  picture. Below the threshold the rules above apply unchanged, including
+  prefer-web-when-unsure. Gemini gets the earlier turns of a thread (see
+  "Answer cards").
+- The format maps to a plan in `JevRouter.plan(for:query:thread:)`: `web_results`,
   `map` and `stock` load a Google results page; `narrative` and `one_line`
-  become `.answer(format:query:)`; `image` becomes `.image(query:)`;
+  become `.answer(format:query:history:)`; `image` becomes `.image(query:)`;
   `recall` becomes `.recall(query:)`, which the session resolves from the
   memories (see "Recall").
 - Each decision is appended to `Application Support/Browser/decisions.jsonl`
@@ -136,6 +155,20 @@ query plus the device date, time and zone and the locale, so "today", "now"
 and "the time in X" work without any lookup, and the model's knowledge
 cutoff (January 2025, pinned in `AnswerPrompt.knowledgeCutoff`) with the
 number of months since, so it knows what may have changed.
+
+A narrative that a follow-up continues (see "How a query is routed") is
+sent as a conversation: `input` becomes Google's stateless list of
+`user_input` and `model_output` steps, the earlier queries bare, the earlier
+answers with their markup as shown, and the new query last with the context
+block; at most `AnswerPrompt.maxHistoryTurns` (6) earlier turns go. The
+narrative rules tell the model to read the query as a reply to its last
+answer and not to repeat itself. The card shows the thread as a transcript,
+each query a quiet line over its answer, and scrolls the newest query up as
+its answer streams. A turn that brings nothing back keeps the thread and
+says "Nothing came back." rather than jumping to web results for "why?"
+alone. One memory holds the whole conversation under its first query
+(`MemoryRecord.turns`), so recalling it brings the thread back and a
+follow-up on the recall continues it.
 
 The model has no web access, on purpose. Grounding with Google Search was
 built and removed: Google's terms require their Search Suggestions bar,
@@ -321,7 +354,7 @@ a simulator.
 
 Dark mode, Markdown in answers, the Debug ribbon (the log still records every decision; summarise
 it with the report CLI), tabs, history, bookmarks, content blocking, reader
-mode, the map and stock cards, follow-up questions on an answer, live search behind answers (see
+mode, the map and stock cards, live search behind answers (see
 "Answer cards" for why Google's grounding was removed), location, the
 backend (the Jev and Gemini requests move behind it later, taking the keys
 with them).

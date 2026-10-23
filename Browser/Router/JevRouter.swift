@@ -12,12 +12,14 @@ struct JevRouter: Router {
     /// the Debug ribbon says so.
     var canAnswer: Bool
 
-    func route(_ query: String) async -> RouteResult {
-        let decision = await formatRouter.decide(query)
-        return RouteResult(plan: plan(for: decision, query: query), decision: decision)
+    /// Jev reads the query in the light of `thread`; a decision that
+    /// continues the narrative carries the whole thread into the answer plan.
+    func route(_ query: String, thread: [AnswerTurn]) async -> RouteResult {
+        let decision = await formatRouter.decide(query, thread: thread)
+        return RouteResult(plan: plan(for: decision, query: query, thread: thread), decision: decision)
     }
 
-    private func plan(for decision: RouteDecision, query: String) -> CardPlan {
+    private func plan(for decision: RouteDecision, query: String, thread: [AnswerTurn]) -> CardPlan {
         if case .directURL = decision.source, let url = QueryParser.directURL(from: query) {
             return .web(url)
         }
@@ -26,7 +28,8 @@ struct JevRouter: Router {
             return .web(QueryParser.searchURL(for: query))
         case .narrative, .oneLine:
             assert(decision.format.stage >= .built, "\(decision.format) has a card but is marked \(decision.format.stage)")
-            return canAnswer ? .answer(format: decision.format, query: query) : .web(QueryParser.searchURL(for: query))
+            guard canAnswer else { return .web(QueryParser.searchURL(for: query)) }
+            return .answer(format: decision.format, query: query, history: decision.continuesNarrative ? thread : [])
         case .image:
             assert(decision.format.stage == .built, "image is marked \(decision.format.stage)")
             return .image(query: query)

@@ -43,6 +43,54 @@ import Testing
         #expect(formatAt < recentAt, "the format choice stays first")
     }
 
+    @Test func withoutAPreviousTurnTheRequestIsUnchanged() throws {
+        let request = JevRouting.request(for: "capital of peru", locale: Locale(identifier: "en_US"))
+        let json = try #require(JSONSerialization.jsonObject(with: try request.jsonData()) as? [String: Any])
+        let state = try #require(json["state"] as? [String: Any])
+        #expect(Set(state.keys) == ["query", "locale"])
+        let questions = try #require(json["questions"] as? [String: Any])
+        #expect(questions["continues"] == nil)
+        #expect((questions["format"] as? [String: Any])?["instructions"] as? String == JevRouting.instructions)
+        #expect(request.questions.map(\.id) == ["format", "recent"])
+    }
+
+    @Test func aThreadAddsStateReadsTheQueryInContextAndAsksIfItContinues() throws {
+        let thread = [
+            AnswerTurn(query: "how do you make chocolate milk", answer: "Stir **cocoa and sugar** into cold milk."),
+            AnswerTurn(query: "why cold?", answer: "Cocoa clumps in hot milk."),
+        ]
+        let request = JevRouting.request(for: "can I use water", locale: Locale(identifier: "en_US"), thread: thread)
+        let data = try request.jsonData()
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let state = try #require(json["state"] as? [String: Any])
+        #expect(state["previous_queries"] as? [String] == ["how do you make chocolate milk", "why cold?"], "every query, oldest first")
+        #expect(state["previous_answer"] as? String == "Cocoa clumps in hot milk.", "the last answer only")
+        let questions = try #require(json["questions"] as? [String: Any])
+        let format = try #require(questions["format"] as? [String: Any])
+        #expect(format["instructions"] as? String == JevRouting.followUpInstructions)
+        let continues = try #require(questions["continues"] as? [String: Any])
+        #expect(continues["type"] as? String == "noul")
+        let criteria = try #require(continues["criteria"] as? [String: String])
+        #expect(Set(criteria.keys) == ["true", "false"])
+        #expect(criteria["true"]?.contains("can I use water") == true)
+        #expect(request.questions.map(\.id) == ["format", "recent", "continues"], "the format choice stays first")
+    }
+
+    @Test func theFollowUpInstructionsNameEveryCardFormat() {
+        let text = JevRouting.followUpInstructions
+        for format in ResponseFormat.allCases where format.outranksConversation {
+            #expect(text.contains(format.rawValue), "\(format.rawValue) is missing from the follow-up instructions")
+        }
+        #expect(text.contains("as that conversation makes it"))
+        #expect(!JevRouting.instructions.contains("conversation"), "the standalone question is unchanged")
+    }
+
+    @Test func thePreviousAnswerIsCut() {
+        let long = String(repeating: "x", count: JevRouting.maxPreviousAnswerCharacters + 100)
+        let request = JevRouting.request(for: "why", locale: Locale(identifier: "en_US"), thread: [AnswerTurn(query: "q", answer: long)])
+        #expect(request.state.previousAnswer?.count == JevRouting.maxPreviousAnswerCharacters)
+    }
+
     @Test func noulAnswerDecodes() throws {
         let response = try JSONDecoder().decode(
             SystemOneResponse.self,

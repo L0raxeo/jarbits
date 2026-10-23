@@ -8,8 +8,10 @@ import Routing
 enum CardPlan: Hashable, Sendable {
     /// A full web page: a search results page or a specific site.
     case web(URL)
-    /// A model-written answer for `narrative` or `one_line`, streamed by `AnswerSession`.
-    case answer(format: ResponseFormat, query: String)
+    /// A model-written answer for `narrative` or `one_line`, streamed by
+    /// `AnswerSession`. `history` is the conversation this answer continues,
+    /// oldest first; empty for a fresh answer.
+    case answer(format: ResponseFormat, query: String, history: [AnswerTurn])
     /// A Wikipedia picture of the thing named, loaded by `ImageSession`.
     case image(query: String)
     /// A one-line answer computed on the device by a `LocalAnswers` rule; `text` carries the format's markup.
@@ -21,4 +23,20 @@ enum CardPlan: Hashable, Sendable {
     case recallPicker([MemoryRecord])
     /// A remembered narrative, shown from its saved text with its date.
     case memory(MemoryRecord)
+
+    /// Which card a plan is, for SwiftUI's identity. A narrative that grows
+    /// into a conversation keeps its card (named by the thread's first
+    /// query); any other change of plan is a new card, so the old one can
+    /// leave through its transition instead of changing under the reader.
+    var cardID: String {
+        switch self {
+        case .web: "web"
+        case let .answer(_, query, history): "answer:" + (history.first?.query ?? query)
+        case .image: "image"
+        case .localAnswer: "local"
+        case .recall: "recall"
+        case .recallPicker: "picker"
+        case let .memory(record): "memory:\(record.id)"
+        }
+    }
 }

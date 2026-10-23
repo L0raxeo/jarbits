@@ -13,7 +13,12 @@ import Routing
 public struct InteractionRequest: Sendable, Equatable {
     public var model: String
     public var systemInstruction: String
+    /// The latest user turn: the query with its context block.
     public var input: String
+    /// Earlier turns of the same conversation, oldest first; empty for a
+    /// fresh answer. With any, `input` goes on the wire as the last of a
+    /// list of steps instead of a bare string.
+    public var history: [AnswerTurn]
     public var maxOutputTokens: Int
     /// `minimal` is the lowest level Gemini 3 offers; thought tokens bill as output.
     public var thinkingLevel: String
@@ -22,21 +27,49 @@ public struct InteractionRequest: Sendable, Equatable {
         model: String,
         systemInstruction: String,
         input: String,
+        history: [AnswerTurn] = [],
         maxOutputTokens: Int,
         thinkingLevel: String = "minimal"
     ) {
         self.model = model
         self.systemInstruction = systemInstruction
         self.input = input
+        self.history = history
         self.maxOutputTokens = maxOutputTokens
         self.thinkingLevel = thinkingLevel
+    }
+
+    /// A bare string for a fresh answer. For a conversation, Google's
+    /// stateless shape: `user_input` and `model_output` steps, oldest first,
+    /// the query last; `store` stays false, so nothing is kept server side.
+    func inputData() throws -> Data {
+        guard !history.isEmpty else { return try OrderedJSON.encode(input) }
+        var steps: [Data] = []
+        for turn in history {
+            steps.append(try Self.step("user_input", text: turn.query))
+            steps.append(try Self.step("model_output", text: turn.answer))
+        }
+        steps.append(try Self.step("user_input", text: input))
+        return OrderedJSON.array(steps)
+    }
+
+    private static func step(_ type: String, text: String) throws -> Data {
+        try OrderedJSON.object([
+            ("type", OrderedJSON.encode(type)),
+            ("content", OrderedJSON.array([
+                try OrderedJSON.object([
+                    ("type", OrderedJSON.encode("text")),
+                    ("text", OrderedJSON.encode(text)),
+                ]),
+            ])),
+        ])
     }
 
     public func jsonData() throws -> Data {
         try OrderedJSON.object([
             ("model", try OrderedJSON.encode(model)),
             ("system_instruction", try OrderedJSON.encode(systemInstruction)),
-            ("input", try OrderedJSON.encode(input)),
+            ("input", try inputData()),
             ("generation_config", try OrderedJSON.object([
                 ("thinking_level", try OrderedJSON.encode(thinkingLevel)),
                 ("max_output_tokens", try OrderedJSON.encode(maxOutputTokens)),
