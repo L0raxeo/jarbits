@@ -31,8 +31,12 @@ final class BrowserSession {
     let answer: AnswerSession?
     /// Loads Wikipedia pictures for image plans.
     let images = ImageSession()
-    /// The microphone on the idle screen; what it hears is never shown.
+    /// The microphone, on the idle screen and over a result; what it hears
+    /// is never shown.
     let dictation = DictationSession()
+    /// Whether the user is doing anything; over a result the microphone
+    /// listens only while they are not.
+    let attention = Attention()
     /// Every result the user saw, for `recall` queries; the grid reads
     /// pictures from it.
     let memory: MemoryStore
@@ -75,6 +79,7 @@ final class BrowserSession {
     private let chromeHandler: PageChromeHandler
     private var loadTask: Task<Void, Never>?
     private var navigationWatch: Task<Void, Never>?
+    private var mediaWatch: Task<Void, Never>?
     private var loadGeneration = 0
     /// Counts navigations, so a stuck one can stop showing as loading.
     private var navigationCount = 0
@@ -171,12 +176,13 @@ final class BrowserSession {
     /// `routing` or `loading`, but the home screen keeps the card up.
     var showsThread: Bool {
         switch stage {
-        case .routing:
+        // A spoken follow-up over the card is cleaned before it is routed.
+        case .routing, .cleaning:
             return !thread.isEmpty
         case .loading:
             if case let .answer(_, _, history) = plans.first { return !history.isEmpty }
             return false
-        case .idle, .cleaning, .ready:
+        case .idle, .ready:
             return false
         }
     }
@@ -195,18 +201,21 @@ final class BrowserSession {
         dictation.stop()
     }
 
-    /// The "Disregard what you just heard" button: the words go, listening
-    /// goes on.
+    /// "Disregard what you just heard", or "Disregard" beside the circle
+    /// over a result: the words go, listening goes on.
     func disregardSpoken() {
-        guard stage == .idle else { return }
+        guard stage == .idle || stage == .ready else { return }
         dictation.discard()
     }
 
-    /// The "I'm done talking" button: capture stops, the last words are
-    /// finalised and cleaned under the wave line, and the result goes through
-    /// `submit(_:)` like anything typed. Nothing said is shown anywhere.
+    /// "I'm done talking", or "Follow-up" beside the circle over a result:
+    /// capture stops, the last words are finalised and cleaned under the
+    /// wave line, and the result goes through `submit(_:)` like anything
+    /// typed. Nothing said is shown anywhere. Nothing usable said: back to
+    /// where it was.
     func submitSpoken() {
-        guard stage == .idle, dictation.phase == .listening else { return }
+        guard stage == .idle || stage == .ready, dictation.phase == .listening else { return }
+        let before = stage
         stage = .cleaning
         spokenGeneration += 1
         let generation = spokenGeneration
@@ -215,7 +224,7 @@ final class BrowserSession {
             let raw = await pending.value
             guard generation == spokenGeneration, stage == .cleaning else { return }
             guard let raw else {
-                stage = .idle
+                stage = before
                 return
             }
             let cleaned = await cleaner.clean(raw)
@@ -224,11 +233,35 @@ final class BrowserSession {
             print("spoken: \(raw) -> \(cleaned)")
             #endif
             guard !cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                stage = .idle
+                stage = before
                 return
             }
             submit(cleaned)
         }
+    }
+
+    // MARK: Attention
+
+    /// A web result is on screen: once a second, whether the page plays
+    /// media (a muted preview included) or has gone full screen, for
+    /// `attention`. Watching a video is one thing; listening is another.
+    func startWatchingMedia() {
+        guard mediaWatch == nil else { return }
+        mediaWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let playing = await page.mediaPlaybackState() == .playing
+                guard !Task.isCancelled else { return }
+                attention.busy = playing || page.fullscreenState != .notInFullscreen
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
+    func stopWatchingMedia() {
+        mediaWatch?.cancel()
+        mediaWatch = nil
+        attention.busy = false
     }
 
     /// The Google results page for the current query, from under an answer.

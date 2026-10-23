@@ -140,6 +140,7 @@ struct ResultView: View {
 /// colour, following the clay's size; or a frost strip under a floating
 /// button, constant. It is a later sibling, so it draws over the page.
 private struct WebResultView: View {
+    @Environment(BrowserSession.self) private var session
     let page: WebPage
     let bottomInset: CGFloat
     let chrome: PageChrome
@@ -154,6 +155,7 @@ private struct WebResultView: View {
                 // so a vertical drag with a little drift wobbles the page.
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                 .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
+                    session.attention.touched()
                     ResultView.scrolled(from: old, to: new, compact: &barCompact)
                 }
             if chrome.bottom != .none {
@@ -291,6 +293,7 @@ private struct AnswerView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
+                session.attention.touched()
                 ResultView.scrolled(from: old, to: new, compact: &barCompact)
             }
             .onChange(of: history.count) { _, count in
@@ -381,6 +384,7 @@ private struct RecallGridView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
+                session.attention.touched()
                 ResultView.scrolled(from: old, to: new, compact: &barCompact)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)

@@ -9,7 +9,11 @@ import SwiftUI
 /// capsule rides up with it as the follow-up field, the result still behind.
 /// Return sends the follow-up as a new query. The hint is for the idle screen,
 /// where the microphone listens: the clay pulses with the voice, and once a
-/// word has been heard the hint becomes the "I'm done talking" button.
+/// word has been heard the hint becomes the "I'm done talking" button. Over a
+/// result the microphone listens too, but only while the user does nothing
+/// (`session.attention`): once a word is heard the capsule rounds into a small
+/// circle at the left, with "Disregard" and "I'm done talking" beside it, and any
+/// touch turns it back and forgets the words. One thing at a time.
 ///
 /// Layers: the background, the result, the clay and the hint ignore the
 /// keyboard; the capsule does not, so the keyboard carries it.
@@ -31,6 +35,9 @@ struct HomeView: View {
     /// computed on the device goes routing → ready between two frames, and a
     /// flag cleared on observing `.ready` would never see the change.
     @State private var capsuleSubmitted = false
+    /// The foot row (the capsule and the listening buttons) in window
+    /// coordinates: touches there are not interactions.
+    @State private var footFrame = CGRect.null
 
     private var mode: ClayForm {
         switch session.stage {
@@ -43,9 +50,22 @@ struct HomeView: View {
     /// over it is routed and its next turn arrives.
     private var showsResult: Bool { session.stage == .ready || session.showsThread }
     private var showsHint: Bool { mode == .circle }
-    /// The microphone is on exactly while the circle is on screen. The
-    /// inactive phase is ignored: the permission alert itself causes it.
-    private var listening: Bool { mode == .circle && scenePhase != .background }
+    /// The microphone is on while the circle is on screen, and over a result
+    /// while the user does nothing: no finger down, no scroll moving, no
+    /// video playing, no keyboard, nothing loading. The inactive phase is
+    /// ignored: the permission alert itself causes it.
+    private var listening: Bool {
+        guard scenePhase != .background else { return false }
+        if mode == .circle { return true }
+        return session.stage == .ready && !followingUp && !capsuleLoading && session.attention.idle
+    }
+    /// A word has been heard over the result: the capsule is the small circle.
+    private var hearing: Bool { session.stage == .ready && session.dictation.heardSpeech && !followingUp }
+    private var isWebPlan: Bool {
+        if case .web = session.plans.first { true } else { false }
+    }
+    /// A page on screen may play a video: poll it.
+    private var watchesMedia: Bool { session.stage == .ready && isWebPlan && scenePhase == .active }
     /// Over a result, or standing in for the clay while a follow-up loads.
     private var showsCapsule: Bool { showsResult || capsuleSubmitted }
     /// The wave while a query is in flight, or while the page behind a web
@@ -53,9 +73,9 @@ struct HomeView: View {
     /// no page to wait for.
     private var capsuleLoading: Bool {
         switch session.stage {
-        case .routing, .loading: true
+        case .routing, .loading, .cleaning: true
         case .ready: if case .web = session.plans.first { session.pageLoading } else { false }
-        case .idle, .cleaning: false
+        case .idle: false
         }
     }
 
@@ -194,34 +214,71 @@ struct HomeView: View {
             .ignoresSafeArea(.keyboard)
 
             // Respects the keyboard, so the keyboard carries the capsule up.
+            // The row is centred; while a word is being heard the clay slides
+            // to the left corner and the two buttons sit at the right.
             GeometryReader { proxy in
                 VStack {
                     Spacer()
-                    ClayCapsule(
-                        text: capsuleText,
-                        compact: barCompact && !followingUp,
-                        editing: followingUp,
-                        loading: capsuleLoading,
-                        maxWidth: proxy.size.width - 32,
-                        fieldWidth: proxy.size.width - 48,
-                        draft: $followDraft,
-                        focus: $followingUp,
-                        selection: $followSelection,
-                        onTap: openFollowUp,
-                        onSubmit: submitFollowUp
-                    )
+                    HStack(spacing: 16) {
+                        ClayCapsule(
+                            text: capsuleText,
+                            compact: barCompact && !followingUp,
+                            editing: followingUp,
+                            loading: capsuleLoading,
+                            hearing: hearing,
+                            voice: session.dictation.level,
+                            maxWidth: proxy.size.width - 32,
+                            fieldWidth: proxy.size.width - 48,
+                            draft: $followDraft,
+                            focus: $followingUp,
+                            selection: $followSelection,
+                            onTap: openFollowUp,
+                            onSubmit: submitFollowUp
+                        )
+                        if hearing {
+                            // The circle at the left corner, the buttons at the right.
+                            Spacer(minLength: 16)
+                            DisregardButton(compact: true, action: session.disregardSpoken)
+                            DoneTalkingButton(compact: true, action: submitSpokenFollowUp)
+                        }
+                    }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { footFrame = $0 }
+                    .padding(.horizontal, hearing ? 16 : 0)
+                    .frame(maxWidth: .infinity, alignment: hearing ? .leading : .center)
                     .padding(.bottom, followingUp ? 8 : ClayCapsule.bottomPadding)
-                    .frame(maxWidth: .infinity)
+                    .animation(.spring(duration: 0.35, bounce: 0.1), value: hearing)
                 }
             }
             .opacity(showsCapsule ? 1 : 0)
             .allowsHitTesting(showsCapsule)
             .animation(.easeInOut(duration: 0.25), value: showsCapsule)
         }
+        // Every touch in the window, except on the foot row, for `attention`.
+        .background {
+            TouchObserver(
+                excluding: footFrame.insetBy(dx: -8, dy: -8),
+                onBegan: session.attention.touchBegan,
+                onEnded: session.attention.touchEnded
+            )
+            .frame(width: 0, height: 0)
+        }
         .onChange(of: listening, initial: true) { _, listening in
             if listening { session.startListening() } else { session.stopListening() }
         }
+        .onChange(of: watchesMedia, initial: true) { _, watches in
+            if watches { session.startWatchingMedia() } else { session.stopWatchingMedia() }
+        }
+        .onChange(of: hearing) { _, hearing in
+            // The circle ignores the scroll; the reserve under it must match.
+            if hearing { withAnimation(.spring(duration: 0.35, bounce: 0.1)) { barCompact = false } }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { session.attention.touched() }
+        }
         .onChange(of: session.stage) { _, stage in
+            // A result arriving counts as something happening: no listening
+            // the instant a page appears.
+            if stage == .ready { session.attention.touched() }
             if stage == .ready { barCompact = false }
             if stage != .ready { followingUp = false }
             if stage == .ready || stage == .idle { capsuleSubmitted = false }
@@ -282,6 +339,13 @@ struct HomeView: View {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         capsuleSubmitted = true
         session.submit(query)
+    }
+
+    /// "I'm done talking" beside the circle: like return in the follow-up
+    /// field, with what was heard. The capsule is the wave line until the result is in.
+    private func submitSpokenFollowUp() {
+        session.submitSpoken()
+        if session.stage == .cleaning { capsuleSubmitted = true }
     }
 
     /// From the hint: focus the clay's field.
