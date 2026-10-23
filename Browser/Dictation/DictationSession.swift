@@ -3,12 +3,17 @@ import Foundation
 import Observation
 import Routing
 import Speech
+import UIKit
 
 /// The microphone listening on the idle screen: the clay's pulse, whether
 /// a word has been heard, and, when the user is done, what was said. The
 /// words are recognised as they are spoken, so they are ready the moment
 /// the button is pressed, but they are never shown; `finish()` is the only
-/// way out. Owned by `BrowserSession`, driven by the home screen.
+/// way out. A word counts only once the dictionary vouches for it, so
+/// noises do not raise the button; and what was heard is forgotten after
+/// a silence, or once the talk has gone on too long to be a query, so the
+/// button goes back to the keyboard hint. Owned by `BrowserSession`,
+/// driven by the home screen.
 @Observable
 @MainActor
 final class DictationSession {
@@ -26,7 +31,7 @@ final class DictationSession {
     private(set) var phase: Phase = .idle
     /// 0…1, how loud the microphone is right now; only for the pulse.
     private(set) var level: Double = 0
-    /// A result with at least one word has arrived: the user is speaking to it.
+    /// Enough real words have arrived: the user is speaking to it.
     private(set) var heardSpeech = false
 
     private let capture = AudioCapture()
@@ -42,9 +47,20 @@ final class DictationSession {
     private var finalized: [AttributedString] = []
     private var volatile = AttributedString()
     private var observers: [any NSObjectProtocol] = []
+    /// Vouches for words; built for the transcriber's locale.
+    private var checker: (UITextChecker, String)?
+    private var watchTask: Task<Void, Never>?
+    /// When the words last changed, and when the first one was accepted.
+    private var lastWordsAt: Date?
+    private var firstWordsAt: Date?
 
     /// How long the last words may take to settle before they are given up on.
     private static let finishTimeout: Duration = .seconds(3)
+    /// A pause this long after talking means it was not for the app.
+    private static let silenceLimit: TimeInterval = 6
+    /// Talk this long, or this many words, is a conversation, not a query.
+    private static let attentionLimit: TimeInterval = 30
+    private static let wordLimit = 40
 
     init() {
         let centre = NotificationCenter.default
@@ -96,6 +112,8 @@ final class DictationSession {
         audio = nil
         levelTask?.cancel()
         levelTask = nil
+        watchTask?.cancel()
+        watchTask = nil
         level = 0
         let results = resultsTask
         return Task { [weak self] in
@@ -110,9 +128,7 @@ final class DictationSession {
             }
             guard let self else { return nil }
             let text = transcript
-            finalized = []
-            volatile = AttributedString()
-            heardSpeech = false
+            forget()
             resultsTask = nil
             self.analyzer = nil
             phase = .idle
@@ -130,7 +146,10 @@ final class DictationSession {
             guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: .current) else { throw Unavailable.locale }
             guard generation == self.generation else { return }
 
-            let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: [])
+            // Fast results: the first words arrive sooner, less sure; they
+            // only raise the button, and are revised before they are used.
+            let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults, .fastResults], attributeOptions: [])
+            checker = (UITextChecker(), locale.identifier)
             if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
                 try await request.downloadAndInstall()
             }
@@ -165,6 +184,13 @@ final class DictationSession {
             guard generation == self.generation else { return }
             try capture.start(target: format, audio: audioContinuation, levels: levelContinuation)
             phase = .listening
+            watchTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard let self, generation == self.generation else { return }
+                    watch()
+                }
+            }
         } catch {
             guard generation == self.generation else { return }
             teardown()
@@ -177,15 +203,55 @@ final class DictationSession {
 
     private func received(_ result: SpeechTranscriber.Result, generation: Int) {
         guard generation == self.generation else { return }
+        let before = transcript
         if result.isFinal {
             finalized.append(result.text)
             volatile = AttributedString()
         } else {
             volatile = result.text
         }
-        if !heardSpeech, !TranscriptRules.words(String(result.text.characters)).isEmpty {
+        let now = transcript
+        guard now != before else { return }
+        lastWordsAt = Date()
+        if !heardSpeech, isSpeech(now) {
             heardSpeech = true
+            firstWordsAt = lastWordsAt
         }
+    }
+
+    /// One word of three letters or more that the dictionary knows, once
+    /// the fillers are out: "yeah mhm mmmmw" is none, "tokyo" is one. One
+    /// word, so the button rises on the first word and not the second.
+    private func isSpeech(_ text: String) -> Bool {
+        TranscriptRules.candidateWords(text).contains { $0.count >= 3 && isKnown($0) }
+    }
+
+    private func isKnown(_ word: String) -> Bool {
+        guard let (checker, language) = checker else { return true }
+        let range = checker.rangeOfMisspelledWord(in: word, range: NSRange(location: 0, length: word.utf16.count), startingAt: 0, wrap: false, language: language)
+        return range.location == NSNotFound
+    }
+
+    /// Twice a second while listening: a pause after talking, or talk that
+    /// has gone on too long or too far, means it was not for the app.
+    private func watch() {
+        guard let lastWordsAt else { return }
+        let now = Date()
+        if now.timeIntervalSince(lastWordsAt) > Self.silenceLimit {
+            forget()
+        } else if let firstWordsAt,
+                  now.timeIntervalSince(firstWordsAt) > Self.attentionLimit || TranscriptRules.words(transcript).count > Self.wordLimit {
+            forget()
+        }
+    }
+
+    /// Nothing was said: the words go, and the button with them.
+    private func forget() {
+        finalized = []
+        volatile = AttributedString()
+        heardSpeech = false
+        lastWordsAt = nil
+        firstWordsAt = nil
     }
 
     /// The finalised segments and the volatile tail, with a space between
@@ -214,14 +280,14 @@ final class DictationSession {
         resultsTask = nil
         levelTask?.cancel()
         levelTask = nil
+        watchTask?.cancel()
+        watchTask = nil
         if let analyzer {
             Task { await analyzer.cancelAndFinishNow() }
         }
         analyzer = nil
-        finalized = []
-        volatile = AttributedString()
+        forget()
         level = 0
-        heardSpeech = false
     }
 
     /// A call, Siri, or headphones unplugged: off while it lasts, then back

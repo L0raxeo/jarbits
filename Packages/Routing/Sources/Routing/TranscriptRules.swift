@@ -1,9 +1,10 @@
 import Foundation
 
 /// What can be done to a spoken transcript without a model: the fillers
-/// out, a self-correction noticed, and a check that a model's rewrite used
-/// only words that were said. The correction itself is left to the model:
-/// how far back "no wait tokyo" reaches is a judgement, not a rule.
+/// out, stutters collapsed, a self-correction noticed and, failing the
+/// model, resolved by the one rule that usually holds (the words after the
+/// cue replace as many words at the end of what came before), and a check
+/// that a model's rewrite used only words that were said.
 public enum TranscriptRules {
     /// Sounds, never words: safe to drop wherever they stand. Matched on
     /// the letters alone, so "Mm-hmm," is "mmhmm".
@@ -22,9 +23,15 @@ public enum TranscriptRules {
     public static let closers: [String] = ["thank you", "thanks", "please"]
 
     /// The speaker changed their mind: the model should look at this one.
+    /// Longer phrases first, so "no wait" is found before "no".
     public static let correctionCues: [String] = [
-        "no wait", "wait no", "i mean", "i meant", "actually", "scratch that", "sorry", "no not",
+        "no wait", "wait no", "i mean", "i meant", "scratch that", "no not", "actually", "sorry",
     ]
+
+    /// What trails off between the withdrawn words and the cue ("…Senegal?
+    /// Or, no, sorry, I meant…"), and what tails the replacement.
+    static let connectors: Set<String> = ["or", "and", "no", "wait", "sorry", "actually", "i", "mean", "meant", "um", "uh"]
+    static let afterwords: [String] = ["is what i meant", "is what i mean", "instead", "rather", "i meant", "i mean"]
 
     /// Lowercased words with punctuation stripped; apostrophes stay ("what's").
     public static func words(_ text: String) -> [String] {
@@ -49,7 +56,80 @@ public enum TranscriptRules {
         while let count = trailing(closers, in: kept) {
             kept.removeLast(count)
         }
-        return kept.joined(separator: " ")
+        return collapsingRepeats(kept).joined(separator: " ")
+    }
+
+    /// A stutter said twice in a row ("I meant I meant Taiwan, Taiwan") is
+    /// kept once: runs of two or three words repeated back to back, and a
+    /// single word only when the first copy carries punctuation, since
+    /// "Duran Duran" and "please please me" are names, not stutters.
+    static func collapsingRepeats(_ tokens: [String]) -> [String] {
+        var kept = tokens
+        var i = 0
+        while i < kept.count {
+            var collapsed = false
+            for n in stride(from: 3, through: 1, by: -1) where i + 2 * n <= kept.count {
+                if n == 1, kept[i].last?.isLetter != false { continue }
+                if kept[i..<i + n].map(bare) == kept[i + n..<i + 2 * n].map(bare) {
+                    // Keep the second copy: its punctuation is the one that closes the phrase.
+                    kept.removeSubrange(i..<i + n)
+                    collapsed = true
+                    break
+                }
+            }
+            if !collapsed { i += 1 }
+        }
+        return kept
+    }
+
+    /// The correction resolved without a model: the words after the last
+    /// cue replace as many words at the end of what came before it ("go to
+    /// texas, no wait, tokyo" → "go to tokyo"); a long replacement is the
+    /// query restated and stands alone. The withdrawn phrase's closing
+    /// punctuation is kept. Unchanged when there is no cue, or the cue
+    /// leaves nothing on one side.
+    public static func resolvingCorrection(_ text: String) -> String {
+        var tokens = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).map(String.init)
+        // "…tokyo is what I meant": the afterword goes first, or its "I
+        // meant" would be taken for the cue.
+        while let count = trailing(afterwords, in: tokens) { tokens.removeLast(count) }
+        guard let cue = lastCue(in: tokens) else { return text }
+        var head = Array(tokens[..<cue.lowerBound])
+        var tail = collapsingRepeats(Array(tokens[cue.upperBound...]))
+        while let last = head.last, connectors.contains(bare(last)) { head.removeLast() }
+        guard !head.isEmpty, !tail.isEmpty else { return text }
+        guard tail.count <= 3, head.count > tail.count else { return tail.joined(separator: " ") }
+        // The withdrawn phrase's full stop or question mark; a comma was just a pause.
+        let closing = head[head.count - 1].reversed().prefix { !$0.isLetter && !$0.isNumber }.filter { ".?!".contains($0) }.reversed()
+        head.removeLast(tail.count)
+        var last = tail[tail.count - 1]
+        while let end = last.last, !end.isLetter, !end.isNumber { last.removeLast() }
+        tail[tail.count - 1] = last + String(closing)
+        return (head + tail).joined(separator: " ")
+    }
+
+    /// Where the last cue stands in `tokens`, as a range of tokens.
+    private static func lastCue(in tokens: [String]) -> Range<Int>? {
+        let bare = tokens.map(bare)
+        var found: Range<Int>?
+        for start in bare.indices {
+            for cue in correctionCues {
+                let parts = cue.split(separator: " ").map(String.init)
+                guard start + parts.count <= bare.count, Array(bare[start..<start + parts.count]) == parts else { continue }
+                found = start..<start + parts.count
+                break
+            }
+        }
+        return found
+    }
+
+    /// The words that could make `text` a query: fillers, openers and
+    /// closers out (an opener standing alone too), then only words of
+    /// letters, two or more. "yeah mhm mmmmw" leaves "mmmmw", which a
+    /// dictionary then has to vouch for.
+    public static func candidateWords(_ text: String) -> [String] {
+        let lone = Set((openers + closers).filter { !$0.contains(" ") })
+        return words(strippingFillers(text)).filter { $0.count >= 2 && $0.allSatisfy(\.isLetter) && !lone.contains($0) }
     }
 
     public static func hasCorrectionCue(_ text: String) -> Bool {

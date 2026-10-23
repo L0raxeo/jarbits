@@ -35,6 +35,40 @@ import Testing
         #expect(TranscriptRules.strippingFillers("thanks") == "thanks")
     }
 
+    @Test func stuttersAreKeptOnce() {
+        #expect(TranscriptRules.strippingFillers("I meant I meant Taiwan, Taiwan.") == "I meant Taiwan.")
+        #expect(TranscriptRules.strippingFillers("what is the what is the time") == "what is the time")
+        #expect(TranscriptRules.strippingFillers("bye bye bye nsync") == "bye bye bye nsync")
+        #expect(TranscriptRules.strippingFillers("duran duran songs") == "duran duran songs")
+    }
+
+    @Test func correctionReplacesTheEndOfWhatCameBefore() {
+        #expect(TranscriptRules.resolvingCorrection("I want to go to texas no wait tokyo") == "I want to go to tokyo")
+        #expect(TranscriptRules.resolvingCorrection("Is it better to take the train or a plane to, Senegal? Or, no, sorry, I meant Taiwan.")
+                == "Is it better to take the train or a plane to, Taiwan?")
+        #expect(TranscriptRules.resolvingCorrection("directions to austin airport, actually houston airport")
+                == "directions to houston airport")
+        #expect(TranscriptRules.resolvingCorrection("flights to texas, no wait, tokyo is what I meant") == "flights to tokyo")
+    }
+
+    @Test func aLongCorrectionIsTheQueryRestated() {
+        #expect(TranscriptRules.resolvingCorrection("what's the weather in paris, no wait, what's the weather in london tomorrow")
+                == "what's the weather in london tomorrow")
+    }
+
+    @Test func correctionLeavesTheRestAlone() {
+        #expect(TranscriptRules.resolvingCorrection("what is the capital of peru") == "what is the capital of peru")
+        #expect(TranscriptRules.resolvingCorrection("sorry") == "sorry")
+        #expect(TranscriptRules.resolvingCorrection("no wait tokyo") == "no wait tokyo")
+    }
+
+    @Test func candidateWordsAreWhatIsLeftToVouchFor() {
+        #expect(TranscriptRules.candidateWords("yeah mhm mmmmw uyeah mmeh") == ["mmmmw", "uyeah", "mmeh"])
+        #expect(TranscriptRules.candidateWords("Yeah. Mm-hmm, okay") == [])
+        #expect(TranscriptRules.candidateWords("um, what's the time in Tokyo?") == ["the", "time", "in", "tokyo"])
+        #expect(TranscriptRules.candidateWords("I a 7") == [])
+    }
+
     @Test func cuesAreNoticed() {
         for cue in TranscriptRules.correctionCues {
             #expect(TranscriptRules.hasCorrectionCue("go to texas \(cue) tokyo"), "\(cue)")
