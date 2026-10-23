@@ -157,7 +157,7 @@ struct HomeView: View {
                                     DoneTalkingButton(action: session.submitSpoken)
                                     DisregardButton(action: session.disregardSpoken)
                                 }
-                                .padding(.bottom, 8)
+                                .padding(.bottom, 32)
                             } else {
                                 KeyboardHint(onOpen: openKeyboard)
                                     .padding(.bottom, 8)
