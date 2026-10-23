@@ -262,17 +262,16 @@ final class BrowserSession {
 
     // MARK: Attention
 
-    /// A web result is on screen: once a second, whether the page plays
-    /// media (a muted preview included) or has gone full screen, for
-    /// `attention`. Watching a video is one thing; listening is another.
+    /// A web result is on screen: once a second, whether the page has gone
+    /// full screen, for `attention`. A video playing inline is not an
+    /// interruption, so the user may still talk over it; a full-screen
+    /// player is, since the page has taken the screen.
     func startWatchingMedia() {
         guard mediaWatch == nil else { return }
         mediaWatch = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let playing = await page.mediaPlaybackState() == .playing
-                guard !Task.isCancelled else { return }
-                attention.busy = playing || page.fullscreenState != .notInFullscreen
+                attention.busy = page.fullscreenState != .notInFullscreen
                 try? await Task.sleep(for: .seconds(1))
             }
         }

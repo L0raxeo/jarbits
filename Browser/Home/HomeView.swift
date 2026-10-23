@@ -52,7 +52,7 @@ struct HomeView: View {
     private var showsHint: Bool { mode == .circle }
     /// The microphone is on while the circle is on screen, and over a result
     /// while the user does nothing: no finger down, no scroll moving, no
-    /// video playing, no keyboard, nothing loading. The inactive phase is
+    /// full-screen video, no keyboard, nothing loading. The inactive phase is
     /// ignored: the permission alert itself causes it.
     private var listening: Bool {
         guard scenePhase != .background else { return false }
@@ -64,7 +64,7 @@ struct HomeView: View {
     private var isWebPlan: Bool {
         if case .web = session.plans.first { true } else { false }
     }
-    /// A page on screen may play a video: poll it.
+    /// A page on screen may go full screen: poll it.
     private var watchesMedia: Bool { session.stage == .ready && isWebPlan && scenePhase == .active }
     /// Over a result, or standing in for the clay while a follow-up loads.
     private var showsCapsule: Bool { showsResult || capsuleSubmitted }

@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// Whether the user is doing anything: a finger down, a scroll still moving,
-/// a video playing. Over a result the app listens only while they are not.
+/// a full-screen video. Over a result the app listens only while they are not.
 /// `idle` drops the moment something happens and comes back `idleDelay`
 /// after the last of it ends.
 @Observable
@@ -10,9 +10,9 @@ import Observation
 final class Attention {
     private(set) var idle = true
 
-    /// Held by the owner while media plays or the page is full screen:
-    /// never idle while true; the delay runs again once it clears. Set once
-    /// a second by a poll, so only a change counts.
+    /// Held by the owner while the page is full screen: never idle while
+    /// true; the delay runs again once it clears. Set once a second by a
+    /// poll, so only a change counts.
     var busy = false {
         didSet {
             guard busy != oldValue else { return }
