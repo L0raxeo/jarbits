@@ -76,8 +76,18 @@ import Testing
         #expect(request.questions.map(\.id) == ["format", "recent", "continues"], "the format choice stays first")
     }
 
+    @Test func aTurnDecodesAsNarrativeWithoutAFormatAndKeepsOneLine() throws {
+        let old = #"{"query":"capital of peru","answer":"Lima"}"#
+        let decoded = try JSONDecoder().decode(AnswerTurn.self, from: Data(old.utf8))
+        #expect(decoded == AnswerTurn(query: "capital of peru", answer: "Lima", format: .narrative))
+        let turn = AnswerTurn(query: "and chile?", answer: "==Santiago==", format: .oneLine)
+        #expect(try JSONDecoder().decode(AnswerTurn.self, from: JSONEncoder().encode(turn)) == turn)
+        #expect(String(decoding: try JSONEncoder().encode(turn), as: UTF8.self).contains("\"one_line\""))
+    }
+
     @Test func theFollowUpInstructionsNameEveryCardFormat() {
         let text = JevRouting.followUpInstructions
+        #expect(text.contains("one_line when the reply is itself a single short fact"))
         for format in ResponseFormat.allCases where format.outranksConversation {
             #expect(text.contains(format.rawValue), "\(format.rawValue) is missing from the follow-up instructions")
         }

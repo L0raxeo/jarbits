@@ -22,7 +22,7 @@ import Testing
         let body = try #require(sent.httpBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect((json["state"] as? [String: Any])?["query"] as? String == "what's the time in costa rica")
-        #expect((json["questions"] as? [String: Any])?["continues"] == nil, "no narrative on screen, no continues question")
+        #expect((json["questions"] as? [String: Any])?["continues"] == nil, "no answer on screen, no continues question")
     }
 
     @Test func aPreviousTurnReachesJevAndTheAnswerComesBack() async throws {
@@ -36,7 +36,7 @@ import Testing
         ])
 
         #expect(decision.continuation == 0.85)
-        #expect(decision.continuesNarrative)
+        #expect(decision.continuesThread)
         let body = try #require(MockTransport.requests.first?.httpBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let state = try #require(json["state"] as? [String: Any])

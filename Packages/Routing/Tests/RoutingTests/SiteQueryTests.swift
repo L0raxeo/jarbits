@@ -31,10 +31,6 @@ import Testing
         ("hey go to reddit", "reddit"),
         ("ok just open insta", "insta"),
         ("please take me to airbnb", "airbnb"),
-        ("Yo, pull up YouTube.", "youtube"),
-        ("um so open zillow", "zillow"),
-        ("alright go to espn", "espn"),
-        ("Hi, could you open Gmail?", "gmail"),
     ])
     func leadsComeOffBeforeTheOpener(query: String, name: String) {
         let parsed = SiteQuery.parse(query)
@@ -88,31 +84,5 @@ import Testing
         #expect(SiteQuery.key("zillow.com") == "zillow")
         #expect(SiteQuery.key("hacker news") == "hacker news")
         #expect(SiteQuery.key("the") == "the", "never empty for a non-empty name")
-    }
-}
-
-@Suite struct SiteNameTests {
-    @Test func theNameFollowsTheFirstOpenerWhereverItSits() {
-        #expect(SiteQuery.name(in: "what was it, um, open youtube") == "youtube")
-        #expect(SiteQuery.name(in: "yo like pull up the zillow app for me") == "zillow")
-        #expect(SiteQuery.name(in: "what happens when I open youtube") == "youtube", "lenient on purpose: Jev has already picked site")
-        #expect(SiteQuery.name(in: "I want to go to reddit") == "reddit")
-    }
-
-    @Test func withoutAnOpenerItIsTheWholeQueryAsParsed() {
-        #expect(SiteQuery.name(in: "zillow") == "zillow")
-        #expect(SiteQuery.name(in: "The Zillow website") == "zillow")
-        #expect(SiteQuery.name(in: "") == nil)
-    }
-
-    @Test func anOpenerWithNothingAfterItIsNotAnOpener() {
-        #expect(SiteQuery.name(in: "open") == "open")
-        #expect(SiteQuery.name(in: "please open") == "open", "the lead comes off, the opener is the name")
-    }
-
-    @Test func theStrictParseStaysStrict() {
-        // The no-model path must not open a site from a question that merely contains an opener.
-        #expect(SiteQuery.parse("what happens when I open youtube")?.hasOpener == false)
-        #expect(SiteQuery.parse("yo like pull up zillow")?.hasOpener == false, "\"like\" is not a lead")
     }
 }

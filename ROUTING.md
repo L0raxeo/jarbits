@@ -31,9 +31,9 @@ The time in a named place needs no model. A query that is exactly one opener, a 
 
 Shown as `==7:56 PM==`, with `tomorrow` or `yesterday` when the date there differs, and `in Mexico City` when the place spans zones. Logged as `local("time")` with none of the Jev fields.
 
-A website the device already knows opens the same way. `SiteQuery` reads a query as leads, one opener, articles, a name and trailers; when an opener is present and the site book knows the name (30 seeded sites under 42 names, plus every name learned from a tap), the site opens with no model asked, logged as `local("site")`. A bare name, or a name the book does not know, goes on to Jev; a `site` pick then looks up or searches the name, read leniently now that the intent is settled: the words after the first opener wherever it sits, or the whole query (see "After routing: sites").
+A website the device already knows opens the same way. `SiteQuery` reads a query as leads, one opener, articles, a name and trailers; when an opener is present and the site book knows the name (30 seeded sites under 42 names, plus every name learned from a tap), the site opens with no model asked, logged as `local("site")`. A bare name, or a name the book does not know, goes on to Jev; a `site` pick then looks the name up or searches it (see "After routing: sites").
 
-- Leads, any number, before the opener: "can you", "could you", "would you", "all right", "please", "hey", "hi", "hello", "yo", "ok", "okay", "alright", "so", "um", "uh", "just"
+- Leads, any number, before the opener: "can you", "could you", "would you", "please", "hey", "ok", "okay", "just"
 - Openers: "take me to", "navigate to", "go to", "goto", "head to", "pull up", "bring up", "open up", "open", "launch", "load", "visit", "show me"
 - Articles after the opener: "the", "my"
 - Trailers, any number, at the end: "home page", "web site", "dot com", "for me", "please", "now", "app", "website", "site", "page", "homepage", "com"
@@ -74,11 +74,11 @@ A yes/no question answered with the probability of yes. Instructions sent with t
 
 Answer: `noul`, the probability of yes (0–1). No confidence field.
 
-## When a narrative is on screen
+## When an answer is on screen
 
-A follow-up typed over a narrative answer is read as the conversation makes it. The `format` question's instructions become:
+A follow-up typed over a narrative or one-line answer, Gemini's or the device's, is read as the conversation makes it. The `format` question's instructions become:
 
-> Which response format best answers this web search query? The state carries the conversation so far: the earlier queries and the answer on screen. Judge the query as that conversation makes it, not as typed on its own. A reply, a reaction or a question that leans on the answer, however short, wants narrative, the format of the answer it replies to. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, each described below; or web_results for a page to browse.
+> Which response format best answers this web search query? The state carries the conversation so far: the earlier queries and the answer on screen. Judge the query as that conversation makes it, not as typed on its own. A reply, a reaction or a question that leans on the answer, however short, wants narrative; or one_line when the reply is itself a single short fact, a number, a name, a date, a yes/no, as "and chile?" after a capital is. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, each described below; or web_results for a page to browse.
 
 and a third question is asked:
 
@@ -216,6 +216,7 @@ Rules:
 - Reply with one line only: a number, a word, a name, a date, a time, or a short clause. Examples: "24 days", "Lima", "8:14 PM", "About 92 euros".
 - Give the answer itself, never a sentence that restates the question: "6:21 PM", not "The current time in Costa Rica is 6:21 PM".
 - Never more than twelve words. No explanation, no second sentence, no preamble, no trailing period.
+- Earlier turns of this conversation may come before the query, oldest first; the query may lean on them ("and chile?", "in km?"): resolve it against your last answer and answer only the new question, still in one line.
 - Your knowledge ends around January 2025 and you have no access to the web. If the question needs live data, such as today's weather, a current price or exchange rate, a live score, or the latest news, or if the answer may have changed since January 2025, such as whether a person is alive or who currently holds a role, reply with exactly: NEEDS_LIVE_DATA
 - You do know the current date and time from the context block. Compute dates, countdowns and the time in other places from it.
 - If the honest answer is a range or depends on something, give the typical value in the line, such as "Usually 7 to 10 days".

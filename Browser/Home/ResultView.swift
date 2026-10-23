@@ -85,7 +85,7 @@ struct ResultView: View {
             if let answer = session.answer {
                 AnswerView(
                     spans: answer.styledSpans, stoppedEarly: answer.stoppedEarly, format: format, clayY: clayY, barCompact: $barCompact,
-                    history: history, query: query, failed: answer.failedBeforeText
+                    history: history, query: query, failed: answer.failedBeforeText, needsLiveData: answer.needsLiveData
                 )
             }
         case let .localAnswer(format, _, text):
@@ -95,8 +95,9 @@ struct ResultView: View {
         case let .memory(record):
             // A remembered conversation shows its earlier turns and ends on its last.
             let turns = record.turns ?? []
+            let format = turns.last?.format ?? (record.kind == .oneLine ? .oneLine : .narrative)
             AnswerView(
-                spans: AnswerMarkup.styled(turns.last?.answer ?? record.text ?? "", for: .narrative), stoppedEarly: false, format: .narrative,
+                spans: AnswerMarkup.styled(turns.last?.answer ?? record.text ?? "", for: format), stoppedEarly: false, format: format,
                 clayY: clayY, barCompact: $barCompact, recalledOn: record.date,
                 history: Array(turns.dropLast()), query: turns.count > 1 ? turns.last?.query : nil
             )
@@ -219,10 +220,11 @@ private struct WebResultView: View {
 
 /// Gemini's answer in dark text on the white screen. One-line answers sit at
 /// the clay's spot; narrative text starts near the top and grows as it streams.
-/// A narrative that became a conversation reads as a transcript: each
-/// earlier query as a quiet line over its answer, then the latest query and
-/// the answer streaming under it. A plain "Web results" link under either
-/// loads the Google page instead.
+/// An answer that became a conversation reads as a transcript: each earlier
+/// query as a quiet line over its answer, a narrative as prose and a
+/// one-line turn as a short bold line, then the latest query and the answer
+/// streaming under it. A plain "Web results" link under either loads the
+/// Google page instead.
 private struct AnswerView: View {
     @Environment(BrowserSession.self) private var session
     let spans: [StyledSpan]
@@ -239,6 +241,8 @@ private struct AnswerView: View {
     var query: String? = nil
     /// A turn of a conversation that brought nothing back.
     var failed: Bool = false
+    /// The turn needed live data the model does not have.
+    var needsLiveData: Bool = false
 
     private let ink = Palette.ink
     private let quiet = Palette.quiet
@@ -246,10 +250,10 @@ private struct AnswerView: View {
     var body: some View {
         GeometryReader { proxy in
             Group {
-                if format == .oneLine {
+                if format == .oneLine, history.isEmpty {
                     oneLine(in: proxy)
                 } else {
-                    narrative(in: proxy)
+                    transcript(in: proxy)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -270,23 +274,23 @@ private struct AnswerView: View {
         .position(x: proxy.size.width / 2, y: clayY + 30)
     }
 
-    private func narrative(in proxy: GeometryProxy) -> some View {
+    private func transcript(in proxy: GeometryProxy) -> some View {
         ScrollViewReader { scroller in
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     ForEach(history.indices, id: \.self) { index in
                         queryLine(history[index].query)
-                        prose(AnswerMarkup.styled(history[index].answer, for: .narrative))
+                        prose(AnswerMarkup.styled(history[index].answer, for: history[index].format), as: history[index].format)
                     }
                     if !history.isEmpty, let query {
                         queryLine(query).id(Self.latestTurn)
                     }
                     if failed {
-                        Text("Nothing came back.")
+                        Text(needsLiveData ? "That needs live data; try web results." : "Nothing came back.")
                             .font(.footnote)
                             .foregroundStyle(quiet)
                     } else {
-                        prose(spans)
+                        prose(spans, as: format)
                     }
                     footer
                 }
@@ -313,9 +317,10 @@ private struct AnswerView: View {
 
     private static let latestTurn = "latest-turn"
 
-    private func prose(_ spans: [StyledSpan]) -> some View {
+    /// A narrative as prose; a one-line turn as the short fact it is.
+    private func prose(_ spans: [StyledSpan], as format: ResponseFormat) -> some View {
         Text(AttributedString(spans: spans, ink: ink))
-            .font(.body)
+            .font(format == .oneLine ? .title3.weight(.semibold) : .body)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -345,7 +350,7 @@ private struct AnswerView: View {
                 .font(.subheadline)
                 .foregroundStyle(quiet)
         }
-        .frame(maxWidth: .infinity, alignment: format == .oneLine ? .center : .leading)
+        .frame(maxWidth: .infinity, alignment: format == .oneLine && history.isEmpty ? .center : .leading)
     }
 }
 
@@ -447,7 +452,7 @@ private struct MemoryTile: View {
                     } else {
                         placeholder(record.url?.host() ?? "")
                     }
-                case .narrative:
+                case .narrative, .oneLine where record.text != nil:
                     Text(AnswerMarkup.plain(record.text ?? ""))
                         .font(.footnote)
                         .foregroundStyle(Palette.ink)

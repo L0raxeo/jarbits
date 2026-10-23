@@ -101,11 +101,12 @@ public enum DecisionsReport {
         }
         let followUps = asked.filter { $0.decision.continuation != nil }
         if !followUps.isEmpty {
-            let continued = followUps.filter(\.decision.continuesNarrative).count
+            let continued = followUps.filter(\.decision.continuesThread)
+            let oneLine = continued.filter { $0.decision.format == .oneLine }.count
             let otherCard = followUps.filter { $0.decision.source == .jev && ($0.decision.continuation ?? 0) >= JevRouting.continuationThreshold }.count
             let values = followUps.compactMap(\.decision.continuation)
             let mean = (values.reduce(0, +) / Double(values.count)).formatted(.number.precision(.fractionLength(2)))
-            out.append("Follow-ups over a narrative: \(followUps.count) asked, \(continued) continued it, \(otherCard) went to another card, mean continuation \(mean).")
+            out.append("Follow-ups over an answer: \(followUps.count) asked, \(continued.count) continued it (\(oneLine) as one line), \(otherCard) went to another card, mean continuation \(mean).")
             out.append("")
         }
         if !gated.isEmpty {

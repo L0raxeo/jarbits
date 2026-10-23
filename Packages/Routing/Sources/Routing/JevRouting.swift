@@ -19,8 +19,8 @@ public enum JevRouting {
 
     public static let continuesQuestionID = "continues"
 
-    /// At or above this, a `narrative` pick for a follow-up carries on the
-    /// narrative on screen instead of starting a fresh one.
+    /// At or above this, a follow-up carries on the answer on screen as a
+    /// new turn instead of starting a fresh card.
     public static let continuationThreshold = 0.5
 
     /// The previous answer is cut to this many characters before it goes to
@@ -32,14 +32,15 @@ public enum JevRouting {
         query as typed. If several formats could work, prefer web_results.
         """
 
-    /// The format question over a narrative on screen: the query is read as
+    /// The format question over an answer on screen: the query is read as
     /// the conversation makes it. Built from the format list, so a card
     /// format added later is named here without another edit.
     public static var followUpInstructions: String {
         let cards = ResponseFormat.allCases.filter(\.outranksConversation).map(\.rawValue).joined(separator: ", ")
         return "Which response format best answers this web search query? The state carries the conversation so far: "
             + "the earlier queries and the answer on screen. Judge the query as that conversation makes it, not as typed on its own. "
-            + "A reply, a reaction or a question that leans on the answer, however short, wants narrative, the format of the answer it replies to. "
+            + "A reply, a reaction or a question that leans on the answer, however short, wants narrative; or one_line when the reply is itself a single short fact, "
+            + "a number, a name, a date, a yes/no, as \"and chile?\" after a capital is. "
             + "Pick another format only when the query asks for the kind of thing that format shows: \(cards), each described below; "
             + "or web_results for a page to browse."
     }
@@ -155,12 +156,15 @@ public enum JevRouting {
             // again, whatever the pick: such a query has no format of its own.
             if rejects { return (.site, .rejection) }
             if continues {
-                // Over a narrative, the continuation decides the frame and the
+                // Over an answer, the continuation decides the frame and the
                 // pick decides the card: a confident ask for another kind of
-                // card gets it; anything else, however a terse reply looked
-                // on its own, carries the conversation on.
+                // card gets it; a confident one_line is a short reply in the
+                // thread; anything else, however a terse reply looked on its
+                // own, carries the conversation on as a narrative, which is
+                // never wrong inside a thread, only longer.
                 if passes, suggested.outranksConversation { return (suggested, .jev) }
                 if stale { return (.fallback, .recencyFallback) }
+                if passes, suggested == .oneLine { return (.oneLine, .continuation) }
                 return (.narrative, .continuation)
             }
             if !passes { return (.fallback, .confidenceFallback) }

@@ -33,7 +33,7 @@ struct JevRouter: Router {
         case .narrative, .oneLine:
             assert(decision.format.stage >= .built, "\(decision.format) has a card but is marked \(decision.format.stage)")
             guard canAnswer else { return .web(QueryParser.searchURL(for: query)) }
-            return .answer(format: decision.format, query: query, history: decision.continuesNarrative ? thread : [])
+            return .answer(format: decision.format, query: query, history: decision.continuesThread ? thread : [])
         case .image:
             assert(decision.format.stage == .built, "image is marked \(decision.format.stage)")
             return .image(query: query)
@@ -43,8 +43,7 @@ struct JevRouter: Router {
         case .site:
             assert(decision.format.stage == .built, "site is marked \(decision.format.stage)")
             if decision.rejectsSite, let opened { return .site(name: opened.name) }
-            // Jev has settled the intent; the opener may sit anywhere ("yo, pull up youtube").
-            return .site(name: SiteQuery.name(in: query) ?? query)
+            return .site(name: SiteQuery.parse(query)?.name ?? query)
         case .map, .stock:
             // Not built yet: web results stand in. Moving a format out of this
             // branch and flipping its `stage` happen in the same change.

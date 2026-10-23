@@ -47,6 +47,8 @@ final class AnswerSession {
         if format == .oneLine, phase == .streaming, AnswerPrompt.liveDataMarker.hasPrefix(trimmed) {
             return ""
         }
+        // The marker itself is never text to show; a turn of a conversation says so instead.
+        if needsLiveData { return "" }
         // A marker still streaming in must not flash as a stray character.
         return phase == .streaming ? AnswerMarkup.trimmingPartialMarker(trimmed) : trimmed
     }
@@ -56,10 +58,17 @@ final class AnswerSession {
         if case .failed = phase { !displayText.isEmpty } else { false }
     }
 
-    /// The stream failed before any text arrived. A fresh answer then goes
-    /// to web results; a turn of a conversation says so in its place.
+    /// The stream failed before any text arrived, or the answer was the
+    /// live-data marker. A fresh answer then goes to web results; a turn of
+    /// a conversation says so in its place.
     var failedBeforeText: Bool {
-        if case .failed = phase { displayText.isEmpty } else { false }
+        if needsLiveData { return true }
+        if case .failed = phase { return displayText.isEmpty } else { return false }
+    }
+
+    /// The answer came back as the live-data marker: the model's knowledge cannot answer it.
+    var needsLiveData: Bool {
+        summary?.outcome == .needsLiveData
     }
 
     /// `displayText` with the format's emphasis markers applied.

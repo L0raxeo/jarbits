@@ -111,8 +111,8 @@ case "route":
     }
     let decision = await FormatRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query, thread: thread, opened: opened)
     print("query: \"\(query)\"")
-    if decision.format == .site, let name = SiteQuery.name(in: query) {
-        print("site name: \"\(name)\"\(SiteQuery.parse(query)?.hasOpener == true ? " (with an opener at the front)" : "")")
+    if let site = SiteQuery.parse(query), decision.format == .site {
+        print("site name: \"\(site.name)\"\(site.hasOpener ? " (with an opener)" : "")")
     }
     print("format: \(decision.format.rawValue)  source: \(decision.source)")
     if let confidence = decision.confidence { print("confidence: \(confidence.formatted(.number.precision(.fractionLength(2))))") }
@@ -121,7 +121,7 @@ case "route":
         print("recency: \(recency.formatted(.number.precision(.fractionLength(2)))) (threshold \(JevRouting.recencyThreshold.formatted()))")
     }
     if let continuation = decision.continuation {
-        let verdict = decision.continuesNarrative ? "continues the thread as \(decision.format.rawValue)"
+        let verdict = decision.continuesThread ? "continues the thread as \(decision.format.rawValue)"
             : continuation >= JevRouting.continuationThreshold && decision.source == .recencyFallback ? "continues, but needs live data: web results"
             : continuation >= JevRouting.continuationThreshold ? "related, but another card"
             : "fresh"

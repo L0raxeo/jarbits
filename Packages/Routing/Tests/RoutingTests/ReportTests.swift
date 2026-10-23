@@ -38,6 +38,8 @@ import Testing
         #expect(markdown.contains(JevRouting.followUpInstructions))
         #expect(markdown.contains("`previous_queries`"))
         #expect(markdown.contains("`continuation` (the pick is kept as `suggested`)"))
+        #expect(markdown.contains("## When an answer is on screen"))
+        #expect(markdown.contains("as one line when `one_line` was picked with confidence"))
         #expect(markdown.contains("## After routing: recall"))
         #expect(markdown.contains(RecallRouting.recallCriteria.yes))
         #expect(markdown.contains("web page from yesterday (m.youtube.com)"))
@@ -83,6 +85,9 @@ import Testing
             DecisionRecord(timestamp: now.addingTimeInterval(360), query: "can I use water", decision: RouteDecision(
                 format: .narrative, suggested: .webResults, confidence: 0.3,
                 probabilities: ["web_results": 0.4, "narrative": 0.35], model: "jev-1.13.0", latencyMs: 230, inputTokens: 900, continuation: 0.8, source: .continuation)),
+            DecisionRecord(timestamp: now.addingTimeInterval(390), query: "and chile?", decision: RouteDecision(
+                format: .oneLine, suggested: .oneLine, confidence: 0.9,
+                probabilities: ["one_line": 0.92, "narrative": 0.05], model: "jev-1.13.0", latencyMs: 210, inputTokens: 900, continuation: 0.9, source: .continuation)),
             DecisionRecord(timestamp: now.addingTimeInterval(420), query: "pull up the videos from yesterday", decision: RouteDecision(
                 format: .recall, suggested: .recall, confidence: 0.9,
                 probabilities: ["recall": 0.9, "web_results": 0.1], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, source: .jev),
@@ -107,7 +112,7 @@ import Testing
         #expect(parsed == records)
 
         let markdown = DecisionsReport.markdown(records: parsed)
-        #expect(markdown.contains("12 queries: 8 asked Jev, 2 answered on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("13 queries: 9 asked Jev, 2 answered on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
         #expect(markdown.contains("1 recalls: 1 opened one memory, 0 showed a picker, 0 matched nothing and went to web. Jev judged 1, median 310 ms; 0 fell back to word order."))
         #expect(markdown.contains("4 site requests: 1 opened a remembered site, 1 showed choices, 1 fell back to web results, 1 rejected the site on screen. Median search latency 640 ms."))
         #expect(markdown.contains("Fell back: \"lobsters\": no key"))
@@ -117,11 +122,11 @@ import Testing
         let oldRecord = #"{"timestamp":"2026-10-01T00:00:00Z","query":"x","decision":{"format":"web_results","probabilities":{},"source":{"noKey":{}}}}"#
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).site == nil, "lines without a site summary decode")
         #expect(markdown.contains("| `web_results` | 1 | 1 | 0 | 0 | 0.30 | \"can I use water\" |"), "a continuation counts as acted on")
-        #expect(markdown.contains("Follow-ups over a narrative: 1 asked, 1 continued it, 0 went to another card, mean continuation 0.80."))
+        #expect(markdown.contains("Follow-ups over an answer: 2 asked, 2 continued it (1 as one line), 0 went to another card, mean continuation 0.85."))
         #expect(markdown.contains("- `time`: 1, most recent \"what time is it in tokyo\""))
         #expect(markdown.contains("| `stock` | 1 | 1 | 0 | 0 | 0.91 | \"nasdaq stock\" |"))
         #expect(markdown.contains("| `map` | 1 | 0 | 1 | 0 | 0.30 | \"coffee\" |"))
-        #expect(markdown.contains("| `one_line` | 1 | 0 | 0 | 1 | 0.90 | \"is charlie kirk alive\" |"))
+        #expect(markdown.contains("| `one_line` | 2 | 1 | 0 | 1 | 0.90 | \"and chile?\", \"is charlie kirk alive\" |"), "a one-line continuation counts as acted on")
         #expect(markdown.contains("| \"is charlie kirk alive\" | `one_line` | 0.91 |"))
         #expect(markdown.contains("Recency (threshold 0.5): mean – for answers shown, 0.91 for queries sent to web."))
         #expect(!markdown.contains("| `image` |"), "formats never picked are left out")

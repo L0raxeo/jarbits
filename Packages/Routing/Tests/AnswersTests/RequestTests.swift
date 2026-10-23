@@ -88,6 +88,8 @@ import Testing
         #expect(oneLine.contains("whether a person is alive"))
         #expect(oneLine.contains("one line only"))
         #expect(oneLine.contains("Never more than twelve words"))
+        #expect(oneLine.contains("Earlier turns of this conversation"), "a one-line reply can continue a thread")
+        #expect(narrative.contains("Earlier turns of this conversation"))
         #expect(oneLine.contains("reply with exactly: \(AnswerPrompt.liveDataMarker)"))
         #expect(AnswerPrompt.maxOutputTokens(for: .narrative) > AnswerPrompt.maxOutputTokens(for: .oneLine))
     }

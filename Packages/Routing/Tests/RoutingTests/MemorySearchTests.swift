@@ -49,6 +49,12 @@ import Testing
         ])
         let other = record(.narrative, "capital of peru", text: "Lima.")
         #expect(MemorySearch.matches([other, thread], query: "that answer about oat milk") == [thread])
+        // A conversation that began with one line is a one-line record with turns, found the same way.
+        let capitals = MemoryRecord(kind: .oneLine, query: "capital of peru", text: "==Lima==", turns: [
+            AnswerTurn(query: "capital of peru", answer: "==Lima==", format: .oneLine),
+            AnswerTurn(query: "and bolivia?", answer: "==Sucre== (La Paz is the seat of government)", format: .oneLine),
+        ])
+        #expect(MemorySearch.matches([thread, capitals], query: "that bolivia answer") == [capitals])
     }
 
     @Test func aNameSpeltNearlyRightStillMatches() {

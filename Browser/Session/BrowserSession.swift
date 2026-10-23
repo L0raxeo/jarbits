@@ -168,20 +168,24 @@ final class BrowserSession {
         }
     }
 
-    /// The conversation on screen, oldest first: a narrative card whose
-    /// answer is in (or stopped with some text), or a remembered narrative.
+    /// The conversation on screen, oldest first: an answer card, narrative
+    /// or one-line, whose answer is in (or stopped with some text), a
+    /// one-line answer the device computed, or a remembered conversation.
     /// What a follow-up typed over it may continue. Empty for anything else,
-    /// including a narrative still streaming.
+    /// including an answer still streaming.
     var thread: [AnswerTurn] {
         switch plans.first {
-        case let .answer(.narrative, query, history):
+        case let .answer(format, query, history) where format.isAnswered:
             guard let answer, answer.query == query, !answer.text.isEmpty else { return [] }
             switch answer.phase {
-            case .done, .failed: return history + [AnswerTurn(query: query, answer: answer.text)]
+            case .done, .failed: return history + [AnswerTurn(query: query, answer: answer.text, format: format)]
             case .idle, .waiting, .streaming: return []
             }
-        case let .memory(record) where record.kind == .narrative:
-            return record.turns ?? record.text.map { [AnswerTurn(query: record.query, answer: $0)] } ?? []
+        case let .localAnswer(format, query, text):
+            return [AnswerTurn(query: query, answer: text, format: format)]
+        case let .memory(record) where record.kind == .narrative || record.turns != nil:
+            let kind: ResponseFormat = record.kind == .oneLine ? .oneLine : .narrative
+            return record.turns ?? record.text.map { [AnswerTurn(query: record.query, answer: $0, format: kind)] } ?? []
         default:
             return []
         }
@@ -533,6 +537,12 @@ final class BrowserSession {
             images.cancel()
             plans = [.memory(record)]
             stage = .ready
+        case .oneLine where record.turns != nil:
+            // A conversation that began with one line replays from its turns, like a narrative.
+            answer?.cancel()
+            images.cancel()
+            plans = [.memory(record)]
+            stage = .ready
         case .oneLine, .image:
             replayingQuery = record.query
             submit(record.query)
@@ -650,25 +660,25 @@ final class BrowserSession {
             record(decision, query: answer.query, answer: summary)
         }
         switch summary.outcome {
-        case .fellBackToWeb where !answer.history.isEmpty:
-            // A turn of a conversation that brought nothing: the thread stays
-            // and the card says so in the turn's place. "why?" alone would be
-            // a poor web search, and the thread is the context the user is in.
+        case .fellBackToWeb where !answer.history.isEmpty, .needsLiveData where !answer.history.isEmpty:
+            // A turn of a conversation that brought nothing, or that needs
+            // live data: the thread stays and the card says so in the turn's
+            // place. "why?" alone would be a poor web search, and the thread
+            // is the context the user is in.
             break
         case .fellBackToWeb, .needsLiveData:
             let url = QueryParser.searchURL(for: answer.query)
             plans = [.web(url)]
             load(url)
         case .completed:
-            if answer.format == .narrative {
-                let turns = answer.history + [AnswerTurn(query: answer.query, answer: answer.text)]
-                if turns.count > 1, let first = turns.first {
-                    // One memory per conversation, under its first query: the
-                    // store's repeat rule updates it in place as the thread grows.
-                    remember(MemoryRecord(kind: .narrative, query: first.query, text: first.answer, turns: turns))
-                } else {
-                    remember(MemoryRecord(kind: .narrative, query: answer.query, text: answer.text))
-                }
+            let turns = answer.history + [AnswerTurn(query: answer.query, answer: answer.text, format: answer.format)]
+            if turns.count > 1, let first = turns.first {
+                // One memory per conversation, under its first query and of
+                // its first turn's kind: the store's repeat rule updates it in
+                // place as the thread grows.
+                remember(MemoryRecord(kind: first.format == .oneLine ? .oneLine : .narrative, query: first.query, text: first.answer, turns: turns))
+            } else if answer.format == .narrative {
+                remember(MemoryRecord(kind: .narrative, query: answer.query, text: answer.text))
             } else {
                 remember(MemoryRecord(kind: .oneLine, query: answer.query))
             }

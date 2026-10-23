@@ -120,18 +120,29 @@ import Testing
         #expect(decision.continuation == 0.8)
         #expect(decision.format == .narrative)
         #expect(decision.source == .continuation)
-        #expect(decision.continuesNarrative)
+        #expect(decision.continuesThread)
     }
 
     @Test func aTerseReplyThreadsWhateverItLookedLikeOnItsOwn() throws {
-        // "can I use water": flat and web first, a confident web pick, a one-liner, an unsure picture.
-        for (choice, confidence) in [("web_results", 0.3), ("web_results", 0.9), ("narrative", 0.2), ("one_line", 0.9), ("image", 0.3)] {
+        // "can I use water": flat and web first, a confident web pick, an unsure one-liner, an unsure picture.
+        for (choice, confidence) in [("web_results", 0.3), ("web_results", 0.9), ("narrative", 0.2), ("one_line", 0.4), ("image", 0.3)] {
             let response = try decode(jevResponse(choice: choice, confidence: confidence, probabilities: [choice: 0.5], continues: 0.9))
             let decision = JevRouting.decision(from: response, latencyMs: 1)
             #expect(decision.format == .narrative, "\(choice) at \(confidence)")
             #expect(decision.source == .continuation, "\(choice) at \(confidence)")
             #expect(decision.suggested == ResponseFormat(rawValue: choice), "the pick is kept for the log")
         }
+    }
+
+    @Test func aConfidentOneLinePickIsAShortTurnOfTheThread() throws {
+        // "and chile?" after "capital of peru": a one-line reply inside the conversation.
+        let response = try decode(jevResponse(choice: "one_line", confidence: 0.9, probabilities: ["one_line": 0.92, "narrative": 0.05], recency: 0.1, continues: 0.9))
+        let decision = JevRouting.decision(from: response, latencyMs: 1)
+        #expect(decision.format == .oneLine)
+        #expect(decision.source == .continuation)
+        #expect(decision.continuesThread)
+        let stale = try decode(jevResponse(choice: "one_line", confidence: 0.9, probabilities: ["one_line": 0.92], recency: 0.9, continues: 0.9))
+        #expect(JevRouting.decision(from: stale, latencyMs: 1).source == .recencyFallback, "a short reply that needs live data still goes to web")
     }
 
     @Test func aRelatedAskForAnotherCardGetsThatCard() throws {
@@ -141,7 +152,7 @@ import Testing
             let decision = JevRouting.decision(from: response, latencyMs: 1)
             #expect(decision.format == format, "\(format)")
             #expect(decision.source == .jev, "\(format)")
-            #expect(!decision.continuesNarrative)
+            #expect(!decision.continuesThread)
         }
     }
 
@@ -150,7 +161,7 @@ import Testing
         let decision = JevRouting.decision(from: response, latencyMs: 1)
         #expect(decision.format == .webResults)
         #expect(decision.source == .recencyFallback)
-        #expect(!decision.continuesNarrative)
+        #expect(!decision.continuesThread)
     }
 
     @Test func continuationThresholdIsInclusive() throws {
@@ -165,12 +176,12 @@ import Testing
         let decision = JevRouting.decision(from: sure, latencyMs: 1)
         #expect(decision.format == .narrative)
         #expect(decision.source == .jev)
-        #expect(!decision.continuesNarrative, "a fresh narrative, not a thread")
+        #expect(!decision.continuesThread, "a fresh narrative, not a thread")
         let unsure = try decode(jevResponse(choice: "narrative", confidence: 0.3, probabilities: ["narrative": 0.4], continues: 0.2))
         #expect(JevRouting.decision(from: unsure, latencyMs: 1).source == .confidenceFallback)
         let unasked = try response(choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9])
         #expect(JevRouting.decision(from: unasked, latencyMs: 1).continuation == nil)
-        #expect(!JevRouting.decision(from: unasked, latencyMs: 1).continuesNarrative)
+        #expect(!JevRouting.decision(from: unasked, latencyMs: 1).continuesThread)
     }
 
     @Test func continuationRoundTripsAndOldLinesDecode() throws {
@@ -182,7 +193,7 @@ import Testing
         let old = #"{"format":"narrative","probabilities":{},"source":{"jev":{}}}"#
         let decoded = try JSONDecoder().decode(RouteDecision.self, from: Data(old.utf8))
         #expect(decoded.continuation == nil)
-        #expect(!decoded.continuesNarrative)
+        #expect(!decoded.continuesThread)
     }
 
     @Test func decisionRoundTripsThroughJSON() throws {

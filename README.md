@@ -43,10 +43,10 @@ shows the query, shrinks while you scroll down and grows on the way up;
 tapping it raises the keyboard and the capsule rises with it, morphing into
 the field, with the result still behind; on a web result the field holds
 the page's query, selected, so typing replaces it. Return sends the
-follow-up as a new query, routed like any other; over a narrative answer
-Jev is also asked whether it continues that answer, and if so the card grows
-into a conversation instead of being replaced (see "How a query is
-routed"). The capsule itself
+follow-up as a new query, routed like any other; over an answer, a
+narrative or a one-liner, Jev is also asked whether it continues that
+answer, and if so the card grows into a conversation instead of being
+replaced (see "How a query is routed"). The capsule itself
 becomes the wave line, small, at the foot, until the new result is ready; a
 link tapped inside a page shows the same line while the page loads. Tapping
 the line while it waves returns to the circle. Over a result the microphone
@@ -119,7 +119,8 @@ first text arrives.
   phrase? A `narrative` or `one_line` pick with that probability at or
   above `JevRouting.recencyThreshold` (0.5) is shown as web results and
   logged as `recencyFallback`, because the model's knowledge is months old.
-- A follow-up typed over a narrative answer sends the conversation along in
+- A follow-up typed over an answer, a narrative or a one-liner, Gemini's or
+  the device's own (the time in a place), sends the conversation along in
   the state (`previous_queries`, every query so far, and `previous_answer`,
   the last answer cut to `JevRouting.maxPreviousAnswerCharacters`), swaps
   the format question's instructions for ones that judge the query as the
@@ -129,12 +130,15 @@ first text arrives.
   the continuation decides the frame and the pick decides the card: a card
   format (`ResponseFormat.outranksConversation`: `image`, `map`, `stock`,
   `recall`, and whatever is added later) picked with confidence shows that
-  card; any other pick, sure or not, grows the thread, logged as
-  `continuation` with the pick kept as `suggested`. So "can I use water"
-  after a recipe threads, and "pictures of chocolate milk" becomes a
-  picture. Below the threshold the rules above apply unchanged, including
-  prefer-web-when-unsure. Gemini gets the earlier turns of a thread (see
-  "Answer cards").
+  card; `one_line` picked with confidence grows the thread with a one-line
+  turn; any other pick, sure or not, grows it with a narrative, which is
+  never wrong inside a thread, only longer; both logged as `continuation`
+  with the pick kept as `suggested`. So "can I use water" after a recipe
+  threads, "and chile?" after "capital of peru" answers in one line,
+  "why?" after it answers in a paragraph, and "pictures of chocolate milk"
+  becomes a picture. Below the threshold the rules above apply unchanged,
+  including prefer-web-when-unsure. Gemini gets the earlier turns of a
+  thread (see "Answer cards").
 - A follow-up typed over a site this app opened by name sends the name and
   host along in the state (`opened_site_name`, `opened_site_host`) and asks
   a third yes/no question (`rejects`): does the query say that was the
@@ -181,19 +185,23 @@ and "the time in X" work without any lookup, and the model's knowledge
 cutoff (January 2025, pinned in `AnswerPrompt.knowledgeCutoff`) with the
 number of months since, so it knows what may have changed.
 
-A narrative that a follow-up continues (see "How a query is routed") is
+An answer that a follow-up continues (see "How a query is routed") is
 sent as a conversation: `input` becomes Google's stateless list of
 `user_input` and `model_output` steps, the earlier queries bare, the earlier
 answers with their markup as shown, and the new query last with the context
-block; at most `AnswerPrompt.maxHistoryTurns` (6) earlier turns go. The
-narrative rules tell the model to read the query as a reply to its last
-answer and not to repeat itself. The card shows the thread as a transcript,
-each query a quiet line over its answer, and scrolls the newest query up as
-its answer streams. A turn that brings nothing back keeps the thread and
-says "Nothing came back." rather than jumping to web results for "why?"
-alone. One memory holds the whole conversation under its first query
-(`MemoryRecord.turns`), so recalling it brings the thread back and a
-follow-up on the recall continues it.
+block; at most `AnswerPrompt.maxHistoryTurns` (6) earlier turns go. Both
+sets of rules tell the model to read the query as a reply to its last
+answer and not to repeat itself; the one-line rules add that the reply
+stays one line. The card shows the thread as a transcript, each query a
+quiet line over its answer, a narrative turn as prose and a one-line turn
+as a short bold line (each turn records its format in `AnswerTurn.format`;
+turns kept before that read as narrative), and scrolls the newest query up
+as its answer streams. A turn that brings nothing back, or that needs
+live data, keeps the thread and says so in its place rather than jumping
+to web results for "why?" alone. One memory holds the whole conversation
+under its first query and of its first turn's kind (`MemoryRecord.turns`),
+so recalling it brings the thread back, a one-line conversation included,
+and a follow-up on the recall continues it.
 
 The model has no web access, on purpose. Grounding with Google Search was
 built and removed: Google's terms require their Search Suggestions bar,
@@ -341,12 +349,7 @@ keyed by their words, articles and trailers dropped, so "the Zillow
 website" and "zillow.com" are one entry.
 
 A query with an opener and a known name never reaches Jev: `LocalFirstRouter`
-opens the site, logged as `local("site")`. The opener must lead, after
-any of a few filler words ("can you", "please", and what dictation puts
-first: "yo", "um", "so"); anything else in front, and the query goes on
-to Jev, which decides the intent. Once Jev has picked `site`, the name is
-read leniently: the words after the first opener wherever it sits, so
-"what was it, um, open youtube" is youtube. Everything else is Jev's call
+opens the site, logged as `local("site")`. Everything else is Jev's call
 between `site`, `recall` ("pull up that youtube page from earlier" points at
 the past), `web_results` ("zillow homes in austin" is a search on a site)
 and the rest; a `site` pick is then looked up the same way. An unknown name

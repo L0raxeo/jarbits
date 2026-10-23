@@ -78,7 +78,7 @@ public struct RouteDecision: Codable, Sendable, Equatable {
     }
 
     /// The follow-up carries on the answer on screen as a new turn.
-    public var continuesNarrative: Bool {
+    public var continuesThread: Bool {
         source == .continuation
     }
 

@@ -50,9 +50,9 @@ public enum RoutingReport {
         for (id, question) in request.questions {
             out += render(id: id, question: question)
         }
-        out.append("## When a narrative is on screen")
+        out.append("## When an answer is on screen")
         out.append("")
-        out.append("A follow-up typed over a narrative answer is read as the conversation makes it. The `format` question's instructions become:")
+        out.append("A follow-up typed over a narrative or one-line answer, Gemini's or the device's, is read as the conversation makes it. The `format` question's instructions become:")
         out.append("")
         out.append("> " + JevRouting.followUpInstructions)
         out.append("")
@@ -120,7 +120,7 @@ public enum RoutingReport {
         out.append("")
         out.append("Shown as `==7:56 PM==`, with `tomorrow` or `yesterday` when the date there differs, and `in Mexico City` when the place spans zones. Logged as `local(\"time\")` with none of the Jev fields.")
         out.append("")
-        out.append("A website the device already knows opens the same way. `SiteQuery` reads a query as leads, one opener, articles, a name and trailers; when an opener is present and the site book knows the name (\(SiteBook.seed.count) seeded sites under \(SiteBook.seeded().entries.count) names, plus every name learned from a tap), the site opens with no model asked, logged as `local(\"site\")`. A bare name, or a name the book does not know, goes on to Jev; a `site` pick then looks up or searches the name, read leniently now that the intent is settled: the words after the first opener wherever it sits, or the whole query (see \"After routing: sites\").")
+        out.append("A website the device already knows opens the same way. `SiteQuery` reads a query as leads, one opener, articles, a name and trailers; when an opener is present and the site book knows the name (\(SiteBook.seed.count) seeded sites under \(SiteBook.seeded().entries.count) names, plus every name learned from a tap), the site opens with no model asked, logged as `local(\"site\")`. A bare name, or a name the book does not know, goes on to Jev; a `site` pick then looks the name up or searches it (see \"After routing: sites\").")
         out.append("")
         out.append("- Leads, any number, before the opener: \(quoted(SiteQuery.leads))")
         out.append("- Openers: \(quoted(SiteQuery.openers))")

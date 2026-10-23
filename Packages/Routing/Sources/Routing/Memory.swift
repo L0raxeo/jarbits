@@ -9,7 +9,8 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         case page
         /// A narrative answer, with its text; replays from the text.
         case narrative
-        /// A one-line answer; replays by asking the query again.
+        /// A one-line answer. Alone, replays by asking the query again;
+        /// grown into a conversation (`turns`), from its turns.
         case oneLine = "one_line"
         /// A picture; replays by asking the query again.
         case image
@@ -47,11 +48,11 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
     public var title: String
     /// Pages only.
     public var url: URL?
-    /// Narratives only: the answer's markup, as `AnswerMarkup` renders it.
+    /// Narratives, and conversations: the first answer's markup, as `AnswerMarkup` renders it.
     public var text: String?
-    /// A narrative that grew into a conversation: every turn, first to last.
-    /// `query` and `text` stay the first turn's, so the record is still the
-    /// same thing as the answer it began as.
+    /// An answer that grew into a conversation: every turn, first to last,
+    /// narrative or one-line. `query` and `text` stay the first turn's, so
+    /// the record is still the same thing as the answer it began as.
     public var turns: [AnswerTurn]?
 
     public init(id: UUID = UUID(), date: Date = .now, kind: Kind, query: String, title: String? = nil, url: URL? = nil, text: String? = nil, turns: [AnswerTurn]? = nil) {

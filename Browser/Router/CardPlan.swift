@@ -30,16 +30,17 @@ enum CardPlan: Hashable, Sendable {
     /// The sites a name might mean; a tap learns one and opens it.
     case siteChoices(name: String, [SiteCandidate])
 
-    /// Which card a plan is, for SwiftUI's identity. A narrative that grows
+    /// Which card a plan is, for SwiftUI's identity. An answer that grows
     /// into a conversation keeps its card (named by the thread's first
-    /// query); any other change of plan is a new card, so the old one can
-    /// leave through its transition instead of changing under the reader.
+    /// query, which a device-computed answer shares); any other change of
+    /// plan is a new card, so the old one can leave through its transition
+    /// instead of changing under the reader.
     var cardID: String {
         switch self {
         case .web: "web"
         case let .answer(_, query, history): "answer:" + (history.first?.query ?? query)
         case .image: "image"
-        case .localAnswer: "local"
+        case let .localAnswer(_, query, _): "answer:" + query   // the thread grown from it is the same card
         case .recall: "recall"
         case .recallPicker: "picker"
         case let .memory(record): "memory:\(record.id)"

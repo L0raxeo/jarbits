@@ -18,11 +18,8 @@ public struct SiteQuery: Equatable, Sendable {
         self.hasOpener = hasOpener
     }
 
-    /// Words that may come before the opener, any number of them. The
-    /// one-word ones are what dictation puts in front: "Yo, pull up YouTube."
-    public static let leads: [String] = [
-        "can you", "could you", "would you", "all right", "please", "hey", "hi", "hello", "yo", "ok", "okay", "alright", "so", "um", "uh", "just",
-    ]
+    /// Words that may come before the opener, any number of them.
+    public static let leads: [String] = ["can you", "could you", "would you", "please", "hey", "ok", "okay", "just"]
 
     /// Phrases that ask for a site. Longer phrases first, so "open up" is
     /// tried before "open".
@@ -50,29 +47,6 @@ public struct SiteQuery: Equatable, Sendable {
         while strip(anyOf: trailers, fromEndOf: &words) {}
         guard !words.isEmpty else { return nil }
         return SiteQuery(name: words.joined(separator: " "), hasOpener: hasOpener)
-    }
-
-    /// The name once the intent is settled: Jev has picked `site`, so the
-    /// grammar's only job is to find the name, and the opener may sit
-    /// anywhere ("what was it, um, open youtube"). The words after the first
-    /// opener, articles and trailers gone; with no opener, the whole query
-    /// as `parse` reads it. Never used to decide anything on its own: a
-    /// loose match would open a site by mistake ("what happens when I open
-    /// youtube").
-    public static func name(in query: String) -> String? {
-        let all = words(query)
-        for start in all.indices {
-            for opener in openers {
-                let head = words(opener)
-                let end = start + head.count
-                guard end < all.count, Array(all[start..<end]) == head else { continue }
-                var rest = Array(all[end...])
-                while strip(anyOf: articles, fromFrontOf: &rest) {}
-                while strip(anyOf: trailers, fromEndOf: &rest) {}
-                if !rest.isEmpty { return rest.joined(separator: " ") }
-            }
-        }
-        return parse(query)?.name
     }
 
     /// The name as the book keys it: the query's words with the articles and
