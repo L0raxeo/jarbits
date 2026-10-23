@@ -236,7 +236,12 @@ the app and no extra request.
 Every result the user sees is written to `Application Support/Browser/memories.jsonl`
 as it appears: a page (its address and title, reported by the watcher at
 its first look, again when the page changes its address without a load,
-as the next video on YouTube does, and again when the title settles), a
+as the next video on YouTube does, and again when the title settles; when
+the document title is empty or only the site's own name, as mobile YouTube
+leaves it on every watch page, the name in the page's `og:title` or meta
+title is the title instead, and failing those, since a tap in YouTube's
+feed leaves no metadata either, the page's first heading, which is the
+video's name), a
 narrative answer (its text), a one-line answer, a picture or a results
 page (the query only). Error pages, redirects and untitled documents are
 skipped. The search that led to a page is attached to the first page

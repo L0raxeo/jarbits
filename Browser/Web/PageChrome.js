@@ -245,9 +245,41 @@
   const page = (href) => href.split('#')[0];
   let reportedAddress = null;
   let reportedTitle = null;
+  // The name the memory keeps. A site that titles every page with its own
+  // name (mobile YouTube: "YouTube" on every watch page) names the page in
+  // its metadata instead, so og:title or the meta title wins when the
+  // document title is empty or is just the site's name (og:site_name, or
+  // the host's own label). Read on every look, so a page reached without a
+  // load that refreshes its metadata is renamed too.
+  const meta = (name) => {
+    const el = document.querySelector('meta[property="' + name + '"], meta[name="' + name + '"]');
+    const content = el && el.getAttribute('content');
+    return content ? content.trim() : '';
+  };
+  // A page reached without a load may have no metadata for itself either
+  // (mobile YouTube drops og:title after a tap in the feed), so the page's
+  // own first heading stands in: the video's name on YouTube. Not on the
+  // site's root, whose name the site's name is.
+  const heading = () => {
+    if (location.pathname === '/' || location.pathname === '') return '';
+    const el = document.querySelector('ytm-slim-video-metadata-section-renderer h2')
+      || document.querySelector('h1')
+      || document.querySelector('main h2, article h2, h2');
+    const text = el ? el.textContent.trim() : '';
+    return text.slice(0, 200);
+  };
+  function pageTitle() {
+    const title = (document.title || '').trim();
+    const site = meta('og:site_name').toLowerCase();
+    const parts = location.hostname.split('.');
+    const label = (parts.length >= 2 ? parts[parts.length - 2] : parts[0] || '').toLowerCase();
+    const bare = title.toLowerCase();
+    if (title && bare !== site && bare !== label) return title;
+    return meta('og:title') || meta('title') || heading() || title;
+  }
   function reportAddress() {
     const address = page(location.href);
-    const title = (document.title || '').trim();
+    const title = pageTitle();
     if (address === reportedAddress && title === reportedTitle) return;
     reportedAddress = address;
     reportedTitle = title;
