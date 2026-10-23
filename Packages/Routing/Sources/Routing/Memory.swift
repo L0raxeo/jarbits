@@ -86,6 +86,13 @@ public enum MemorySearch {
         "yesterday", "thing", "about", "on", "of", "page", "site", "one", "i", "was", "had", "saw",
         "looked", "at", "open", "show", "me", "find", "get", "it", "and", "with", "for", "in", "you",
         "we", "did", "do", "what", "which", "s",
+        // What the user did with it, not what it was.
+        "watching", "watched", "watch", "reading", "read", "seen", "see", "looking", "visited",
+        "opened", "searched", "asked", "told", "said", "talking", "talked", "mentioned", "earlier",
+        "before", "ago", "last", "time", "other", "day", "night", "week", "recently", "just",
+        // The kind of thing, which its title rarely says.
+        "video", "videos", "clip", "article", "post", "link", "website", "answer", "question",
+        "picture", "photo", "image",
     ]
 
     /// At least this long before a term may match inside joined-up text.

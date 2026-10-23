@@ -180,15 +180,26 @@ enum EdgeSampler {
 @MainActor
 final class PageChromeHandler: NSObject, WKScriptMessageHandler {
     var onReport: ((PageChromeReport) -> Void)?
+    /// The page changed its address without loading; the title as it stands.
+    var onAddress: ((URL, String) -> Void)?
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame, let report = PageChromeReport(message.body) else { return }
-        onReport?(report)
+        guard message.frameInfo.isMainFrame else { return }
+        switch message.name {
+        case PageChrome.addressHandlerName:
+            guard let body = message.body as? [String: Any],
+                  let string = body["url"] as? String, let url = URL(string: string) else { return }
+            onAddress?(url, body["title"] as? String ?? "")
+        default:
+            guard let report = PageChromeReport(message.body) else { return }
+            onReport?(report)
+        }
     }
 }
 
 extension PageChrome {
     static let handlerName = "pageChrome"
+    static let addressHandlerName = "pageAddress"
     /// The watcher's content world: the page's own scripts cannot see the
     /// handler or the watcher, and a direct call from the app can.
     static let world = WKContentWorld.defaultClient
@@ -211,6 +222,7 @@ extension PageChrome {
             assertionFailure("PageChrome.js is not in the bundle")
         }
         content.add(handler, contentWorld: world, name: handlerName)
+        content.add(handler, contentWorld: world, name: addressHandlerName)
         configuration.userContentController = content
         return configuration
     }

@@ -15,6 +15,13 @@ import Testing
         #expect(MemorySearch.terms(from: "where's my grocery list") == ["grocery", "list"])
         #expect(MemorySearch.terms(from: "pull up that YouTube page from earlier") == ["youtube"])
         #expect(MemorySearch.terms(from: "go back to the reddit thread") == ["reddit", "thread"])
+        #expect(MemorySearch.terms(from: "pull up that video about muse I was watching") == ["muse"])
+    }
+
+    @Test func aVideoIsFoundByItsTitle() {
+        let video = record(.page, "cleo abram", title: "The Biggest Launch Since ChatGPT (Muse)", url: "https://m.youtube.com/watch?v=abc")
+        let other = record(.page, "lofi", title: "lofi hip hop radio", url: "https://m.youtube.com/watch?v=x")
+        #expect(MemorySearch.matches([other, video], query: "pull up that video about muse I was watching") == [video])
     }
 
     @Test func nothingLeftMeansNoMatches() {

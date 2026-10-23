@@ -113,6 +113,9 @@ final class BrowserSession {
         handler.onReport = { [weak self] report in
             self?.received(report)
         }
+        handler.onAddress = { [weak self] url, title in
+            self?.addressChanged(to: url, title: title)
+        }
         watchNavigations()
     }
 
@@ -305,6 +308,9 @@ final class BrowserSession {
     }
 
     private func remember(_ record: MemoryRecord) {
+        #if DEBUG
+        print("memory \(record.kind.rawValue) \"\(record.title)\" \(record.url?.absoluteString ?? "") for \"\(record.query)\"")
+        #endif
         Task { await memory.remember(record) }
     }
 
@@ -314,12 +320,24 @@ final class BrowserSession {
     /// to: that would memorise the recall phrase itself, and the next recall
     /// of the same words would find it and loop.
     private func rememberPage() {
-        guard let url = page.url, let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
+        guard let url = page.url else { return }
+        rememberPage(url, title: page.title)
+    }
+
+    /// The page changed its address without loading (the next video on
+    /// YouTube): the watcher reports it, with the title as it stands, and
+    /// again once the title settles; the store refreshes the record.
+    private func addressChanged(to url: URL, title: String) {
+        rememberPage(url, title: title)
+    }
+
+    private func rememberPage(_ url: URL, title: String) {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
         if QueryParser.isSearchResults(url) {
             guard !lastQuery.isEmpty, lastDecision?.format != .recall else { return }
             remember(MemoryRecord(kind: .search, query: lastQuery))
         } else {
-            let title = page.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { return }
             remember(MemoryRecord(kind: .page, query: lastQuery, title: title, url: url))
         }
