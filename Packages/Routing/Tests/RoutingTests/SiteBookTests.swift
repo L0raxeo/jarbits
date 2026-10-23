@@ -13,6 +13,9 @@ import Testing
         #expect(book.lookup("fb")?.host == "www.facebook.com")
         #expect(book.lookup("The Zillow website")?.host == "www.zillow.com")
         #expect(book.lookup("hacker news") == nil)
+        #expect(book.lookup("google docs")?.host == "docs.google.com", "Google's own products are sites, so a bare name is never a search that loses the \"google\"")
+        #expect(book.lookup("docs")?.host == "docs.google.com")
+        #expect(book.lookup("translate")?.host == "translate.google.com")
         #expect(book.lookup("youtube")?.seeded == true)
         #expect(book.entries.count >= SiteBook.seed.count)
         for (names, address) in SiteBook.seed {

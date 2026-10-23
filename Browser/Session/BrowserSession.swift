@@ -610,10 +610,15 @@ final class BrowserSession {
     }
     #endif
 
+    /// Remembered by the page's own term, not the spoken words: "google
+    /// steve jobs" searched "steve jobs", and a replay searches that again.
+    /// A search typed into Google's box on the page remembers its own words
+    /// the same way.
     private func rememberSearch(_ url: URL) {
         // Nor the results page a site request fell through to: "go to lobsters" is not a search.
         guard !lastQuery.isEmpty, lastDecision?.format != .recall, lastDecision?.format != .site else { return }
-        remember(MemoryRecord(kind: .search, query: lastQuery))
+        let term = QueryParser.searchTerm(in: url)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        remember(MemoryRecord(kind: .search, query: term?.isEmpty == false ? term! : lastQuery))
     }
 
     /// A picture of the page as it stands, for the recall grid, unless the

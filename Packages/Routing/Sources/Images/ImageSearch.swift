@@ -63,10 +63,12 @@ public struct ImageSearch: Sendable {
         self.session = session
     }
 
-    /// Up to `candidateLimit` articles with pictures, best match first.
+    /// Up to `candidateLimit` articles with pictures, best match first. The
+    /// asking around the subject ("show me a picture of", "what does … look
+    /// like") is left out of the search (`ImageQuery`).
     public func find(_ query: String) async throws(ImageError) -> [ImageResult] {
         do {
-            return try await withTimeout(timeout) { try await search(query) }
+            return try await withTimeout(timeout) { try await search(ImageQuery.subject(for: query)) }
         } catch is TimeoutError {
             throw .timeout
         } catch let error as ImageError {

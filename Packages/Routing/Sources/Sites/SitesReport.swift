@@ -8,7 +8,7 @@ public enum SitesReport {
         var out: [String] = []
         out.append("## After routing: sites")
         out.append("")
-        out.append("A `site` pick names a website. The name is what `SiteQuery` leaves of the query (see \"Answered on the device\"). The site book on the device (`SiteBook`: \(SiteBook.seed.count) seeded sites under \(SiteBook.seeded().entries.count) names, plus whatever has been learned) answers a known name at once; an unknown name is searched by `SiteSearch` in `Packages/Routing/Sources/Sites`, with a Brave Search API key (`BRAVE_API_KEY`).")
+        out.append("A `site` pick names a website. The name is what `SiteQuery` leaves of the query (see \"Decided on the device\"). The site book on the device (`SiteBook`: \(SiteBook.seed.count) seeded sites under \(SiteBook.seeded().entries.count) names, plus whatever has been learned) answers a known name at once; an unknown name is searched by `SiteSearch` in `Packages/Routing/Sources/Sites`, with a Brave Search API key (`BRAVE_API_KEY`).")
         out.append("")
         out.append("1. `GET \(SiteSearch.defaultBaseURL)/res/v1/web/search?q=<name>&count=\(SiteSearch.searchCount)&result_filter=web`, header `X-Subscription-Token`. Only `web.results` is read: title, url, description, and the result's favicon when it carries one (`meta_url.favicon` or `profile.img`), else Google's public favicon service for the host.")
         out.append("2. One result per host (`www.` aside), in Brave's order, the first \(SiteSearch.candidateLimit): the choices card.")

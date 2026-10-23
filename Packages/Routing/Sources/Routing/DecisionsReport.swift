@@ -64,7 +64,7 @@ public enum DecisionsReport {
         let latencies = asked.compactMap(\.decision.latencyMs).sorted()
 
         let gated = asked.filter { $0.decision.source == .recencyFallback }
-        out.append("\(records.count) queries: \(asked.count) asked Jev, \(local.count) answered on the device, \(direct.count) addresses, \(noKey.count) without a key, \(errors.count) errors, \(gated.count) sent to web for recency.")
+        out.append("\(records.count) queries: \(asked.count) asked Jev, \(local.count) decided on the device, \(direct.count) addresses, \(noKey.count) without a key, \(errors.count) errors, \(gated.count) sent to web for recency.")
         if let p50 = latencies.isEmpty ? nil : latencies[latencies.count / 2] {
             out.append("Median Jev latency \(p50) ms.")
         }
@@ -123,7 +123,7 @@ public enum DecisionsReport {
         }
 
         if !local.isEmpty {
-            out.append("## Answered on the device")
+            out.append("## Decided on the device")
             out.append("")
             var byRule: [String: [DecisionRecord]] = [:]
             for record in local {

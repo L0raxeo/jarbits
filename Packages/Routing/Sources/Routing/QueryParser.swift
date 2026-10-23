@@ -31,9 +31,13 @@ public enum QueryParser {
         return URL(string: "https://" + text)
     }
 
+    /// A Google results page for `text`. A plus is sent as `%2B`, since
+    /// Google reads a bare `+` in `q` as a space ("c++" would search "c").
     public static func searchURL(for text: String) -> URL {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "+&=#")
         var components = URLComponents(string: "https://www.google.com/search")!
-        components.queryItems = [URLQueryItem(name: "q", value: text)]
+        components.percentEncodedQuery = "q=" + (text.addingPercentEncoding(withAllowedCharacters: allowed) ?? "")
         return components.url!
     }
 
@@ -43,15 +47,22 @@ public enum QueryParser {
         return host.hasSuffix("google.com") && url.path() == "/search"
     }
 
+    /// The term a Google results page shows results for; nil for any other
+    /// page. Google's own pages spell a space as `+`, which `URLComponents`
+    /// leaves alone; a literal plus in a term arrives as `%2B` and is kept.
+    public static func searchTerm(in url: URL) -> String? {
+        guard isSearchResults(url) else { return nil }
+        return URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .percentEncodedQueryItems?.first(where: { $0.name == "q" })?.value?
+            .replacingOccurrences(of: "+", with: " ")
+            .removingPercentEncoding
+    }
+
     /// The text to show in the address bar for a loaded page: the search
-    /// query for a Google results page, the host for anything else.
+    /// term for a Google results page, the host for anything else.
     public static func displayText(for url: URL?) -> String {
         guard let url, let host = url.host() else { return "" }
-        if isSearchResults(url),
-           let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-               .queryItems?.first(where: { $0.name == "q" })?.value {
-            return query
-        }
+        if let term = searchTerm(in: url) { return term }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 }

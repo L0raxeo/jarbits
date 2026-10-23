@@ -98,6 +98,14 @@ first text arrives.
   grammar (`SiteQuery`: leads, one opener, articles, the name, trailers)
   and the site book (`SiteBook`, see "Sites"). A bare name ("youtube") or
   a name the book does not know goes on to Jev. Logged as `local("site")`.
+- A query led by a verb that only ever means "search" ("search for steve
+  jobs", "look up flights to lima") is web results for the term, with no
+  model asked (`SearchQuery`). Logged as `local("search")`. "google steve
+  jobs" is not a command here, since "google stock" and "google maps" are
+  nouns: it goes to Jev, and only a `web_results` pick drops the "google"
+  (never before a Google product name). Either way the search box gets
+  the term as typed; the capsule reads it off the results page, the search
+  memory keeps it, and the log keeps the spoken words.
 - A query the device can answer itself is a card at once, with no model and
   no network: today, the time in a named place ("what time is it in Mexico?").
   `LocalAnswers` in the package holds the rules: a fixed grammar
@@ -246,7 +254,9 @@ block without changing the cards.
 
 `image` is for one specific, named thing with a definitive look: a flag, a
 logo, a landmark, a painting, a person, a species. `ImageSession` asks
-Wikipedia, free and without a key: the REST page search turns the query
+Wikipedia, free and without a key: `ImageQuery` takes the asking off the
+query ("show me a picture of the eiffel tower" → "eiffel tower", "what does
+a capybara look like" → "capybara"), the REST page search turns the subject
 into article candidates, the page summary of the first three with a
 thumbnail gives each article's lead image, and disambiguation pages and
 articles without an image are skipped. The first picture is downloaded and
@@ -382,9 +392,9 @@ what `SiteQuery` makes of a query, what the seeded book says, and with
 
 | Path | Role |
 |---|---|
-| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence, recency, continuation and rejection gates, `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`), the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client. `Sites`: the Brave web search client. Tests run on macOS. |
+| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence, recency, continuation and rejection gates, `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, over `QueryTokens`), the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client. `Sites`: the Brave web search client. Tests run on macOS. |
 | `Browser/Router/Router.swift` | The seam: query in, `RouteResult` out. |
-| `Browser/Router/LocalFirstRouter.swift` | Tries `LocalAnswers` and the site book before the router it wraps; a hit is a `.localAnswer` or `.site` plan. |
+| `Browser/Router/LocalFirstRouter.swift` | Tries `LocalAnswers`, the site book and the search verbs before the router it wraps; a hit is a `.localAnswer`, `.site` or `.web` plan. |
 | `Browser/Router/JevRouter.swift` | Asks Jev, maps format → `CardPlan`. Also `BrowserSession.makeRouter()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
 | `Browser/Images/ImageSession.swift` | Loads one Wikipedia picture (and its alternates) for an image plan, and the summary for the log. |

@@ -50,6 +50,13 @@ import Testing
         #expect(markdown.contains("`local(\"site\")`"))
         #expect(markdown.contains("\"\(SiteQuery.openers[0])\""))
         #expect(markdown.contains("\"\(SiteQuery.trailers.last!)\""))
+        #expect(markdown.contains("## Decided on the device"))
+        #expect(markdown.contains("`local(\"search\")`"))
+        #expect(markdown.contains("\"\(SearchQuery.openers[0])\""))
+        #expect(markdown.contains("\"\(SearchQuery.brandOpener)\""))
+        #expect(markdown.contains("\"\(SearchQuery.googleProducts[0])\""))
+        #expect(markdown.contains("\"\(SearchQuery.trailers[0])\""))
+        #expect(markdown.contains("| A search verb and a term (see above) | Web results for the term | `local(\"search\")` |"))
         #expect(markdown.contains("### `rejects` — type `noul`"))
         #expect(markdown.contains(JevRouting.rejectsCriteria.yes))
         #expect(markdown.contains("`opened_site_name`"))
@@ -82,6 +89,7 @@ import Testing
                 format: .webResults, suggested: .oneLine, confidence: 0.9,
                 probabilities: ["one_line": 0.92, "web_results": 0.05], model: "jev-1.13.0", latencyMs: 150, inputTokens: 1100, recency: 0.91, source: .recencyFallback)),
             DecisionRecord(timestamp: now.addingTimeInterval(300), query: "what time is it in tokyo", decision: .local("time", format: .oneLine)),
+            DecisionRecord(timestamp: now.addingTimeInterval(330), query: "look up steve jobs", decision: .local("search", format: .webResults)),
             DecisionRecord(timestamp: now.addingTimeInterval(360), query: "can I use water", decision: RouteDecision(
                 format: .narrative, suggested: .webResults, confidence: 0.3,
                 probabilities: ["web_results": 0.4, "narrative": 0.35], model: "jev-1.13.0", latencyMs: 230, inputTokens: 900, continuation: 0.8, source: .continuation)),
@@ -112,7 +120,7 @@ import Testing
         #expect(parsed == records)
 
         let markdown = DecisionsReport.markdown(records: parsed)
-        #expect(markdown.contains("13 queries: 9 asked Jev, 2 answered on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("14 queries: 9 asked Jev, 3 decided on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
         #expect(markdown.contains("1 recalls: 1 opened one memory, 0 showed a picker, 0 matched nothing and went to web. Jev judged 1, median 310 ms; 0 fell back to word order."))
         #expect(markdown.contains("4 site requests: 1 opened a remembered site, 1 showed choices, 1 fell back to web results, 1 rejected the site on screen. Median search latency 640 ms."))
         #expect(markdown.contains("Fell back: \"lobsters\": no key"))
@@ -123,7 +131,9 @@ import Testing
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).site == nil, "lines without a site summary decode")
         #expect(markdown.contains("| `web_results` | 1 | 1 | 0 | 0 | 0.30 | \"can I use water\" |"), "a continuation counts as acted on")
         #expect(markdown.contains("Follow-ups over an answer: 2 asked, 2 continued it (1 as one line), 0 went to another card, mean continuation 0.85."))
+        #expect(markdown.contains("## Decided on the device"))
         #expect(markdown.contains("- `time`: 1, most recent \"what time is it in tokyo\""))
+        #expect(markdown.contains("- `search`: 1, most recent \"look up steve jobs\""))
         #expect(markdown.contains("| `stock` | 1 | 1 | 0 | 0 | 0.91 | \"nasdaq stock\" |"))
         #expect(markdown.contains("| `map` | 1 | 0 | 1 | 0 | 0.30 | \"coffee\" |"))
         #expect(markdown.contains("| `one_line` | 2 | 1 | 0 | 1 | 0.90 | \"and chile?\", \"is charlie kirk alive\" |"), "a one-line continuation counts as acted on")

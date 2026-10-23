@@ -44,7 +44,7 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         /// reached the threshold): `format` is `site` for the same name
         /// again, whatever the pick was; the pick is kept as `suggested`.
         case rejection
-        /// Answered on the device by the named rule (see `LocalAnswers`, and
+        /// Decided on the device by the named rule (see `LocalAnswers`, and
         /// the site book behind `LocalFirstRouter`); no model was asked.
         case local(String)
         /// The request failed; `format` is the fallback.

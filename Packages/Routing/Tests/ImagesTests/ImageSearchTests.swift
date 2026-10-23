@@ -28,6 +28,14 @@ import Testing
         #expect(MockWikipediaTransport.requests.count == 4)
     }
 
+    @Test func theAskingAroundTheSubjectStaysOutOfTheSearch() async throws {
+        let search = MockWikipediaTransport.search(search: flagSearch, summaries: flagSummaries)
+        let results = try await search.find("show me a picture of the dominican flag")
+        #expect(results.first?.key == "Flag_of_the_Dominican_Republic")
+        let searchRequest = try #require(MockWikipediaTransport.requests.first)
+        #expect(searchRequest.url?.query?.contains("q=dominican%20flag") == true, "ImageQuery leaves the subject")
+    }
+
     @Test func nothingWithAPictureIsNoImage() async {
         let search = MockWikipediaTransport.search(search: #"{"pages":[{"id":1,"key":"A","title":"A","excerpt":"","matched_title":null,"anchor":null,"description":"","thumbnail":null}]}"#, summaries: [:])
         await #expect(throws: ImageError.noImage) {

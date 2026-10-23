@@ -41,7 +41,7 @@ public enum RoutingReport {
         out.append("| `previous_queries`, `previous_answer` | Only while a narrative or one-line answer is on screen and the query was typed over it: every query of that conversation, oldest first, and the last answer cut to \(JevRouting.maxPreviousAnswerCharacters) characters. The format question then reads differently and a third question is asked; see \"When an answer is on screen\". |")
         out.append("| `opened_site_name`, `opened_site_host` | Only while a site this app opened by name is on screen: the name asked for and the host opened. A third question is asked; see \"When a site is on screen\". |")
         out.append("")
-        out.append("Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can answer itself becomes a card at once, or opens a site the device already knows; Jev is not asked either way.")
+        out.append("Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can decide itself becomes a card at once, opens a site the device already knows, or searches the term after a search verb; Jev is not asked in any of these cases.")
         out.append("")
         out += answeredOnTheDevice()
 
@@ -84,6 +84,7 @@ public enum RoutingReport {
         out.append("|---|---|---|")
         out.append("| The time in a named place (see above) | A one-line card computed on the device | `local(\"time\")` |")
         out.append("| An opener and a site name the book knows (see above) | That site | `local(\"site\")` |")
+        out.append("| A search verb and a term (see above) | Web results for the term | `local(\"search\")` |")
         out.append("| Address typed | That page | `directURL` |")
         out.append("| No API key configured | Web results | `noKey` |")
         out.append("| Request failed or timed out | Web results | `error(reason)` |")
@@ -94,6 +95,8 @@ public enum RoutingReport {
         out.append("| Over an answer on screen, `continues` at or above \(JevRouting.continuationThreshold.formatted()) and any other pick, sure or not, with `recent` below \(JevRouting.recencyThreshold.formatted()) | The answer on screen grows into a transcript: the query as a line, then a reply written with the earlier turns in view, as one line when `one_line` was picked with confidence and as a narrative otherwise | `continuation` (the pick is kept as `suggested`) |")
         out.append("| `site` picked with confidence | The site, when the book knows the name; otherwise the choices card (see \"After routing: sites\") | `jev` |")
         out.append("| Over a site opened by name, `rejects` at or above \(JevRouting.rejectionThreshold.formatted()), whatever the pick | The name is forgotten and the choices card shown again | `rejection` (the pick is kept as `suggested`) |")
+        out.append("")
+        out.append("Web results, however reached, are for the query with its search verb gone: \"google steve jobs\" searches \"steve jobs\" (`SearchQuery`, see \"Decided on the device\"); the log keeps the spoken words. An `image` pick searches the subject alone (`ImageQuery`, see \"After routing: Wikipedia images\").")
         out.append("")
         out.append("Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.")
         out.append("")
@@ -106,11 +109,11 @@ public enum RoutingReport {
         return out.joined(separator: "\n") + "\n"
     }
 
-    /// The grammar `LocalAnswers` matches, from the same lists the code uses.
+    /// The grammars the device's own rules match, from the same lists the code uses.
     private static func answeredOnTheDevice() -> [String] {
         func quoted(_ phrases: [String]) -> String { phrases.map { "\"\($0)\"" }.joined(separator: ", ") }
         var out: [String] = []
-        out.append("## Answered on the device")
+        out.append("## Decided on the device")
         out.append("")
         out.append("The time in a named place needs no model. A query that is exactly one opener, a place and at most one trailer (case, accents and punctuation aside) is answered from the device clock when the place is a country, a US state or a city in the device's zone database; otherwise it goes on to Jev like any other query. English only.")
         out.append("")
@@ -126,6 +129,13 @@ public enum RoutingReport {
         out.append("- Openers: \(quoted(SiteQuery.openers))")
         out.append("- Articles after the opener: \(quoted(SiteQuery.articles))")
         out.append("- Trailers, any number, at the end: \(quoted(SiteQuery.trailers))")
+        out.append("")
+        out.append("A query led by a verb that only ever means \"search\" is web results for what follows it, with no model asked, logged as `local(\"search\")`. `SearchQuery` reads it as leads, one opener, the term and trailers; the term is kept as typed (case, apostrophes and punctuation included) because it goes into the search box. \"\(SearchQuery.brandOpener)\" is a verb too (\"google steve jobs\") but also a company, so it is not a command here: the query goes to Jev, and only a `web_results` pick drops it, and never when one of the product words below follows it (\"google maps\", \"google stock\").")
+        out.append("")
+        out.append("- Leads, any number, before the opener: \(quoted(SearchQuery.leads))")
+        out.append("- Openers that route on the device: \(quoted(SearchQuery.openers))")
+        out.append("- Dropped only after a web pick: \"\(SearchQuery.brandOpener)\", unless followed by \(quoted(SearchQuery.googleProducts))")
+        out.append("- Trailers, any number, at the end: \(quoted(SearchQuery.trailers))")
         out.append("")
         return out
     }

@@ -29,7 +29,8 @@ struct JevRouter: Router {
         }
         switch decision.format {
         case .webResults:
-            return .web(QueryParser.searchURL(for: query))
+            // The verb that asked for the search ("google steve jobs") stays out of the box.
+            return .web(QueryParser.searchURL(for: SearchQuery.term(for: query)))
         case .narrative, .oneLine:
             assert(decision.format.stage >= .built, "\(decision.format) has a card but is marked \(decision.format.stage)")
             guard canAnswer else { return .web(QueryParser.searchURL(for: query)) }

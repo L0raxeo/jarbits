@@ -103,7 +103,17 @@ case "route":
     }
     if let local = LocalAnswers.answer(query, locale: Locale(identifier: "en_US")) {
         print("query: \"\(query)\"")
-        print("answered on the device by rule \(local.rule): \(local.text)")
+        print("decided on the device by rule \(local.rule): \(local.text)")
+        exit(0)
+    }
+    if let site = SiteQuery.parse(query), site.hasOpener, SiteBook.seeded().lookup(site.name) != nil {
+        print("query: \"\(query)\"")
+        print("decided on the device by rule site: opens \"\(site.name)\" from the seeded book (the app's book may know more names)")
+        exit(0)
+    }
+    if let search = SearchQuery.parse(query), search.isCommand {
+        print("query: \"\(query)\"")
+        print("decided on the device by rule search: web results for \"\(search.term)\"")
         exit(0)
     }
     guard let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty else {
@@ -113,6 +123,12 @@ case "route":
     print("query: \"\(query)\"")
     if let site = SiteQuery.parse(query), decision.format == .site {
         print("site name: \"\(site.name)\"\(site.hasOpener ? " (with an opener)" : "")")
+    }
+    if decision.format == .webResults, let search = SearchQuery.parse(query) {
+        print("search term: \"\(search.term)\"")
+    }
+    if decision.format == .image, let image = ImageQuery.parse(query) {
+        print("image subject: \"\(image.subject)\"")
     }
     print("format: \(decision.format.rawValue)  source: \(decision.source)")
     if let confidence = decision.confidence { print("confidence: \(confidence.formatted(.number.precision(.fractionLength(2))))") }
