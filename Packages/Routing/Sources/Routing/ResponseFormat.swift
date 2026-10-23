@@ -129,6 +129,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
                     "where's my grocery list",
                     "remember that convo on the dyson pencilvac",
                     "pull up that youtube page from earlier",
+                    "pull up the video I was watching about muse",
                     "that thing about gingivitis again",
                     "go back to the reddit thread",
                 ]

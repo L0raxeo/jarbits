@@ -18,6 +18,31 @@ import Testing
         #expect(MemorySearch.terms(from: "pull up that video about muse I was watching") == ["muse"])
     }
 
+    @Test func aPageAnswersToItsOwnTitleNotTheSearchBeforeIt() {
+        // The first page after a search carries the search; the next one browsed to does not.
+        let first = record(.page, "rick steves europe", title: "Rick Steves' Europe: Lisbon", url: "https://m.youtube.com/watch?v=a", daysAgo: 1)
+        let next = record(.page, "", title: "The Biggest Launch Since ChatGPT (Muse)", url: "https://m.youtube.com/watch?v=b")
+        #expect(MemorySearch.matches([first, next], query: "pull up a video about rick steves") == [first])
+        #expect(MemorySearch.matches([first, next], query: "pull up the video I was watching about muse") == [next])
+    }
+
+    @Test func aNameSpeltNearlyRightStillMatches() {
+        let hennessey = record(.page, "", title: "Hennessey Performance | Official Website", url: "https://www.hennesseyperformance.com/")
+        let other = record(.page, "", title: "Henley Royal Regatta", url: "https://www.hrr.co.uk/")
+        #expect(MemorySearch.matches([other, hennessey], query: "Pull up the website I was looking at about Hennessy.") == [hennessey])
+        #expect(MemorySearch.close("hennessy", "hennessey"))
+        #expect(MemorySearch.close("steves", "steve"))
+        #expect(!MemorySearch.close("muse", "mouse"), "short words must match exactly")
+        #expect(!MemorySearch.close("henley", "hennessey"))
+    }
+
+    @Test func trackingCodesDoNotMakeANewPage() throws {
+        let tapped = try #require(URL(string: "https://www.hennesseyperformance.com/?srsltid=AYCX9vLu&utm_source=google#top"))
+        #expect(MemoryRecord.canonical(tapped).absoluteString == "https://www.hennesseyperformance.com/")
+        let video = try #require(URL(string: "https://m.youtube.com/watch?v=abc&t=10"))
+        #expect(MemoryRecord.canonical(video).absoluteString == "https://m.youtube.com/watch?v=abc&t=10")
+    }
+
     @Test func aVideoIsFoundByItsTitle() {
         let video = record(.page, "cleo abram", title: "The Biggest Launch Since ChatGPT (Muse)", url: "https://m.youtube.com/watch?v=abc")
         let other = record(.page, "lofi", title: "lofi hip hop radio", url: "https://m.youtube.com/watch?v=x")

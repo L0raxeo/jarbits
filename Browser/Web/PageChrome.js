@@ -236,17 +236,15 @@
 
   // --- Addresses -----------------------------------------------------------
 
-  // A page that changes its address without loading (the next video on
-  // YouTube, a thread on Reddit) is reported with its title, so the app can
-  // remember it as it remembers a loaded page; so is a title that settles
-  // after the load (YouTube names its video a beat later), for the loaded
-  // address too. The page's scripts run in another world, so `history`
-  // cannot be wrapped; the address and title are checked on every look
-  // instead, starting from what the document loaded with, and only a
-  // change is reported.
+  // The page's address and title, for the app's memories: once at the
+  // first look, then again whenever either changes, so a page reached
+  // without a load (the next video on YouTube) and a title that settles
+  // after the load (YouTube names its video a beat later) both reach the
+  // app, which refreshes the memory. The page's scripts run in another
+  // world, so `history` cannot be wrapped; both are checked on every look.
   const page = (href) => href.split('#')[0];
-  let reportedAddress = page(location.href);
-  let reportedTitle = (document.title || '').trim();
+  let reportedAddress = null;
+  let reportedTitle = null;
   function reportAddress() {
     const address = page(location.href);
     const title = (document.title || '').trim();

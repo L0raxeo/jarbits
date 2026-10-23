@@ -157,6 +157,25 @@ struct HomeView: View {
                         .animation(.easeInOut(duration: 0.25), value: session.dictation.heardSpeech)
                         .transition(.opacity.animation(.easeInOut(duration: 0.25)))
                     }
+
+                    #if DEBUG
+                    // Forgets every memory. A Debug control until a real one exists.
+                    if showsHint {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Button("Clear memory") { session.clearMemory() }
+                                    .buttonStyle(.plain)
+                                    .font(.footnote)
+                                    .foregroundStyle(Palette.quiet)
+                                    .padding(.trailing, 20)
+                                    .padding(.top, 8)
+                            }
+                            Spacer()
+                        }
+                        .transition(.opacity.animation(.easeInOut(duration: 0.25)))
+                    }
+                    #endif
                 }
                 .onChange(of: window, initial: true) { _, window in
                     session.window = window

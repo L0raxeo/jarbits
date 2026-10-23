@@ -26,6 +26,16 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
             case .search: "search"
             }
         }
+
+        /// The SF Symbol that stands for the kind, under a tile.
+        public var symbol: String {
+            switch self {
+            case .page: "globe"
+            case .narrative, .oneLine: "text.alignleft"
+            case .image: "photo"
+            case .search: "magnifyingglass"
+            }
+        }
     }
 
     public var id: UUID
@@ -57,6 +67,22 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         if kind == .page { return url == other.url }
         return query.lowercased() == other.query.lowercased()
     }
+
+    /// Query parameters that only track the click, never pick the page.
+    static let trackingParameters: Set<String> = ["srsltid", "gclid", "fbclid", "msclkid", "ref", "ref_src"]
+
+    /// The address without its fragment and without tracking codes
+    /// (Google's `srsltid`, `utm_*`, click ids), so a page reached twice
+    /// from results is one memory.
+    public static func canonical(_ url: URL) -> URL {
+        guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        parts.fragment = nil
+        if let items = parts.queryItems {
+            let kept = items.filter { !trackingParameters.contains($0.name.lowercased()) && !$0.name.lowercased().hasPrefix("utm_") }
+            parts.queryItems = kept.isEmpty ? nil : kept
+        }
+        return parts.url ?? url
+    }
 }
 
 /// How a recall fared, for the decision log: the evidence for whether
@@ -74,10 +100,12 @@ public struct RecallSummary: Codable, Sendable, Equatable {
 
 /// Word matching over the memories. The query's recall phrasing is dropped
 /// ("remember that convo on the dyson pencilvac" → "dyson", "pencilvac");
-/// a record matches a term when one of its words contains it, or, for long
-/// terms, when its text with the spaces removed does ("pencilvac" against
-/// "pencil vac"). Records holding every term win; failing that, records
-/// holding any; newest first among equals.
+/// a record matches a term when one of its words contains it, or is a near
+/// miss of it (one letter off, or the same long start: "hennessy" against
+/// "hennessey", as dictation spells names), or, for long terms, when its
+/// text with the spaces removed does ("pencilvac" against "pencil vac").
+/// Records holding every term win; failing that, records holding any;
+/// newest first among equals.
 public enum MemorySearch {
     /// Words that say "bring it back" rather than what to bring back.
     static let filler: Set<String> = [
@@ -114,7 +142,7 @@ public enum MemorySearch {
             let words = Set(ordered)
             let joined = ordered.joined()
             let hits = terms.filter { term in
-                words.contains { $0.contains(term) } || (term.count >= joinedMinimum && joined.contains(term))
+                words.contains { close(term, $0) } || (term.count >= joinedMinimum && joined.contains(term))
             }.count
             return hits > 0 ? (record, hits) : nil
         }
@@ -128,6 +156,35 @@ public enum MemorySearch {
 
     static func tokens(of text: String) -> [String] {
         text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+    }
+
+    /// Near-matching is for names, so it needs a few letters to go on.
+    static let nearMinimum = 5
+
+    /// `word` contains `term`; or both are long enough and share all but
+    /// the last letter or two of the shorter; or they are one edit apart.
+    static func close(_ term: String, _ word: String) -> Bool {
+        if word.contains(term) { return true }
+        guard term.count >= nearMinimum, word.count >= nearMinimum else { return false }
+        let shared = zip(term, word).prefix { $0 == $1 }.count
+        if shared >= nearMinimum && shared >= min(term.count, word.count) - 1 { return true }
+        return abs(term.count - word.count) <= 1 && editDistance(term, word) <= 1
+    }
+
+    /// Levenshtein distance, for two short words.
+    static func editDistance(_ a: String, _ b: String) -> Int {
+        let a = Array(a), b = Array(b)
+        if a.isEmpty { return b.count }
+        if b.isEmpty { return a.count }
+        var previous = Array(0...b.count)
+        for i in 1...a.count {
+            var current = [i] + Array(repeating: 0, count: b.count)
+            for j in 1...b.count {
+                current[j] = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1))
+            }
+            previous = current
+        }
+        return previous[b.count]
     }
 }
 

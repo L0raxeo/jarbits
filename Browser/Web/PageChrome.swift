@@ -112,21 +112,8 @@ enum EdgeSampler {
         guard window.width > 0, viewportHeight > stripHeight + inset else { return nil }
         let y = edge == .top ? topInset + inset : topInset + viewportHeight - inset - stripHeight
         let strip = CGRect(x: 0, y: y, width: window.width, height: stripHeight)
-        // The export on the main actor, raced against the timeout; the
-        // group captures only the task handle.
-        let export = Task { try? await page.exported(as: .image(region: .rect(strip), snapshotWidth: snapshotWidth)) }
-        let data: Data? = await withTaskGroup(of: Data?.self) { group in
-            group.addTask { await export.value }
-            group.addTask {
-                try? await Task.sleep(for: timeout)
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            export.cancel()
-            return first
-        }
-        guard let data, let image = UIImage(data: data)?.cgImage else { return nil }
+        guard let data = await WebPageExport.image(of: page, region: .rect(strip), width: snapshotWidth, timeout: timeout),
+              let image = UIImage(data: data)?.cgImage else { return nil }
         return uniformColor(of: image)
     }
 
@@ -172,6 +159,27 @@ enum EdgeSampler {
             }
         }
         return ChromeColor(red: Double(mean.0) / 255, green: Double(mean.1) / 255, blue: Double(mean.2) / 255)
+    }
+}
+
+/// A picture of the page, or part of it, bounded in time: a slow export
+/// never holds whatever asked for it.
+enum WebPageExport {
+    static func image(of page: WebPage, region: WebPage.ExportedContentConfiguration.Region, width: CGFloat, timeout: Duration) async -> Data? {
+        // The export on the main actor, raced against the timeout; the
+        // group captures only the task handle.
+        let export = Task { try? await page.exported(as: .image(region: region, snapshotWidth: width)) }
+        return await withTaskGroup(of: Data?.self) { group in
+            group.addTask { await export.value }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            export.cancel()
+            return first
+        }
     }
 }
 

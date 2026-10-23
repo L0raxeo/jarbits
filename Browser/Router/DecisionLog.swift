@@ -26,7 +26,10 @@ actor DecisionLog {
 
             let directory = fileURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            if !FileManager.default.fileExists(atPath: fileURL.path()) {
+            // `path(percentEncoded: false)`: the encoded form has
+            // "Application%20Support", which never exists, and the empty
+            // write below would wipe the file before every line.
+            if !FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) {
                 try Data().write(to: fileURL)
             }
             let handle = try FileHandle(forWritingTo: fileURL)

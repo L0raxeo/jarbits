@@ -201,23 +201,34 @@ format, through the same confidence floor, so there is no phrase list in
 the app and no extra request.
 
 Every result the user sees is written to `Application Support/Browser/memories.jsonl`
-as it appears: a page that finished loading with a title (its address and
-title), a page reached without a load (the next video on YouTube, reported
-by the watcher with its title, and again once the title settles), a
+as it appears: a page (its address and title, reported by the watcher at
+its first look, again when the page changes its address without a load,
+as the next video on YouTube does, and again when the title settles), a
 narrative answer (its text), a one-line answer, a picture or a results
 page (the query only). Error pages, redirects and untitled documents are
-skipped. Seeing the same thing again within a day refreshes
+skipped. The search that led to a page is attached to the first page
+after it only; pages browsed on from there answer to their own titles and
+addresses, so browsing on from "rick steves" does not make the next video
+answer to "rick steves". Seeing the same thing again within a day refreshes
 its record; past 5 000 records the oldest go, which keeps the file in the
 tens of megabytes at most. Nothing in it leaves the phone, and Google's
 interaction storage stays off.
 
 A recall drops the phrasing ("remember", "that", "my", "pull up") and
 searches the records for the words left, in their queries, titles,
-addresses and text. Records holding every word win, else records holding
-any; newest first among equals; at most ten. One match opens at once;
+addresses and text; a name spelt nearly right still counts ("hennessy"
+finds "hennessey", as dictation spells names). Records holding every word
+win, else records holding any; newest first among equals; at most ten.
+A page's address is kept without Google's click code or `utm_` tags, so
+the same page tapped twice from results is one memory. One match opens at once;
 several show a picker, one row each with the title, the kind and when, and
 a tap opens that one; none falls through to a Google search for the same
-words, so a wrong pick by Jev costs nothing visible. Opening a memory
+words, so a wrong pick by Jev costs nothing visible. The picker is a
+two-wide grid of tiles, like Safari's tab overview: a page shows the
+picture taken when it was memorised (a 360-px JPEG of about 30 KB in
+`Application Support/Browser/memories/`, kept for the newest 1 000 pages
+and deleted with its record), a narrative its opening lines, the rest a
+symbol; the kind, the title and when sit under each tile. Opening a memory
 reuses the ordinary plans: a page loads its address; a results page loads
 its query's results, no router asked; a narrative shows its saved text
 with its date, no model asked; a one-line answer or a picture asks its
@@ -230,8 +241,9 @@ look through the memories that has not resolved in 3 s goes to the web.
 The decision log notes each recall's match count. If recalls keep matching
 nothing or too much, the upgrade is to send the candidates to Jev as one
 yes/no question each in a single request; word matching stays as the
-prefilter. A "clear memory" control does not exist yet; deleting the app
-clears the file.
+prefilter. Debug builds show a "Clear memory" link at the top of the idle
+screen that deletes the file and every picture; there is no user-facing
+control yet.
 
 ## Where things live
 

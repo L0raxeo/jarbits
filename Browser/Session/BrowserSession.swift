@@ -33,14 +33,24 @@ final class BrowserSession {
     let images = ImageSession()
     /// The microphone on the idle screen; what it hears is never shown.
     let dictation = DictationSession()
-    /// Every result the user saw, for `recall` queries.
-    private let memory: MemoryStore
+    /// Every result the user saw, for `recall` queries; the grid reads
+    /// pictures from it.
+    let memory: MemoryStore
     /// A memory's query being asked again: Jev may not answer `recall` for
     /// it, or a memory could replay itself forever.
     private var replayingQuery: String?
+    /// The search that led to the next page memorised, and to that one
+    /// only: pages browsed on from it are remembered by what they are.
+    private var queryForNextPage: String?
     /// A look through the memories that has not resolved by then goes to
     /// the web, so the wave line never waits on it.
     private let recallTimeout: Duration = .seconds(3)
+    /// A page's picture for the recall grid: this wide in points (three
+    /// times that in pixels), as a JPEG at this quality, a few tens of KB.
+    /// An export slower than the timeout is skipped.
+    private let pictureWidth: CGFloat = 120
+    private let pictureQuality: CGFloat = 0.6
+    private let pictureTimeout: Duration = .seconds(2)
     private(set) var plans: [CardPlan] = []
     private(set) var lastQuery = ""
     private(set) var stage: Stage = .idle
@@ -123,6 +133,7 @@ final class BrowserSession {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         lastQuery = trimmed
+        queryForNextPage = trimmed
         stage = .routing
         Task {
             let result = await router.route(trimmed)
@@ -289,7 +300,8 @@ final class BrowserSession {
     /// those are cheap and may have gone stale. The capsule and the "Web
     /// results" link follow the memory's own query.
     func replay(_ record: MemoryRecord) {
-        lastQuery = record.query
+        lastQuery = record.query.isEmpty ? record.title : record.query
+        queryForNextPage = lastQuery
         switch record.kind {
         case .page:
             guard let url = record.url else { load(QueryParser.searchURL(for: record.query)); return }
@@ -314,33 +326,68 @@ final class BrowserSession {
         Task { await memory.remember(record) }
     }
 
-    /// The document that just finished: a page with a title, by address; a
-    /// results page, by its query. Error pages and untitled documents are
-    /// not worth remembering, nor is the results page a recall fell through
-    /// to: that would memorise the recall phrase itself, and the next recall
-    /// of the same words would find it and loop.
+    /// The document that just finished, when it is a results page: a
+    /// `search` memory by its query. Not the results page a recall fell
+    /// through to: that would memorise the recall phrase itself, and the
+    /// next recall of the same words would find it and loop. Ordinary pages
+    /// are memorised from the watcher's reports, which carry the title as
+    /// it settles; `WebPage.title` can still be empty or stale here.
     private func rememberPage() {
-        guard let url = page.url else { return }
-        rememberPage(url, title: page.title)
+        guard let url = page.url, QueryParser.isSearchResults(url) else { return }
+        rememberSearch(url)
     }
 
-    /// The page changed its address without loading (the next video on
-    /// YouTube): the watcher reports it, with the title as it stands, and
-    /// again once the title settles; the store refreshes the record.
+    /// The watcher's report of the page's address and title: at its first
+    /// look, when the page changes its address without loading (the next
+    /// video on YouTube), and when the title settles; the store refreshes
+    /// the record each time. Error pages and untitled documents are not
+    /// worth remembering. The search that led here is attached only to
+    /// the first page after it; later pages answer to their own titles.
     private func addressChanged(to url: URL, title: String) {
-        rememberPage(url, title: title)
-    }
-
-    private func rememberPage(_ url: URL, title: String) {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
         if QueryParser.isSearchResults(url) {
-            guard !lastQuery.isEmpty, lastDecision?.format != .recall else { return }
-            remember(MemoryRecord(kind: .search, query: lastQuery))
+            rememberSearch(url)
         } else {
             let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { return }
-            remember(MemoryRecord(kind: .page, query: lastQuery, title: title, url: url))
+            let url = MemoryRecord.canonical(url)
+            let record = MemoryRecord(kind: .page, query: queryForNextPage ?? "", title: title, url: url)
+            queryForNextPage = nil
+            #if DEBUG
+            print("memory \(record.kind.rawValue) \"\(record.title)\" \(url.absoluteString) for \"\(record.query)\"")
+            #endif
+            Task { [weak self] in
+                guard let self else { return }
+                let id = await memory.remember(record)
+                await takePicture(of: url, for: id)
+            }
         }
+    }
+
+    #if DEBUG
+    /// Forgets every memory and picture. A Debug control until a real one exists.
+    func clearMemory() {
+        Task { await memory.clear() }
+    }
+    #endif
+
+    private func rememberSearch(_ url: URL) {
+        guard !lastQuery.isEmpty, lastDecision?.format != .recall else { return }
+        remember(MemoryRecord(kind: .search, query: lastQuery))
+    }
+
+    /// A picture of the page as it stands, for the recall grid, unless the
+    /// page has moved on by the time the export returns.
+    private func takePicture(of url: URL, for id: UUID) async {
+        guard let data = await WebPageExport.image(of: page, region: .contents, width: pictureWidth, timeout: pictureTimeout),
+              Self.samePage(page.url, url),
+              let image = UIImage(data: data), let jpeg = image.jpegData(compressionQuality: pictureQuality) else { return }
+        await memory.savePicture(jpeg, for: id)
+    }
+
+    private static func samePage(_ a: URL?, _ b: URL) -> Bool {
+        guard let a else { return false }
+        return MemoryRecord.canonical(a) == MemoryRecord.canonical(b)
     }
 
     /// The first picture is decoded: fade the line out, the card in.

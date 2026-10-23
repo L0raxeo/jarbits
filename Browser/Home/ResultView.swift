@@ -91,7 +91,7 @@ struct ResultView: View {
         case let .memory(record):
             AnswerView(spans: AnswerMarkup.styled(record.text ?? "", for: .narrative), stoppedEarly: false, format: .narrative, clayY: clayY, barCompact: $barCompact, recalledOn: record.date)
         case let .recallPicker(records):
-            RecallPickerView(records: records, clayY: clayY, barCompact: $barCompact)
+            RecallGridView(records: records, topInset: topInset, barCompact: $barCompact)
         case .recall:
             // Resolved by the session before it reaches a card.
             EmptyView()
@@ -294,36 +294,40 @@ private struct AnswerView: View {
     }
 }
 
-/// Several memories matched a recall: one row each, the title, the kind in
-/// words and when; a tap replays that one. Laid out like the narrative
-/// card, and dismissed the same way.
-private struct RecallPickerView: View {
+/// Several memories matched a recall: a two-wide grid of tiles, like
+/// Safari's tab overview. A page shows the picture taken when it was
+/// memorised, a narrative its opening lines, the rest a symbol; the kind
+/// and the title sit under each tile, and a tap replays that one. Laid out
+/// under the frost, and dismissed like the other cards.
+private struct RecallGridView: View {
     @Environment(BrowserSession.self) private var session
     let records: [MemoryRecord]
-    let clayY: CGFloat
+    let topInset: CGFloat
     @Binding var barCompact: Bool
+
+    private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("\(records.count) things from before")
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("\(records.count) memories")
                         .font(.footnote)
                         .foregroundStyle(Palette.quiet)
-                        .padding(.bottom, 8)
-                    ForEach(records) { record in
-                        Button { session.replay(record) } label: { row(record) }
-                            .buttonStyle(.plain)
-                        Divider()
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
+                        ForEach(records) { record in
+                            Button { session.replay(record) } label: { MemoryTile(record: record) }
+                                .buttonStyle(.plain)
+                        }
                     }
                     Button("Web results") { session.showWebResults() }
                         .buttonStyle(.plain)
                         .font(.subheadline)
                         .foregroundStyle(Palette.quiet)
-                        .padding(.top, 20)
+                        .padding(.top, 12)
                 }
                 .padding(.horizontal, 24)
-                .padding(.top, proxy.size.height * 0.15)
+                .padding(.top, topInset + 24)
                 .padding(.bottom, 120)   // room for the query capsule
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -340,20 +344,90 @@ private struct RecallPickerView: View {
             )
         }
     }
+}
 
-    private func row(_ record: MemoryRecord) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(record.title)
-                .font(.body)
-                .foregroundStyle(Palette.ink)
-                .lineLimit(2)
-            Text("\(record.kind.label) · \(record.date.formatted(.relative(presentation: .named)))")
+/// One memory in the grid: a portrait tile and, under it, the kind's
+/// symbol, the title on one line, and when.
+private struct MemoryTile: View {
+    @Environment(BrowserSession.self) private var session
+    let record: MemoryRecord
+    @State private var picture: UIImage?
+
+    private let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            tile
+                .aspectRatio(0.72, contentMode: .fit)
+                .clipShape(shape)
+                .overlay(shape.strokeBorder(Color.black.opacity(0.06)))
+                .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
+            HStack(spacing: 6) {
+                Image(systemName: record.kind.symbol)
+                    .font(.footnote)
+                    .foregroundStyle(Palette.quiet)
+                Text(record.title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+            }
+            Text(record.date.formatted(.relative(presentation: .named)))
                 .font(.footnote)
                 .foregroundStyle(Palette.quiet)
         }
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .task(id: record.id) {
+            guard record.kind == .page else { return }
+            let url = session.memory.pictureURL(for: record.id)
+            picture = await Task.detached { UIImage(contentsOfFile: url.path(percentEncoded: false)) }.value
+        }
+    }
+
+    @ViewBuilder
+    private var tile: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color.white
+                switch record.kind {
+                case .page:
+                    if let picture {
+                        Image(uiImage: picture)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                    } else {
+                        placeholder(record.url?.host() ?? "")
+                    }
+                case .narrative:
+                    Text(AnswerMarkup.plain(record.text ?? ""))
+                        .font(.footnote)
+                        .foregroundStyle(Palette.ink)
+                        .multilineTextAlignment(.leading)
+                        .padding(12)
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                case .oneLine, .image, .search:
+                    placeholder(record.query)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+    }
+
+    private func placeholder(_ caption: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: record.kind.symbol)
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(Palette.quiet)
+            if !caption.isEmpty {
+                Text(caption)
+                    .font(.footnote)
+                    .foregroundStyle(Palette.quiet)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 12)
+            }
+        }
     }
 }
 
