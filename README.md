@@ -44,8 +44,8 @@ the field, with the result still behind; on a web result the field holds
 the page's query, selected, so typing replaces it. Return sends the
 follow-up as a new query, routed like any other, and the capsule itself
 becomes the wave line, small, at the foot, until the new result is ready; a
-link tapped inside a page shows the same line while the page loads. Swiping
-down on an answer, or tapping the line while it waves, returns to the circle.
+link tapped inside a page shows the same line while the page loads. Tapping
+the line while it waves returns to the circle.
 
 The page is SwiftUI's `WebView`. A site's tab bar is kept above the capsule
 by laying the page out to end there, and it follows the capsule as fast as

@@ -230,13 +230,6 @@ private struct AnswerView: View {
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 30)
-                    .onEnded { value in
-                        if value.translation.height > 80 { session.reset() }
-                    }
-            )
         }
     }
 
@@ -298,7 +291,7 @@ private struct AnswerView: View {
 /// Safari's tab overview. A page shows the picture taken when it was
 /// memorised, a narrative its opening lines, the rest a symbol; the kind
 /// and the title sit under each tile, and a tap replays that one. Laid out
-/// under the frost, and dismissed like the other cards.
+/// under the frost like the other cards.
 private struct RecallGridView: View {
     @Environment(BrowserSession.self) private var session
     let records: [MemoryRecord]
@@ -335,13 +328,6 @@ private struct RecallGridView: View {
                 ResultView.scrolled(from: old, to: new, compact: &barCompact)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 30)
-                    .onEnded { value in
-                        if value.translation.height > 80 { session.reset() }
-                    }
-            )
         }
     }
 }
@@ -478,13 +464,6 @@ private struct ImageCardView: View {
             // The picture lands about where the clay was; the captions hang below.
             .position(x: proxy.size.width / 2, y: clayY + 60)
             .frame(width: proxy.size.width, height: proxy.size.height)
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 30)
-                    .onEnded { value in
-                        if value.translation.height > 80 { session.reset() }
-                    }
-            )
         }
     }
 
