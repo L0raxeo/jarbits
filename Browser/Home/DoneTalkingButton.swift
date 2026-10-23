@@ -10,6 +10,7 @@ struct DoneTalkingButton: View {
         Button(action: action) {
             Text("I'm done talking")
                 .font(.subheadline.weight(.semibold))
+                .underline()
                 .foregroundStyle(Color(white: 0.2))
                 // The hint's chevron, gap and slot: 17 + 6 + 28.
                 .frame(minHeight: 51)
@@ -30,7 +31,7 @@ struct DisregardButton: View {
         Button(action: action) {
             Text("Disregard what you just heard")
                 .font(.footnote)
-                .foregroundStyle(Color(white: 0.45))
+                .foregroundStyle(.red)
                 .padding(.horizontal, 28)
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
