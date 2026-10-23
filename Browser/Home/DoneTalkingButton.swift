@@ -10,7 +10,6 @@ struct DoneTalkingButton: View {
         Button(action: action) {
             Text("I'm done talking")
                 .font(.subheadline.weight(.semibold))
-                .underline()
                 .foregroundStyle(Color(white: 0.2))
                 // The hint's chevron, gap and slot: 17 + 6 + 28.
                 .frame(minHeight: 51)
@@ -23,17 +22,18 @@ struct DoneTalkingButton: View {
     }
 }
 
-/// Under the done button: what was heard is forgotten and listening goes on.
+/// Under the done button, the same size, in gray: what was heard is
+/// forgotten and listening goes on.
 struct DisregardButton: View {
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text("Disregard what you just heard")
-                .font(.footnote)
-                .foregroundStyle(.red)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color(white: 0.55))
                 .padding(.horizontal, 28)
-                .padding(.vertical, 8)
+                .padding(.vertical, 12)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
