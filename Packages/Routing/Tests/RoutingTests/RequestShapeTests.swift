@@ -160,3 +160,37 @@ import Testing
         #expect(response.answers["urgency"] == .noul(0.99))
     }
 }
+
+@Suite struct SiteRequestShapeTests {
+    @Test func anOpenedSiteAddsStateAndAsksIfTheQueryRejectsIt() throws {
+        let request = JevRouting.request(for: "no not this one", locale: Locale(identifier: "en_US"), opened: OpenedSite(name: "zillow", host: "www.zillow.com"))
+        let data = try request.jsonData()
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let state = try #require(json["state"] as? [String: Any])
+        #expect(Set(state.keys) == ["query", "locale", "opened_site_name", "opened_site_host"])
+        #expect(state["opened_site_name"] as? String == "zillow")
+        #expect(state["opened_site_host"] as? String == "www.zillow.com")
+        let questions = try #require(json["questions"] as? [String: Any])
+        let rejects = try #require(questions["rejects"] as? [String: Any])
+        #expect(rejects["type"] as? String == "noul")
+        #expect((rejects["instructions"] as? String)?.contains("opened_site_host") == true)
+        let criteria = try #require(rejects["criteria"] as? [String: String])
+        #expect(Set(criteria.keys) == ["true", "false"])
+        #expect(criteria["true"]?.contains("not this zillow") == true)
+        #expect(criteria["false"]?.contains("open youtube") == true)
+        #expect(questions["continues"] == nil, "a page on screen means no narrative is")
+        #expect((questions["format"] as? [String: Any])?["instructions"] as? String == JevRouting.instructions, "the format question reads the query as typed")
+        #expect(request.questions.map(\.id) == ["format", "recent", "rejects"], "the format choice stays first")
+    }
+
+    @Test func withoutAnOpenedSiteNothingIsAdded() throws {
+        let request = JevRouting.request(for: "go to youtube", locale: Locale(identifier: "en_US"))
+        let json = try #require(JSONSerialization.jsonObject(with: try request.jsonData()) as? [String: Any])
+        let state = try #require(json["state"] as? [String: Any])
+        #expect(Set(state.keys) == ["query", "locale"])
+        #expect(request.questions.map(\.id) == ["format", "recent"])
+        let criteria = try #require(((json["questions"] as? [String: Any])?["format"] as? [String: Any])?["criteria"] as? [String: Any])
+        #expect(criteria["site"] != nil, "site is one of the options")
+        #expect(Array(ResponseFormat.allCases.map(\.rawValue)).last == "site", "appended last, so the other options keep their order")
+    }
+}

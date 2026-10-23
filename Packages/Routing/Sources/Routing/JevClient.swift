@@ -45,18 +45,26 @@ public struct RouteState: Codable, Sendable, Equatable {
     /// request is unchanged.
     public var previousQueries: [String]?
     public var previousAnswer: String?
+    /// The site this app opened by name and that is on screen, for the
+    /// `rejects` question. Left out when nil.
+    public var openedSiteName: String?
+    public var openedSiteHost: String?
 
     enum CodingKeys: String, CodingKey {
         case query, locale
         case previousQueries = "previous_queries"
         case previousAnswer = "previous_answer"
+        case openedSiteName = "opened_site_name"
+        case openedSiteHost = "opened_site_host"
     }
 
-    public init(query: String, locale: String, previousQueries: [String]? = nil, previousAnswer: String? = nil) {
+    public init(query: String, locale: String, previousQueries: [String]? = nil, previousAnswer: String? = nil, openedSiteName: String? = nil, openedSiteHost: String? = nil) {
         self.query = query
         self.locale = locale
         self.previousQueries = previousQueries
         self.previousAnswer = previousAnswer
+        self.openedSiteName = openedSiteName
+        self.openedSiteHost = openedSiteHost
     }
 }
 

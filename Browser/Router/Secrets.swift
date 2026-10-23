@@ -7,6 +7,8 @@ enum Secrets {
     static var typeSafeAPIKey: String? { value(forInfoKey: "TypeSafeAPIKey") }
     /// Gemini, the answer model.
     static var geminiAPIKey: String? { value(forInfoKey: "GeminiAPIKey") }
+    /// Brave Search, for the sites a name might mean.
+    static var braveAPIKey: String? { value(forInfoKey: "BraveAPIKey") }
 
     private static func value(forInfoKey name: String) -> String? {
         guard let raw = Bundle.main.object(forInfoDictionaryKey: name) as? String else { return nil }

@@ -2,6 +2,7 @@ import Answers
 import Foundation
 import Images
 import Routing
+import Sites
 
 // Usage:
 //   swift run --package-path Packages/Routing report routing > ROUTING.md
@@ -12,7 +13,11 @@ import Routing
 //     (one real Jev call, the same request the app sends; prints every option's probability)
 //   TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "can I use water" \
 //       --after "how do you make chocolate milk" "Heat milk and whisk in cocoa."
-//     (the same, typed over a narrative; one --after pair per earlier turn, oldest first)
+//     (the same, typed over an answer; one --after pair per earlier turn, oldest first)
+//   TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "no not this one" --opened zillow www.zillow.com
+//     (the same, typed over a site the app opened by name; prints whether the query rejects it)
+//   [BRAVE_API_KEY=…] swift run --package-path Packages/Routing report sites "go to hacker news"
+//     (what SiteQuery makes of the query, what the seeded book says, and with the key Brave's candidates)
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 
@@ -23,7 +28,7 @@ func fail(_ message: String) -> Never {
 
 switch arguments.first {
 case "routing":
-    print(RoutingReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown(), terminator: "")
+    print(RoutingReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown() + "\n" + SitesReport.markdown(), terminator: "")
 case "decisions":
     guard arguments.count == 2 else { fail("usage: report decisions <decisions.jsonl>") }
     do {
@@ -81,14 +86,19 @@ case "recall":
         print("jev failed: \(reason)")
     }
 case "route":
-    let usage = "usage: report route <query> [--after <earlier query> <earlier answer>]..."
+    let usage = "usage: report route <query> [--after <earlier query> <earlier answer>]... [--opened <site name> <host>]"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
     var thread: [AnswerTurn] = []
+    var opened: OpenedSite?
     while let flag = rest.first {
-        guard flag == "--after", rest.count >= 3 else { fail(usage) }
-        thread.append(AnswerTurn(query: rest[1], answer: rest[2]))
+        guard rest.count >= 3 else { fail(usage) }
+        switch flag {
+        case "--after": thread.append(AnswerTurn(query: rest[1], answer: rest[2]))
+        case "--opened": opened = OpenedSite(name: rest[1], host: rest[2])
+        default: fail(usage)
+        }
         rest.removeFirst(3)
     }
     if let local = LocalAnswers.answer(query, locale: Locale(identifier: "en_US")) {
@@ -99,8 +109,11 @@ case "route":
     guard let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty else {
         fail("set TYPESAFE_API_KEY in the environment (never paste it on the command line)")
     }
-    let decision = await FormatRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query, thread: thread)
+    let decision = await FormatRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query, thread: thread, opened: opened)
     print("query: \"\(query)\"")
+    if decision.format == .site, let name = SiteQuery.name(in: query) {
+        print("site name: \"\(name)\"\(SiteQuery.parse(query)?.hasOpener == true ? " (with an opener at the front)" : "")")
+    }
     print("format: \(decision.format.rawValue)  source: \(decision.source)")
     if let confidence = decision.confidence { print("confidence: \(confidence.formatted(.number.precision(.fractionLength(2))))") }
     if let suggested = decision.suggested { print("suggested: \(suggested.rawValue)") }
@@ -108,15 +121,48 @@ case "route":
         print("recency: \(recency.formatted(.number.precision(.fractionLength(2)))) (threshold \(JevRouting.recencyThreshold.formatted()))")
     }
     if let continuation = decision.continuation {
-        let verdict = decision.continuesNarrative ? "continues the narrative"
+        let verdict = decision.continuesNarrative ? "continues the thread as \(decision.format.rawValue)"
+            : continuation >= JevRouting.continuationThreshold && decision.source == .recencyFallback ? "continues, but needs live data: web results"
             : continuation >= JevRouting.continuationThreshold ? "related, but another card"
             : "fresh"
         print("continuation: \(continuation.formatted(.number.precision(.fractionLength(2)))) (threshold \(JevRouting.continuationThreshold.formatted())), \(verdict)")
+    }
+    if let rejection = decision.rejection {
+        print("rejection: \(rejection.formatted(.number.precision(.fractionLength(2)))) (threshold \(JevRouting.rejectionThreshold.formatted())), \(decision.rejectsSite ? "rejects the site on screen" : "keeps it")")
     }
     for (name, p) in decision.probabilities.sorted(by: { $0.value > $1.value }) {
         print("  \(name.padding(toLength: 12, withPad: " ", startingAt: 0)) \(p.formatted(.number.precision(.fractionLength(3))))")
     }
     if let ms = decision.latencyMs { print("latency: \(ms) ms, input tokens: \(decision.inputTokens ?? 0)") }
+case "sites":
+    guard arguments.count == 2 else { fail("usage: report sites <query>") }
+    let query = arguments[1]
+    print("query: \"\(query)\"")
+    guard let site = SiteQuery.parse(query) else {
+        print("no name left after the openers and trailers")
+        exit(0)
+    }
+    print("name: \"\(site.name)\"\(site.hasOpener ? " (with an opener: a known name opens with no model asked)" : " (no opener: Jev decides)")")
+    if let entry = SiteBook.seeded().lookup(site.name) {
+        print("seeded book: \(entry.url.absoluteString)")
+    } else {
+        print("seeded book: unknown")
+    }
+    guard let key = ProcessInfo.processInfo.environment["BRAVE_API_KEY"], !key.isEmpty else {
+        print("set BRAVE_API_KEY to search")
+        exit(0)
+    }
+    let clock = ContinuousClock()
+    let start = clock.now
+    do {
+        let found = try await SiteSearch(apiKey: key).find(site.name)
+        print("brave (\(Int((clock.now - start) / .milliseconds(1))) ms): \(found.count) candidates")
+        for candidate in found {
+            print("  \(candidate.host.padding(toLength: 28, withPad: " ", startingAt: 0)) \(candidate.title)")
+        }
+    } catch {
+        print("brave failed: \(error)")
+    }
 default:
-    fail("usage: report routing | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]...")
+    fail("usage: report routing | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]... [--opened <name> <host>] | sites <query>")
 }

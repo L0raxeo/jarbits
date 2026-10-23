@@ -1,11 +1,13 @@
 import Answers
 import Foundation
 import Routing
+import Sites
 
 /// Asks Jev which format answers the query and maps the format to a plan.
 /// `narrative` and `one_line` become answer cards when a Gemini key is
 /// configured, `image` a Wikipedia picture, `recall` a look through the
-/// memories; `map` and `stock` still render web results.
+/// memories, `site` a look in the site book; `map` and `stock` still render
+/// web results.
 struct JevRouter: Router {
     var formatRouter: FormatRouter
     /// Without a Gemini key the answer formats fall back to web results and
@@ -13,13 +15,15 @@ struct JevRouter: Router {
     var canAnswer: Bool
 
     /// Jev reads the query in the light of `thread`; a decision that
-    /// continues the narrative carries the whole thread into the answer plan.
-    func route(_ query: String, thread: [AnswerTurn]) async -> RouteResult {
-        let decision = await formatRouter.decide(query, thread: thread)
-        return RouteResult(plan: plan(for: decision, query: query, thread: thread), decision: decision)
+    /// continues the thread carries the whole thread into the answer plan.
+    /// Over `opened`, a decision that rejects it is a site plan for the same
+    /// name again.
+    func route(_ query: String, thread: [AnswerTurn], opened: OpenedSite?) async -> RouteResult {
+        let decision = await formatRouter.decide(query, thread: thread, opened: opened)
+        return RouteResult(plan: plan(for: decision, query: query, thread: thread, opened: opened), decision: decision)
     }
 
-    private func plan(for decision: RouteDecision, query: String, thread: [AnswerTurn]) -> CardPlan {
+    private func plan(for decision: RouteDecision, query: String, thread: [AnswerTurn], opened: OpenedSite?) -> CardPlan {
         if case .directURL = decision.source, let url = QueryParser.directURL(from: query) {
             return .web(url)
         }
@@ -36,6 +40,11 @@ struct JevRouter: Router {
         case .recall:
             assert(decision.format.stage == .built, "recall is marked \(decision.format.stage)")
             return .recall(query: query)
+        case .site:
+            assert(decision.format.stage == .built, "site is marked \(decision.format.stage)")
+            if decision.rejectsSite, let opened { return .site(name: opened.name) }
+            // Jev has settled the intent; the opener may sit anywhere ("yo, pull up youtube").
+            return .site(name: SiteQuery.name(in: query) ?? query)
         case .map, .stock:
             // Not built yet: web results stand in. Moving a format out of this
             // branch and flipping its `stage` happen in the same change.
@@ -47,9 +56,15 @@ struct JevRouter: Router {
 
 extension BrowserSession {
     /// The device's own rules first; behind them Jev when a key is configured, the local fallback otherwise.
-    static func makeRouter() -> any Router {
-        guard let key = Secrets.typeSafeAPIKey else { return LocalFirstRouter(inner: LocalRouter()) }
-        return LocalFirstRouter(inner: JevRouter(formatRouter: FormatRouter(client: JevClient(apiKey: key)), canAnswer: Secrets.geminiAPIKey != nil))
+    static func makeRouter(sites: SiteStore = .shared) -> any Router {
+        guard let key = Secrets.typeSafeAPIKey else { return LocalFirstRouter(inner: LocalRouter(), sites: sites) }
+        return LocalFirstRouter(inner: JevRouter(formatRouter: FormatRouter(client: JevClient(apiKey: key)), canAnswer: Secrets.geminiAPIKey != nil), sites: sites)
+    }
+
+    /// Brave's web search for the sites an unknown name might mean, when a
+    /// key is configured; nil shows the Google results page for the name.
+    static func makeSiteSearch() -> SiteSearch? {
+        Secrets.braveAPIKey.map { SiteSearch(apiKey: $0) }
     }
 
     /// Jev judging a recall shortlist, when a key is configured; nil shows

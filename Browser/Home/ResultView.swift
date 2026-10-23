@@ -1,6 +1,7 @@
 import Answers
 import Images
 import Routing
+import Sites
 import SwiftUI
 import WebKit
 
@@ -101,7 +102,9 @@ struct ResultView: View {
             )
         case let .recallPicker(records):
             RecallGridView(records: records, topInset: topInset, barCompact: $barCompact)
-        case .recall:
+        case let .siteChoices(name, candidates):
+            SiteChoicesView(name: name, candidates: candidates, clayY: clayY)
+        case .recall, .site:
             // Resolved by the session before it reaches a card.
             EmptyView()
         }
@@ -559,6 +562,69 @@ private struct ImageCardView: View {
                 }
             }
             .padding(.top, 4)
+        }
+    }
+}
+
+/// The sites a name might mean, where the line was: a quiet question, a
+/// short list of sites with their icons, and a link to web results. A tap
+/// learns the site under the name and opens it; the next time the name is
+/// asked for, it opens straight away.
+private struct SiteChoicesView: View {
+    @Environment(BrowserSession.self) private var session
+    let name: String
+    let candidates: [SiteCandidate]
+    let clayY: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                Text("Which \(name)?")
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.quiet)
+                    .padding(.bottom, 12)
+                ForEach(candidates, id: \.url) { candidate in
+                    Button {
+                        session.choose(candidate, for: name)
+                    } label: {
+                        HStack(spacing: 12) {
+                            AsyncImage(url: candidate.favicon) { phase in
+                                if let image = phase.image {
+                                    image.resizable().aspectRatio(contentMode: .fit)
+                                } else {
+                                    Color(white: 0.94)
+                                }
+                            }
+                            .frame(width: 28, height: 28)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(candidate.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Palette.ink)
+                                    .lineLimit(1)
+                                Text(candidate.host)
+                                    .font(.footnote)
+                                    .foregroundStyle(Palette.quiet)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button("Web results") { session.showWebResults() }
+                    .buttonStyle(.plain)
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.quiet)
+                    .padding(.top, 12)
+            }
+            .padding(.horizontal, 24)
+            .frame(width: proxy.size.width)
+            // The list sits about where the clay was.
+            .position(x: proxy.size.width / 2, y: clayY + 40)
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
     }
 }

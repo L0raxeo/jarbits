@@ -1,5 +1,6 @@
 import Foundation
 import Routing
+import Sites
 
 /// What the router decided to show for a query.
 ///
@@ -23,6 +24,11 @@ enum CardPlan: Hashable, Sendable {
     case recallPicker([MemoryRecord])
     /// A remembered narrative, shown from its saved text with its date.
     case memory(MemoryRecord)
+    /// A website asked for by name (what `SiteQuery` left of the query);
+    /// the session opens it from the site book or searches for it.
+    case site(name: String)
+    /// The sites a name might mean; a tap learns one and opens it.
+    case siteChoices(name: String, [SiteCandidate])
 
     /// Which card a plan is, for SwiftUI's identity. A narrative that grows
     /// into a conversation keeps its card (named by the thread's first
@@ -37,6 +43,8 @@ enum CardPlan: Hashable, Sendable {
         case .recall: "recall"
         case .recallPicker: "picker"
         case let .memory(record): "memory:\(record.id)"
+        case .site: "site"
+        case .siteChoices: "choices"
         }
     }
 }

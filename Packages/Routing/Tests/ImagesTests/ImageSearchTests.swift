@@ -96,16 +96,17 @@ import Testing
         #expect(markdown.contains("`fellBackToWeb(reason)`"))
     }
 
-    /// `ROUTING.md` is all three parts: the Jev contract, the Gemini prompts, the Wikipedia steps.
+    /// `ROUTING.md` opens with these three parts: the Jev contract, the
+    /// Gemini prompts, the Wikipedia steps; `SitesReportTests` checks the whole file.
     @Test func committedRoutingFileIsCurrent() throws {
         let committed = try String(contentsOf: Self.repoRoot.appending(path: "ROUTING.md"), encoding: .utf8)
         let expected = RoutingReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown()
-        #expect(committed == expected, "ROUTING.md is stale; run: \(RoutingReport.regenerateCommand)")
+        #expect(committed.hasPrefix(expected), "ROUTING.md is stale; run: \(RoutingReport.regenerateCommand)")
     }
 
-    @Test func imageFormatIsBuiltAndLast() {
+    @Test func imageFormatIsBuiltAndComesAfterTheOlderOnes() {
         #expect(ResponseFormat.image.stage == .built)
-        #expect(ResponseFormat.allCases.last == .image)
+        #expect(ResponseFormat.allCases.suffix(2) == [.image, .site], "appended in order, so Jev's leanings do not shift")
         #expect(!ResponseFormat.image.isAnswered)
     }
 

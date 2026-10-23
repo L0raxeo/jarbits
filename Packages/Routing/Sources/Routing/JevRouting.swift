@@ -56,6 +56,23 @@ public enum JevRouting {
         no: "A new question that stands on its own, even about a nearby topic: it would mean the same thing with no previous answer."
     )
 
+    public static let rejectsQuestionID = "rejects"
+
+    /// At or above this, a follow-up over a site this app opened by name is
+    /// read as "wrong site": the name is forgotten and the choices shown.
+    public static let rejectionThreshold = 0.5
+
+    public static let rejectsInstructions = """
+        The user asked for a website by name and the app opened the one in \
+        the state (opened_site_name, opened_site_host). Is this query saying \
+        that was the wrong site and asking for a different one?
+        """
+
+    public static let rejectsCriteria = (
+        yes: "The query rejects the site on screen or asks for another one for the same name: \"no not this one\", \"not this zillow\", \"I'm looking for a different website\", \"wrong site\", \"that's not it\", \"a different one\".",
+        no: "Anything else: a new search or question, a request for another site by its own name (\"open youtube\"), or something to do on the open site."
+    )
+
     public static let recencyInstructions = """
         Would the correct answer to this query depend on something that may have \
         changed in the last two years? For example whether a person is alive, who \
@@ -68,11 +85,14 @@ public enum JevRouting {
         no: "A settled fact, history, how something works, a definition, a conversion, a place, a date or time, or anything else that does not go stale."
     )
 
-    /// `thread` is the narrative conversation on screen, oldest first, when
-    /// the query was typed over one: its queries and last answer go into the
+    /// `thread` is the conversation on screen, oldest first, when the query
+    /// was typed over an answer: its queries and last answer go into the
     /// state, the format question reads the query in that light, and the
-    /// `continues` question is added.
-    public static func request(for query: String, locale: Locale = .current, model: String = JevClient.defaultModel, thread: [AnswerTurn] = []) -> SystemOneRequest {
+    /// `continues` question is added. `opened` is a site this app opened by
+    /// name and still shows: its name and host go into the state and the
+    /// `rejects` question is added. A thread and an opened site never
+    /// coexist: a page on screen means no answer is.
+    public static func request(for query: String, locale: Locale = .current, model: String = JevClient.defaultModel, thread: [AnswerTurn] = [], opened: OpenedSite? = nil) -> SystemOneRequest {
         var state = RouteState(query: query, locale: locale.identifier)
         var questions: [(id: String, question: Question)] = [
             (questionID, .choice(
@@ -85,6 +105,11 @@ public enum JevRouting {
             state.previousQueries = thread.map(\.query)
             state.previousAnswer = String(last.answer.prefix(maxPreviousAnswerCharacters))
             questions.append((continuesQuestionID, .noul(instructions: continuesInstructions, criteria: continuesCriteria)))
+        }
+        if let opened {
+            state.openedSiteName = opened.name
+            state.openedSiteHost = opened.host
+            questions.append((rejectsQuestionID, .noul(instructions: rejectsInstructions, criteria: rejectsCriteria)))
         }
         return SystemOneRequest(model: model, state: state, questions: questions)
     }
@@ -99,6 +124,8 @@ public enum JevRouting {
         if case let .noul(value)? = response.answers[recencyQuestionID] { recency = value }
         var continuation: Double?
         if case let .noul(value)? = response.answers[continuesQuestionID] { continuation = value }
+        var rejection: Double?
+        if case let .noul(value)? = response.answers[rejectsQuestionID] { rejection = value }
         guard case let .choice(answer)? = response.answers[questionID] else {
             return RouteDecision(
                 format: .fallback,
@@ -122,7 +149,11 @@ public enum JevRouting {
         let passes = answer.confidence >= floor
         let stale = (recency ?? 0) >= recencyThreshold
         let continues = (continuation ?? 0) >= continuationThreshold
+        let rejects = (rejection ?? 0) >= rejectionThreshold
         let (format, source): (ResponseFormat, RouteDecision.Source) = {
+            // Over a site opened by name, "no not this one" is a site request
+            // again, whatever the pick: such a query has no format of its own.
+            if rejects { return (.site, .rejection) }
             if continues {
                 // Over a narrative, the continuation decides the frame and the
                 // pick decides the card: a confident ask for another kind of
@@ -147,6 +178,7 @@ public enum JevRouting {
             inputTokens: response.usage.inputTokens,
             recency: recency,
             continuation: continuation,
+            rejection: rejection,
             source: source
         )
     }
@@ -165,13 +197,15 @@ public struct FormatRouter: Sendable {
         self.floor = floor
     }
 
-    /// `thread` is the narrative conversation on screen, if any; with it Jev
-    /// reads the query in that light and is asked whether it continues it.
-    public func decide(_ query: String, thread: [AnswerTurn] = []) async -> RouteDecision {
+    /// `thread` is the conversation on screen, if any; with it Jev reads the
+    /// query in that light and is asked whether it continues it.
+    /// `opened` is a site this app opened by name and still shows; with it
+    /// Jev is asked whether the query rejects it.
+    public func decide(_ query: String, thread: [AnswerTurn] = [], opened: OpenedSite? = nil) async -> RouteDecision {
         if QueryParser.directURL(from: query) != nil {
             return .directURL()
         }
-        let request = JevRouting.request(for: query, locale: locale, model: client.model, thread: thread)
+        let request = JevRouting.request(for: query, locale: locale, model: client.model, thread: thread, opened: opened)
         let clock = ContinuousClock()
         let start = clock.now
         do {

@@ -12,14 +12,17 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     public var image: ImageSummary?
     /// How a recall fared: how many memories matched and which was shown.
     public var recall: RecallSummary?
+    /// How a site request fared: opened from the book, choices shown, or the results page.
+    public var site: SiteSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
         self.answer = answer
         self.image = image
         self.recall = recall
+        self.site = site
     }
 
     public static let encoder: JSONEncoder = {
@@ -217,6 +220,21 @@ public enum DecisionsReport {
             out.append(line)
             if !none.isEmpty {
                 out.append("Matched nothing: " + none.suffix(10).map { "\"\($0.0.query)\"" }.joined(separator: ", "))
+            }
+            out.append("")
+        }
+
+        let sites = records.compactMap { record in record.site.map { (record, $0) } }
+        if !sites.isEmpty {
+            out.append("## Sites")
+            out.append("")
+            let opened = sites.filter { $0.1.outcome == "opened" }.count
+            let choices = sites.filter { $0.1.outcome == "choices" }
+            let results = sites.filter { $0.1.outcome == "results" }
+            let rejected = sites.filter { $0.1.outcome == "rejected" }.count
+            out.append("\(sites.count) site requests: \(opened) opened a remembered site, \(choices.count) showed choices, \(results.count) fell back to web results, \(rejected) rejected the site on screen. Median search latency \(median(choices.compactMap(\.1.latencyMs))).")
+            if !results.isEmpty {
+                out.append("Fell back: " + results.suffix(10).map { "\"\($0.1.name)\": \($0.1.reason ?? "?")" }.joined(separator: ", "))
             }
             out.append("")
         }

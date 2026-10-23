@@ -197,3 +197,49 @@ import Testing
         #expect(try JSONDecoder().decode(RouteDecision.self, from: JSONEncoder().encode(error)) == error)
     }
 }
+
+@Suite struct SiteDecisionTests {
+    private func decision(_ json: String) throws -> RouteDecision {
+        JevRouting.decision(from: try JSONDecoder().decode(SystemOneResponse.self, from: Data(json.utf8)), latencyMs: 1)
+    }
+
+    @Test func aConfidentSitePickPasses() throws {
+        let decision = try decision(jevResponse(choice: "site", confidence: 0.9, probabilities: ["site": 0.91, "web_results": 0.06, "recall": 0.03], recency: 0.1))
+        #expect(decision.format == .site)
+        #expect(decision.source == .jev)
+        #expect(decision.rejection == nil)
+        #expect(!decision.rejectsSite)
+    }
+
+    @Test func anUnsureSitePickFallsBackLikeAnyFormat() throws {
+        let decision = try decision(jevResponse(choice: "site", confidence: 0.4, probabilities: ["site": 0.45, "web_results": 0.4], recency: 0.1))
+        #expect(decision.format == .webResults)
+        #expect(decision.suggested == .site)
+        #expect(decision.source == .confidenceFallback)
+    }
+
+    @Test func aRejectionIsASiteRequestWhateverThePick() throws {
+        // "no not this one" has no format of its own: Jev is unsure between web and narrative.
+        let decision = try decision(jevResponse(choice: "web_results", confidence: 0.1, probabilities: ["web_results": 0.3, "narrative": 0.28, "site": 0.1], recency: 0.2, rejects: 0.92))
+        #expect(decision.format == .site)
+        #expect(decision.suggested == .webResults)
+        #expect(decision.source == .rejection)
+        #expect(decision.rejection == 0.92)
+        #expect(decision.rejectsSite)
+    }
+
+    @Test func belowTheRejectionThresholdTheOrdinaryRulesApply() throws {
+        let fresh = try decision(jevResponse(choice: "site", confidence: 0.9, probabilities: ["site": 0.92, "web_results": 0.08], recency: 0.1, rejects: 0.2))
+        #expect(fresh.format == .site)
+        #expect(fresh.source == .jev, "\"open youtube\" over zillow is a new site request, not a rejection")
+        #expect(fresh.rejection == 0.2)
+        let question = try decision(jevResponse(choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.92, "web_results": 0.08], recency: 0.1, rejects: 0.05))
+        #expect(question.format == .narrative)
+        #expect(question.source == .jev)
+    }
+
+    @Test func theRejectionThresholdIsInclusive() throws {
+        let decision = try decision(jevResponse(choice: "web_results", confidence: 0.2, probabilities: ["web_results": 0.4], rejects: JevRouting.rejectionThreshold))
+        #expect(decision.source == .rejection)
+    }
+}

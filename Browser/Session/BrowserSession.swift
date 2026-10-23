@@ -3,6 +3,7 @@ import Foundation
 import Images
 import Observation
 import Routing
+import Sites
 import WebKit
 
 /// One browsing session: the single web page, the current plan, the router
@@ -49,6 +50,18 @@ final class BrowserSession {
     /// A look through the memories that has not resolved by then goes to
     /// the web, so the wave line never waits on it.
     private let recallTimeout: Duration = .seconds(3)
+    /// What each site name the user asks for means; `LocalFirstRouter`
+    /// reads it too.
+    let sites: SiteStore
+    /// Brave's web search for the sites an unknown name might mean; nil
+    /// shows the Google results page for the name instead.
+    private let siteSearch: SiteSearch?
+    /// A site this route opened and that is on screen, by the name asked
+    /// for: routing asks Jev whether a follow-up rejects it.
+    private(set) var openedSite: OpenedSite?
+    /// The name the next page teaches the site book, while the results
+    /// page stands in for the choices: the first site tapped off it.
+    private var learningSite: String?
     /// A page's picture for the recall grid: this wide in points (three
     /// times that in pixels), as a JPEG at this quality, a few tens of KB.
     /// An export slower than the timeout is skipped.
@@ -104,11 +117,13 @@ final class BrowserSession {
     /// Jev judging a recall shortlist; nil shows the shortlist in word order.
     private let recall: RecallResolver?
 
-    init(router: any Router, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared) {
+    init(router: any Router, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared) {
         let handler = PageChromeHandler()
         chromeHandler = handler
         self.memory = memory
         self.recall = recall
+        self.siteSearch = siteSearch
+        self.sites = sites
         page = WebPage(configuration: PageChrome.configuration(handler: handler))
         // Never `page.isInspectable = true`, not even in Debug: an inspectable
         // page under SwiftUI's WebView crashes UIKit's touch delivery on the
@@ -142,11 +157,12 @@ final class BrowserSession {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let thread = thread   // the narrative under the query, if any, before anything moves
+        let opened = openedSite   // and the site opened by name, if one is on screen
         lastQuery = trimmed
         queryForNextPage = trimmed
         stage = .routing
         Task {
-            let result = await router.route(trimmed, thread: thread)
+            let result = await router.route(trimmed, thread: thread, opened: opened)
             guard trimmed == lastQuery, stage == .routing else { return }   // a newer query won, or cancelled
             apply(result)
         }
@@ -171,7 +187,7 @@ final class BrowserSession {
         }
     }
 
-    /// The narrative card has nothing to fade out for: a follow-up over it is
+    /// The answer card has nothing to fade out for: a follow-up over it is
     /// being routed, or a turn that continues it is on its way. The stage is
     /// `routing` or `loading`, but the home screen keeps the card up.
     var showsThread: Bool {
@@ -264,9 +280,16 @@ final class BrowserSession {
         attention.busy = false
     }
 
-    /// The Google results page for the current query, from under an answer.
+    /// The Google results page for the current query, from under an answer;
+    /// from the site choices, the results for the name, and the first site
+    /// tapped off them is learned as a choice would have been.
     func showWebResults() {
         guard !lastQuery.isEmpty else { return }
+        if case let .siteChoices(name, _) = plans.first {
+            learningSite = name
+            load(QueryParser.searchURL(for: name))
+            return
+        }
         load(QueryParser.searchURL(for: lastQuery))
     }
 
@@ -285,6 +308,8 @@ final class BrowserSession {
         page.stopLoading()
         plans = []
         lastDecision = nil
+        openedSite = nil
+        learningSite = nil
         chrome = .plain
         pendingReport = nil
         pageLoading = false
@@ -293,6 +318,10 @@ final class BrowserSession {
 
     private func apply(_ result: RouteResult) {
         lastDecision = result.decision
+        // Whatever comes next, the site that was on screen no longer is;
+        // a site plan sets it again once it opens.
+        openedSite = nil
+        learningSite = nil
         switch result.plan {
         case let .web(url):
             answer?.cancel()
@@ -365,9 +394,98 @@ final class BrowserSession {
                 guard let self, query == lastQuery, stage == .routing else { return }
                 recalled([], shortlisted: nil, source: "error: timeout", for: query, decision: decision)
             }
-        case .recallPicker, .memory:
-            // Only ever made by `recalled` and `replay`, never by a router.
+        case let .site(name):
+            answer?.cancel()
+            images.cancel()
+            let decision = result.decision
+            let query = lastQuery
+            Task { [weak self] in
+                guard let self else { return }
+                // A rejection forgets what the name meant, then asks again.
+                if decision.rejectsSite { await sites.forget(name) }
+                if let entry = await sites.lookup(name) {
+                    guard query == lastQuery, stage == .routing else { return }
+                    await sites.touch(name)
+                    opened(name, url: entry.url)
+                    record(decision, query: query, site: SiteSummary(name: name, outcome: "opened", host: entry.host))
+                    return
+                }
+                guard query == lastQuery, stage == .routing else { return }
+                await findSites(for: name, query: query, decision: decision)
+            }
+        case .recallPicker, .memory, .siteChoices:
+            // Only ever made by the session itself, never by a router.
             assertionFailure("\(result.plan) is not a routed plan")
+        }
+    }
+
+    // MARK: Sites
+
+    /// The sites `name` might mean, from the search: the choices card.
+    /// Without a client, with nothing found, or on any failure the Google
+    /// results page for the name stands in, and the first site tapped off
+    /// it is learned instead.
+    private func findSites(for name: String, query: String, decision: RouteDecision) async {
+        let outcome = decision.rejectsSite ? "rejected" : "choices"
+        guard let siteSearch else {
+            fellBackToResults(for: name, query: query, decision: decision, outcome: outcome, reason: "no key")
+            return
+        }
+        stage = .loading
+        let clock = ContinuousClock()
+        let start = clock.now
+        do {
+            let found = try await siteSearch.find(name)
+            let latency = Int((clock.now - start) / .milliseconds(1))
+            guard query == lastQuery, stage == .loading else { return }
+            plans = [.siteChoices(name: name, found)]
+            stage = .ready
+            record(decision, query: query, site: SiteSummary(name: name, outcome: outcome, candidates: found.count, latencyMs: latency))
+        } catch {
+            let latency = Int((clock.now - start) / .milliseconds(1))
+            guard query == lastQuery, stage == .loading else { return }
+            fellBackToResults(for: name, query: query, decision: decision, outcome: outcome, reason: Self.describe(error), latencyMs: latency)
+        }
+    }
+
+    private func fellBackToResults(for name: String, query: String, decision: RouteDecision, outcome: String, reason: String, latencyMs: Int? = nil) {
+        #if DEBUG
+        print("sites \"\(name)\": results page, \(reason)")
+        #endif
+        learningSite = name
+        load(QueryParser.searchURL(for: name))
+        record(decision, query: query, site: SiteSummary(name: name, outcome: outcome == "rejected" ? outcome : "results", reason: reason, latencyMs: latencyMs))
+    }
+
+    /// A choice tapped: `name` now means this site, which opens.
+    func choose(_ candidate: SiteCandidate, for name: String) {
+        learned(name, url: candidate.url)
+        load(candidate.url)
+    }
+
+    /// The book learns `name` as the origin of `url` and the site counts as
+    /// opened by name, so a follow-up can reject it.
+    private func learned(_ name: String, url: URL) {
+        #if DEBUG
+        print("sites \"\(name)\" learned as \(SiteBook.origin(of: url)?.absoluteString ?? url.absoluteString)")
+        #endif
+        Task { await sites.learn(name, url: url) }
+        openedSite = OpenedSite(name: SiteQuery.key(name), host: url.host() ?? "")
+    }
+
+    /// A site the book knew opens.
+    private func opened(_ name: String, url: URL) {
+        openedSite = OpenedSite(name: SiteQuery.key(name), host: url.host() ?? "")
+        load(url)
+    }
+
+    private static func describe(_ error: SiteError) -> String {
+        switch error {
+        case .timeout: "timeout"
+        case .noResults: "no results"
+        case let .transport(message): "transport: \(message)"
+        case let .http(status, body): "http \(status): \(body)"
+        case let .decoding(message): "decoding: \(message)"
         }
     }
 
@@ -450,6 +568,13 @@ final class BrowserSession {
         if QueryParser.isSearchResults(url) {
             rememberSearch(url)
         } else {
+            // The first site reached from the results page that stood in for
+            // the site choices is what the name meant. Google's own pages on
+            // the way (a click redirect, an AMP viewer) are not it.
+            if let name = learningSite, let host = url.host()?.lowercased(), !host.hasSuffix("google.com") {
+                learningSite = nil
+                learned(name, url: url)
+            }
             let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { return }
             let url = MemoryRecord.canonical(url)
@@ -467,14 +592,18 @@ final class BrowserSession {
     }
 
     #if DEBUG
-    /// Forgets every memory and picture. A Debug control until a real one exists.
+    /// Forgets every memory and picture, and every learned site. A Debug control until a real one exists.
     func clearMemory() {
-        Task { await memory.clear() }
+        Task {
+            await memory.clear()
+            await sites.clear()
+        }
     }
     #endif
 
     private func rememberSearch(_ url: URL) {
-        guard !lastQuery.isEmpty, lastDecision?.format != .recall else { return }
+        // Nor the results page a site request fell through to: "go to lobsters" is not a search.
+        guard !lastQuery.isEmpty, lastDecision?.format != .recall, lastDecision?.format != .site else { return }
         remember(MemoryRecord(kind: .search, query: lastQuery))
     }
 
@@ -728,8 +857,8 @@ final class BrowserSession {
         }
     }
 
-    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil) {
-        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image, recall: recall)
+    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil) {
+        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image, recall: recall, site: site)
         Task { await log.append(record) }
     }
 

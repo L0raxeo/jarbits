@@ -2,10 +2,11 @@
 
 An iOS browser where a query goes through a router that decides what kind of
 card to show. The router is TypeSafe's Jev, a System One model: it picks one of
-seven response formats and reports how sure it is. Four providers exist
+eight response formats and reports how sure it is. Five providers exist
 behind it: a Google results web view (`web_results`), Gemini answers for
-`narrative` and `one_line`, a Wikipedia picture for `image`, and the phone's
-own memories for `recall` (something seen before, brought back).
+`narrative` and `one_line`, a Wikipedia picture for `image`, the phone's
+own memories for `recall` (something seen before, brought back), and the
+phone's site book for `site` (a website asked for by name, "go to youtube").
 
 The screen is white with a purple gradient clay above the middle that
 breathes, and a keyboard hint at the bottom. Tapping the clay or the hint, or
@@ -75,7 +76,11 @@ UIKit aborted touch delivery whenever such a page was scrolled far.
    and paste both keys. The file is gitignored. Without the Jev key the app
    runs with the local router (every query is a Google search) and the ribbon
    says "no key"; without the Gemini key `narrative` and `one_line` show web
-   results and the ribbon says "no Gemini key".
+   results and the ribbon says "no Gemini key". A third key is optional: a
+   Brave Search key from https://api-dashboard.search.brave.com ($5 per
+   1,000 requests, $5 of credit a month) gives "go to hacker news" a list of
+   the sites the name might mean the first time; without it the Google
+   results page stands in (see "Sites").
 3. Run on a device.
 
 ## How a query is routed
@@ -87,6 +92,11 @@ when WebKit commits its first content (or after 8 s), an answer when its
 first text arrives.
 
 `LocalFirstRouter` wraps whichever router is behind it:
+- A request to open a site whose name the book knows ("go to youtube",
+  "pull up zillow") opens it at once, with no model and no network: a fixed
+  grammar (`SiteQuery`: leads, one opener, articles, the name, trailers)
+  and the site book (`SiteBook`, see "Sites"). A bare name ("youtube") or
+  a name the book does not know goes on to Jev. Logged as `local("site")`.
 - A query the device can answer itself is a card at once, with no model and
   no network: today, the time in a named place ("what time is it in Mexico?").
   `LocalAnswers` in the package holds the rules: a fixed grammar
@@ -125,15 +135,26 @@ first text arrives.
   picture. Below the threshold the rules above apply unchanged, including
   prefer-web-when-unsure. Gemini gets the earlier turns of a thread (see
   "Answer cards").
-- The format maps to a plan in `JevRouter.plan(for:query:thread:)`: `web_results`,
+- A follow-up typed over a site this app opened by name sends the name and
+  host along in the state (`opened_site_name`, `opened_site_host`) and asks
+  a third yes/no question (`rejects`): does the query say that was the
+  wrong site? At or above `JevRouting.rejectionThreshold` (0.5) the query
+  is a site request for the same name again, whatever the pick: the name
+  is forgotten and the choices shown (see "Sites"), logged as `rejection`
+  with the pick kept as `suggested`. So "no not this one" and "I'm looking
+  for a different website" bring the list back, while "open youtube" over
+  zillow is a new site request and "why is zillow so popular" a narrative.
+- The format maps to a plan in `JevRouter.plan(for:query:thread:opened:)`: `web_results`,
   `map` and `stock` load a Google results page; `narrative` and `one_line`
   become `.answer(format:query:history:)`; `image` becomes `.image(query:)`;
   `recall` becomes `.recall(query:)`, which the session resolves from the
-  memories (see "Recall").
+  memories (see "Recall"); `site` becomes `.site(name:)`, which the session
+  resolves from the site book or a search (see "Sites").
 - Each decision is appended to `Application Support/Browser/decisions.jsonl`
   (query, format, confidence, every option's probability, model, latency,
   tokens; for answer plans, the answer summary too; for recalls, how many
-  memories matched). Nothing leaves the phone unless you export it from
+  memories matched; for sites, whether the name was known, searched or
+  rejected). Nothing leaves the phone unless you export it from
   the ribbon.
 
 Model is pinned to `jev-1.13.0`. A routing request is roughly 1,200 input
@@ -302,25 +323,76 @@ exported memories file. Debug builds show a "Clear memory" link at the top of th
 screen that deletes the file and every picture; there is no user-facing
 control yet.
 
+## Sites
+
+`site` is for a website asked for by name: "go to youtube", "pull up
+zillow", "open insta", "take me to airbnb", or just "reddit". It behaves
+like a browser's address bar: a name it knows opens at once; a name it
+does not know shows the sites it might mean, and the one tapped is what
+the name opens from then on.
+
+The site book (`SiteBook` in the package, `Application Support/Browser/sites.json`
+on the phone, `SiteStore`) maps each name to a site's origin (scheme and
+host, never the page the user happened to land on). It starts seeded with
+about thirty well-known sites and their short names (youtube/yt,
+instagram/insta/ig, facebook/fb, x/twitter, reddit, tiktok, amazon, zillow,
+airbnb, netflix, gmail, github…; the list is `SiteBook.seed`). Names are
+keyed by their words, articles and trailers dropped, so "the Zillow
+website" and "zillow.com" are one entry.
+
+A query with an opener and a known name never reaches Jev: `LocalFirstRouter`
+opens the site, logged as `local("site")`. The opener must lead, after
+any of a few filler words ("can you", "please", and what dictation puts
+first: "yo", "um", "so"); anything else in front, and the query goes on
+to Jev, which decides the intent. Once Jev has picked `site`, the name is
+read leniently: the words after the first opener wherever it sits, so
+"what was it, um, open youtube" is youtube. Everything else is Jev's call
+between `site`, `recall` ("pull up that youtube page from earlier" points at
+the past), `web_results` ("zillow homes in austin" is a search on a site)
+and the rest; a `site` pick is then looked up the same way. An unknown name
+goes to Brave's web search (`SiteSearch` in `Packages/Routing/Sources/Sites`,
+key `BRAVE_API_KEY`; one request, the first five results one per host, each
+with its icon) and the choices card lists them where the clay was: "Which
+hacker news?", then the sites, then a "Web results" link. A tap learns the
+site under the name and opens it. Without a key, with nothing found, or on
+any failure the Google results page for the name stands in, and the first
+site tapped off it (Google's own click redirects and AMP pages aside) is
+learned the same way.
+
+While a site opened by name is on screen, a follow-up is read with it in
+view: "no not this one", "not this zillow", "I'm looking for a different
+website" forget the name and show the choices again, so the next tap
+replaces the entry; "open youtube" is a new site request and anything
+else routes as usual (see "How a query is routed"). The results page a
+site request falls through to is not memorised as a search, so "go to
+lobsters" never becomes a search memory. Debug builds' "Clear memory"
+resets the book to the seed.
+
+`swift run --package-path Packages/Routing report sites "<query>"` prints
+what `SiteQuery` makes of a query, what the seeded book says, and with
+`BRAVE_API_KEY` the candidates; `report route "<query>" --opened <name>
+<host>` shows the rejection judgement.
+
 ## Where things live
 
 | Path | Role |
 |---|---|
-| `Packages/Routing/` | Foundation-only Swift package with three libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence and recency gates, `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`), the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client. Tests run on macOS. |
+| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence, recency, continuation and rejection gates, `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`), the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client. `Sites`: the Brave web search client. Tests run on macOS. |
 | `Browser/Router/Router.swift` | The seam: query in, `RouteResult` out. |
-| `Browser/Router/LocalFirstRouter.swift` | Tries `LocalAnswers` before the router it wraps; a hit is a `.localAnswer` plan. |
-| `Browser/Router/JevRouter.swift` | Asks Jev, maps format → `CardPlan`. Also `BrowserSession.makeRouter()` and `makeAnswerClient()`. |
+| `Browser/Router/LocalFirstRouter.swift` | Tries `LocalAnswers` and the site book before the router it wraps; a hit is a `.localAnswer` or `.site` plan. |
+| `Browser/Router/JevRouter.swift` | Asks Jev, maps format → `CardPlan`. Also `BrowserSession.makeRouter()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
 | `Browser/Images/ImageSession.swift` | Loads one Wikipedia picture (and its alternates) for an image plan, and the summary for the log. |
 | `Browser/Memory/MemoryStore.swift` | The memories file: load once, append as results appear, refresh a repeat within a day, drop the oldest past the cap, search by words (`MemorySearch` in the package). |
+| `Browser/Memory/SiteStore.swift` | The site book on disk: seeded on first load, written whole on each learn, touch, forget or clear. |
 | `Browser/Router/LocalRouter.swift` | No-network fallback used when no key is configured. |
 | `Browser/Router/DecisionLog.swift` | JSON Lines log of every decision and answer. |
-| `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`). |
+| `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`, `BraveAPIKey`). |
 | `Browser/Router/CardPlan.swift` | The renderable plans. One enum case per card type. |
-| `Browser/Session/BrowserSession.swift` | Owns the single `WebPage`, the `AnswerSession` and the `ImageSession`, runs queries through the router, applies the plan, watches the page's navigations (ours and tapped links) for the clay's wave line and the page-chrome bookkeeping, writes the log. |
+| `Browser/Session/BrowserSession.swift` | Owns the single `WebPage`, the `AnswerSession` and the `ImageSession`, runs queries through the router, applies the plan (a recall through the memories, a site through the book or the search), watches the page's navigations (ours and tapped links) for the clay's wave line, the page-chrome bookkeeping and the site a name is learned from, writes the log. |
 | `Browser/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, and address changes for the memories), the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
 | `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `Clay` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar; the page bounces sideways only when it is wider than the screen, since the web view's default rubber-bands sideways on every page and a vertical drag with a little drift wobbles it) `ClayCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard) and `QueryField` (the text field the clay and the capsule share). No system toolbars, so no Liquid Glass. |
-| `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the two API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
+| `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the three API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
 
 ## Modules
@@ -329,7 +401,7 @@ Each response format is a module with a stage recorded in code
 (`ResponseFormat.stage` in `Packages/Routing`): `routed` (Jev can pick it,
 web results stand in), `built` (a real card renders), `verified` (used on a
 device and accepted). Today: `web_results` verified; `narrative`,
-`one_line`, `recall` and `image` built; `map` and `stock` routed. A routed pick shows web
+`one_line`, `recall`, `image` and `site` built; `map` and `stock` routed. A routed pick shows web
 results and is logged as the pick it was, and `JevRouter` asserts the stage
 and the switch agree. Flip the stage in the same change that adds the card.
 
@@ -368,7 +440,9 @@ Covers the Jev request body against TypeSafe's documented shape and option
 order, decoding of their example response, the confidence gate, every failure
 path falling back to web results, and the address bypass; the on-device time
 rule (its grammar, every alias and country row resolving to a real zone, and
-the day shift and clock format against a fixed instant); and for Gemini, the
+the day shift and clock format against a fixed instant); the site grammar,
+the seed, learning and forgetting, the `rejects` question's shape and gate,
+and the Brave client against canned results; and for Gemini, the
 request body and key order (and that no tool is sent), the per-format prompts
 and budgets, the context block, SSE parsing, a canned stream end to end,
 error frames, timeouts, and old log lines without answers. Nothing here needs

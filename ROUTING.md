@@ -16,9 +16,10 @@ State (what Jev reads):
 |---|---|
 | `query` | The text as typed, trimmed. |
 | `locale` | The device locale identifier, e.g. `en_US`. |
-| `previous_queries`, `previous_answer` | Only while a narrative answer is on screen and the query was typed over it: every query of that conversation, oldest first, and the last answer cut to 1500 characters. The format question then reads differently and a third question is asked; see "When a narrative is on screen". |
+| `previous_queries`, `previous_answer` | Only while a narrative or one-line answer is on screen and the query was typed over it: every query of that conversation, oldest first, and the last answer cut to 1500 characters. The format question then reads differently and a third question is asked; see "When an answer is on screen". |
+| `opened_site_name`, `opened_site_host` | Only while a site this app opened by name is on screen: the name asked for and the host opened. A third question is asked; see "When a site is on screen". |
 
-Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can answer itself becomes a card at once; Jev is not asked either way.
+Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can answer itself becomes a card at once, or opens a site the device already knows; Jev is not asked either way.
 
 ## Answered on the device
 
@@ -29,6 +30,13 @@ The time in a named place needs no model. A query that is exactly one opener, a 
 - Trailers, at the end or between "is it" and "in": "at the moment", "right now", "currently", "now", "today"
 
 Shown as `==7:56 PM==`, with `tomorrow` or `yesterday` when the date there differs, and `in Mexico City` when the place spans zones. Logged as `local("time")` with none of the Jev fields.
+
+A website the device already knows opens the same way. `SiteQuery` reads a query as leads, one opener, articles, a name and trailers; when an opener is present and the site book knows the name (30 seeded sites under 42 names, plus every name learned from a tap), the site opens with no model asked, logged as `local("site")`. A bare name, or a name the book does not know, goes on to Jev; a `site` pick then looks up or searches the name, read leniently now that the intent is settled: the words after the first opener wherever it sits, or the whole query (see "After routing: sites").
+
+- Leads, any number, before the opener: "can you", "could you", "would you", "all right", "please", "hey", "hi", "hello", "yo", "ok", "okay", "alright", "so", "um", "uh", "just"
+- Openers: "take me to", "navigate to", "go to", "goto", "head to", "pull up", "bring up", "open up", "open", "launch", "load", "visit", "show me"
+- Articles after the opener: "the", "my"
+- Trailers, any number, at the end: "home page", "web site", "dot com", "for me", "please", "now", "app", "website", "site", "page", "homepage", "com"
 
 ## The questions
 
@@ -42,13 +50,14 @@ Options, in the order Jev sees them (it leans toward the first when unsure):
 
 | # | Option | What it is for | Not for | Queries meant to trigger it |
 |---|---|---|---|---|
-| 1 | `web_results` | A standard page of web search results. The default for broad, vague, navigational or multi-part queries, for a specific website the user names, for browsing many pictures or videos, and for anything the other formats do not clearly fit. A bare topic with no ask, such as "chocolate milk" or "quantum computing", is one of these: the user wants the general spread, not one answer. | A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, or the bare name of one specific thing with a definitive look, which wants a picture. | "best laptops 2026", "news", "chocolate milk", "python tutorial reddit", "github login", "quantum computing", "dune part 3 trailer", "golden retriever puppies" |
+| 1 | `web_results` | A standard page of web search results. The default for broad, vague or multi-part queries, for a search for something on a site, for browsing many pictures or videos, and for anything the other formats do not clearly fit. A bare topic with no ask, such as "chocolate milk" or "quantum computing", is one of these: the user wants the general spread, not one answer. | A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, a request to open a website by its name, or the bare name of one specific thing with a definitive look, which wants a picture. | "best laptops 2026", "news", "chocolate milk", "python tutorial reddit", "zillow homes in austin", "quantum computing", "dune part 3 trailer", "golden retriever puppies" |
 | 2 | `narrative` | A written explanation. The query asks why or how something happened or works, what something is or means (a definition, or the expansion of an acronym or term within a field, which needs the full name and a sentence or two of context), for the story behind something, where a phrase, slogan, name or meme came from, or for a judgement that needs context, such as whether somewhere is safe. | Questions answered by one line, such as a time, a date, a number or a yes/no, and queries that only want a price chart. | "at the end of attack on titan why is levi in a wheelchair", "how did simon cowell get famous", "why are highschool students protesting france?", "how is gingivitis healed", "Why is INTR so low?", "Is south africa safe right now", "where did the phrase ok boomer come from", "whats isi in ipe", "what does gdp mean", "define hegemony" |
 | 3 | `map` | A map with a pin. The query names a physical place to locate or get to: an address, a shop, a city, a landmark, directions, or something near me. | Places mentioned only as the subject of a question or a fact, such as whether a country is safe or what time it is there. | "coffee near me", "directions to austin airport", "where is machu picchu", "blue bottle coffee san francisco" |
 | 4 | `stock` | A price chart for a security. The query names a ticker, a public company's stock or share price, a market index, or a cryptocurrency price, and wants the price. | Questions about why a price moved or company news, which want an explanation, and currency conversion. | "nasdaq", "AAPL", "tesla stock", "bitcoin price", "s&p 500 today" |
 | 5 | `one_line` | A single short answer that fits on one line: a time, a date, a number, a duration, a yes/no, a conversion, or a quick fact that is itself a name, number or date, including live ones like the weather. | Questions that ask why or how and need a few paragraphs; definitions and what-is questions, which need the full name and some context rather than one value; and anything that wants a price chart. | "what's the time in costa rica", "will it rain today", "how long do cold sores last", "capital of peru", "100 usd to eur" |
-| 6 | `recall` | Something the user saw in this app before and wants back: a page they were on, an answer they got, a list they made. The query points at the past ("that", "again", "my", "remember", "pull up", "where's", "go back to") instead of asking something new. | A new question or search that merely contains such a word, like a film title or a package delivery; anything the user has not seen in this app. | "where's my grocery list", "remember that convo on the dyson pencilvac", "pull up that youtube page from earlier", "pull up the video I was watching about muse", "that thing about gingivitis again", "go back to the reddit thread" |
+| 6 | `recall` | Something the user saw in this app before and wants back: a page they were on, an answer they got, a list they made. The query points at the past ("that", "again", "my", "remember", "pull up", "where's", "go back to") instead of asking something new. | A new question or search that merely contains such a word, like a film title or a package delivery; opening a website by its name with no pointer at the past ("pull up zillow"), which is site; anything the user has not seen in this app. | "where's my grocery list", "remember that convo on the dyson pencilvac", "pull up that youtube page from earlier", "pull up the video I was watching about muse", "that thing about gingivitis again", "go back to the reddit thread" |
 | 7 | `image` | A single picture of one specific, named thing with a definitive look: a flag, a logo or emblem, a landmark or monument, a painting, a person, a product, a species, a chemical structure. The bare name of such a thing, with no other words, means the user wants to see it, not read about it. | Browsing many pictures of a category, mood or idea, which wants web results; and questions about why something looks the way it does, which want an explanation. | "dominican flag", "eiffel tower", "starry night painting", "nvidia logo", "what does a capybara look like", "mona lisa", "aston martin db5" |
+| 8 | `site` | Open a website or app by its name. The query is a go-to, open, pull-up or take-me-to verb and a site's name, or the bare name of a well-known site with nothing else; the user wants the site itself, not results about it. | A search for something on a site ("zillow homes in austin"), a question about a site, a page the user saw in this app before ("that youtube page from earlier", which is recall), and an address, which loads directly. | "go to youtube", "pull up zillow", "open insta", "take me to airbnb", "launch netflix", "reddit" |
 
 Answer: `choice` (one option name), `probabilities` (one per option), `confidence` (0–1).
 
@@ -69,7 +78,7 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 
 A follow-up typed over a narrative answer is read as the conversation makes it. The `format` question's instructions become:
 
-> Which response format best answers this web search query? The state carries the conversation so far: the earlier queries and the answer on screen. Judge the query as that conversation makes it, not as typed on its own. A reply, a reaction or a question that leans on the answer, however short, wants narrative, the format of the answer it replies to. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, each described below; or web_results for a page to browse.
+> Which response format best answers this web search query? The state carries the conversation so far: the earlier queries and the answer on screen. Judge the query as that conversation makes it, not as typed on its own. A reply, a reaction or a question that leans on the answer, however short, wants narrative, the format of the answer it replies to. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, each described below; or web_results for a page to browse.
 
 and a third question is asked:
 
@@ -83,6 +92,23 @@ A yes/no question answered with the probability of yes. Instructions sent with t
 |---|---|
 | yes | The query answers, reacts to, questions or builds on the previous answer, or would be incomplete without it, however short: "why?", "can I use water", "and with oat milk", "tell me more", "is that true for cats too". |
 | no | A new question that stands on its own, even about a nearby topic: it would mean the same thing with no previous answer. |
+
+Answer: `noul`, the probability of yes (0–1). No confidence field.
+
+## When a site is on screen
+
+A query typed over a site this app opened by name (from the book, or learned from a tap) carries the name and host in the state and asks a third question:
+
+### `rejects` — type `noul`
+
+A yes/no question answered with the probability of yes. Instructions sent with the question:
+
+> The user asked for a website by name and the app opened the one in the state (opened_site_name, opened_site_host). Is this query saying that was the wrong site and asking for a different one?
+
+| Means | Description |
+|---|---|
+| yes | The query rejects the site on screen or asks for another one for the same name: "no not this one", "not this zillow", "I'm looking for a different website", "wrong site", "that's not it", "a different one". |
+| no | Anything else: a new search or question, a request for another site by its own name ("open youtube"), or something to do on the open site. |
 
 Answer: `noul`, the probability of yes (0–1). No confidence field.
 
@@ -101,14 +127,17 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 | Outcome | Shown | Logged as |
 |---|---|---|
 | The time in a named place (see above) | A one-line card computed on the device | `local("time")` |
+| An opener and a site name the book knows (see above) | That site | `local("site")` |
 | Address typed | That page | `directURL` |
 | No API key configured | Web results | `noKey` |
 | Request failed or timed out | Web results | `error(reason)` |
 | `confidence` below 0.5 | Web results | `confidenceFallback` (the pick is kept as `suggested`) |
 | `confidence` at or above 0.5 and `recent` below 0.5 | The chosen format's card; web results while that module is only `routed` (today: `map`, `stock`) | `jev` |
 | `narrative` or `one_line` picked with confidence, but `recent` at or above 0.5 | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |
-| Over a narrative on screen, `continues` at or above 0.5 and a card format (`map`, `stock`, `recall`, `image`) picked with confidence | That card | `jev` |
-| Over a narrative on screen, `continues` at or above 0.5 and any other pick, sure or not, with `recent` below 0.5 | The narrative on screen grows: the query as a line, then a reply written with the earlier turns in view | `continuation` (the pick is kept as `suggested`) |
+| Over an answer on screen, `continues` at or above 0.5 and a card format (`map`, `stock`, `recall`, `image`, `site`) picked with confidence | That card | `jev` |
+| Over an answer on screen, `continues` at or above 0.5 and any other pick, sure or not, with `recent` below 0.5 | The answer on screen grows into a transcript: the query as a line, then a reply written with the earlier turns in view, as one line when `one_line` was picked with confidence and as a narrative otherwise | `continuation` (the pick is kept as `suggested`) |
+| `site` picked with confidence | The site, when the book knows the name; otherwise the choices card (see "After routing: sites") | `jev` |
+| Over a site opened by name, `rejects` at or above 0.5, whatever the pick | The name is forgotten and the choices card shown again | `rejection` (the pick is kept as `suggested`) |
 
 Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.
 
@@ -225,3 +254,20 @@ No candidate with a picture, any failure, or 6 s without a reply per step falls 
 | Nothing with a picture, or an error | Web results | `fellBackToWeb(reason)` |
 
 The article's page carries the image's licence and author; the card links to it.
+
+## After routing: sites
+
+A `site` pick names a website. The name is what `SiteQuery` leaves of the query (see "Answered on the device"). The site book on the device (`SiteBook`: 30 seeded sites under 42 names, plus whatever has been learned) answers a known name at once; an unknown name is searched by `SiteSearch` in `Packages/Routing/Sources/Sites`, with a Brave Search API key (`BRAVE_API_KEY`).
+
+1. `GET https://api.search.brave.com/res/v1/web/search?q=<name>&count=8&result_filter=web`, header `X-Subscription-Token`. Only `web.results` is read: title, url, description, and the result's favicon when it carries one (`meta_url.favicon` or `profile.img`), else Google's public favicon service for the host.
+2. One result per host (`www.` aside), in Brave's order, the first 5: the choices card.
+3. The site tapped is learned under the name, as its origin (scheme and host), and opened. The next time the name is asked for it opens straight away, with no model and no search.
+
+No key, no result, any failure, or 6 s without a reply shows the Google results page for the name instead, and the first site tapped off it is learned the same way.
+
+| Outcome | Shown | Logged as |
+|---|---|---|
+| The book knows the name | That site | `site` summary `opened` with the host; the decision is `local("site")` when the query had an opener, `jev` otherwise |
+| Candidates found | The choices card | `choices` with the count and latency |
+| No key, nothing found, or an error | Web results for the name | `results` with the reason |
+| A follow-up rejects the site on screen | The choices card again, the name forgotten | `rejected`, decision `rejection` |

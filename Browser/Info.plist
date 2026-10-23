@@ -8,6 +8,8 @@
 	<string>$(TYPESAFE_API_KEY)</string>
 	<key>GeminiAPIKey</key>
 	<string>$(GEMINI_API_KEY)</string>
+	<key>BraveAPIKey</key>
+	<string>$(BRAVE_API_KEY)</string>
 	<key>UIDesignRequiresCompatibility</key>
 	<true/>
 </dict>

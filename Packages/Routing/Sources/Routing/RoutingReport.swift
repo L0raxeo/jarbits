@@ -8,10 +8,15 @@ public enum RoutingReport {
 
     public static func markdown() -> String {
         let request = JevRouting.request(for: "<query>", locale: Locale(identifier: "en_US"), model: JevClient.defaultModel)
-        // The same request over a narrative, for the follow-up section.
+        // The same request over an answer, for the follow-up section.
         let followUp = JevRouting.request(
             for: "<query>", locale: Locale(identifier: "en_US"), model: JevClient.defaultModel,
             thread: [AnswerTurn(query: "<earlier query>", answer: "<earlier answer>")]
+        )
+        // And over a site opened by name, for the rejection section.
+        let opened = JevRouting.request(
+            for: "<query>", locale: Locale(identifier: "en_US"), model: JevClient.defaultModel,
+            opened: OpenedSite(name: "<name>", host: "<host>")
         )
         var out: [String] = []
 
@@ -33,9 +38,10 @@ public enum RoutingReport {
         out.append("|---|---|")
         out.append("| `query` | The text as typed, trimmed. |")
         out.append("| `locale` | The device locale identifier, e.g. `en_US`. |")
-        out.append("| `previous_queries`, `previous_answer` | Only while a narrative answer is on screen and the query was typed over it: every query of that conversation, oldest first, and the last answer cut to \(JevRouting.maxPreviousAnswerCharacters) characters. The format question then reads differently and a third question is asked; see \"When a narrative is on screen\". |")
+        out.append("| `previous_queries`, `previous_answer` | Only while a narrative or one-line answer is on screen and the query was typed over it: every query of that conversation, oldest first, and the last answer cut to \(JevRouting.maxPreviousAnswerCharacters) characters. The format question then reads differently and a third question is asked; see \"When an answer is on screen\". |")
+        out.append("| `opened_site_name`, `opened_site_host` | Only while a site this app opened by name is on screen: the name asked for and the host opened. A third question is asked; see \"When a site is on screen\". |")
         out.append("")
-        out.append("Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can answer itself becomes a card at once; Jev is not asked either way.")
+        out.append("Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can answer itself becomes a card at once, or opens a site the device already knows; Jev is not asked either way.")
         out.append("")
         out += answeredOnTheDevice()
 
@@ -55,6 +61,13 @@ public enum RoutingReport {
         for (id, question) in followUp.questions where id == JevRouting.continuesQuestionID {
             out += render(id: id, question: question)
         }
+        out.append("## When a site is on screen")
+        out.append("")
+        out.append("A query typed over a site this app opened by name (from the book, or learned from a tap) carries the name and host in the state and asks a third question:")
+        out.append("")
+        for (id, question) in opened.questions where id == JevRouting.rejectsQuestionID {
+            out += render(id: id, question: question)
+        }
         out.append("## What comes back")
         out.append("")
         out.append("```json")
@@ -70,14 +83,17 @@ public enum RoutingReport {
         out.append("| Outcome | Shown | Logged as |")
         out.append("|---|---|---|")
         out.append("| The time in a named place (see above) | A one-line card computed on the device | `local(\"time\")` |")
+        out.append("| An opener and a site name the book knows (see above) | That site | `local(\"site\")` |")
         out.append("| Address typed | That page | `directURL` |")
         out.append("| No API key configured | Web results | `noKey` |")
         out.append("| Request failed or timed out | Web results | `error(reason)` |")
         out.append("| `confidence` below \(JevRouting.confidenceFloor.formatted()) | Web results | `confidenceFallback` (the pick is kept as `suggested`) |")
         out.append("| `confidence` at or above \(JevRouting.confidenceFloor.formatted()) and `recent` below \(JevRouting.recencyThreshold.formatted()) | The chosen format's card; web results while that module is only `routed` (today: \(routedList)) | `jev` |")
         out.append("| `narrative` or `one_line` picked with confidence, but `recent` at or above \(JevRouting.recencyThreshold.formatted()) | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |")
-        out.append("| Over a narrative on screen, `continues` at or above \(JevRouting.continuationThreshold.formatted()) and a card format (\(cardList)) picked with confidence | That card | `jev` |")
-        out.append("| Over a narrative on screen, `continues` at or above \(JevRouting.continuationThreshold.formatted()) and any other pick, sure or not, with `recent` below \(JevRouting.recencyThreshold.formatted()) | The narrative on screen grows: the query as a line, then a reply written with the earlier turns in view | `continuation` (the pick is kept as `suggested`) |")
+        out.append("| Over an answer on screen, `continues` at or above \(JevRouting.continuationThreshold.formatted()) and a card format (\(cardList)) picked with confidence | That card | `jev` |")
+        out.append("| Over an answer on screen, `continues` at or above \(JevRouting.continuationThreshold.formatted()) and any other pick, sure or not, with `recent` below \(JevRouting.recencyThreshold.formatted()) | The answer on screen grows into a transcript: the query as a line, then a reply written with the earlier turns in view, as one line when `one_line` was picked with confidence and as a narrative otherwise | `continuation` (the pick is kept as `suggested`) |")
+        out.append("| `site` picked with confidence | The site, when the book knows the name; otherwise the choices card (see \"After routing: sites\") | `jev` |")
+        out.append("| Over a site opened by name, `rejects` at or above \(JevRouting.rejectionThreshold.formatted()), whatever the pick | The name is forgotten and the choices card shown again | `rejection` (the pick is kept as `suggested`) |")
         out.append("")
         out.append("Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.")
         out.append("")
@@ -103,6 +119,13 @@ public enum RoutingReport {
         out.append("- Trailers, at the end or between \"is it\" and \"in\": \(quoted(TimeQuery.trailers))")
         out.append("")
         out.append("Shown as `==7:56 PM==`, with `tomorrow` or `yesterday` when the date there differs, and `in Mexico City` when the place spans zones. Logged as `local(\"time\")` with none of the Jev fields.")
+        out.append("")
+        out.append("A website the device already knows opens the same way. `SiteQuery` reads a query as leads, one opener, articles, a name and trailers; when an opener is present and the site book knows the name (\(SiteBook.seed.count) seeded sites under \(SiteBook.seeded().entries.count) names, plus every name learned from a tap), the site opens with no model asked, logged as `local(\"site\")`. A bare name, or a name the book does not know, goes on to Jev; a `site` pick then looks up or searches the name, read leniently now that the intent is settled: the words after the first opener wherever it sits, or the whole query (see \"After routing: sites\").")
+        out.append("")
+        out.append("- Leads, any number, before the opener: \(quoted(SiteQuery.leads))")
+        out.append("- Openers: \(quoted(SiteQuery.openers))")
+        out.append("- Articles after the opener: \(quoted(SiteQuery.articles))")
+        out.append("- Trailers, any number, at the end: \(quoted(SiteQuery.trailers))")
         out.append("")
         return out
     }

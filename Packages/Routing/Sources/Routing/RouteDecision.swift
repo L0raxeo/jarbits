@@ -14,9 +14,13 @@ public struct RouteDecision: Codable, Sendable, Equatable {
     /// Jev's probability that the right answer may have changed in the last
     /// two years; nil when the question was not asked or not answered.
     public var recency: Double?
-    /// Jev's probability that a follow-up continues the narrative on screen;
-    /// nil when no narrative was on screen or the question went unanswered.
+    /// Jev's probability that a follow-up continues the answer on screen;
+    /// nil when no answer was on screen or the question went unanswered.
     public var continuation: Double?
+    /// Jev's probability that a follow-up rejects the site this app opened
+    /// by name; nil when no such site was on screen or the question went
+    /// unanswered.
+    public var rejection: Double?
     public var source: Source
 
     public enum Source: Codable, Sendable, Equatable {
@@ -31,11 +35,17 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         case directURL
         /// No API key is configured, so Jev was not asked.
         case noKey
-        /// The query continues the narrative on screen (`continuation` reached
-        /// the threshold), so the thread grows with a `narrative` turn whatever
-        /// the pick was; the pick is kept as `suggested`.
+        /// The query continues the answer on screen (`continuation` reached
+        /// the threshold), so the thread grows with a new turn whatever the
+        /// pick was: `one_line` when that was picked with confidence,
+        /// `narrative` otherwise; the pick is kept as `suggested`.
         case continuation
-        /// Answered on the device by the named rule (see `LocalAnswers`); no model was asked.
+        /// The query rejects the site this app opened by name (`rejection`
+        /// reached the threshold): `format` is `site` for the same name
+        /// again, whatever the pick was; the pick is kept as `suggested`.
+        case rejection
+        /// Answered on the device by the named rule (see `LocalAnswers`, and
+        /// the site book behind `LocalFirstRouter`); no model was asked.
         case local(String)
         /// The request failed; `format` is the fallback.
         case error(String)
@@ -51,6 +61,7 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         inputTokens: Int? = nil,
         recency: Double? = nil,
         continuation: Double? = nil,
+        rejection: Double? = nil,
         source: Source
     ) {
         self.format = format
@@ -62,12 +73,18 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         self.inputTokens = inputTokens
         self.recency = recency
         self.continuation = continuation
+        self.rejection = rejection
         self.source = source
     }
 
-    /// The follow-up carries on the narrative on screen as a new turn.
+    /// The follow-up carries on the answer on screen as a new turn.
     public var continuesNarrative: Bool {
         source == .continuation
+    }
+
+    /// The follow-up says the site on screen is the wrong one.
+    public var rejectsSite: Bool {
+        source == .rejection
     }
 
     public static func directURL() -> RouteDecision {

@@ -13,6 +13,9 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     /// on the device from the memories file; see `MemorySearch`.
     case recall
     case image
+    /// A website asked for by name ("go to youtube"). Resolved on the device
+    /// from the site book, or searched once and learned; see `SiteBook`.
+    case site
 
     /// What the app shows when the router cannot or should not decide.
     public static let fallback: ResponseFormat = .webResults
@@ -27,7 +30,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     public var outranksConversation: Bool {
         switch self {
         case .narrative, .oneLine, .webResults: false
-        case .map, .stock, .recall, .image: true
+        case .map, .stock, .recall, .image, .site: true
         }
     }
 
@@ -36,7 +39,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     public var stage: Stage {
         switch self {
         case .webResults: .verified
-        case .narrative, .oneLine, .image, .recall: .built
+        case .narrative, .oneLine, .image, .recall, .site: .built
         case .map, .stock: .routed
         }
     }
@@ -51,6 +54,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .oneLine: "One-line answer"
         case .image: "Image"
         case .recall: "Recall"
+        case .site: "Site"
         }
     }
 
@@ -64,6 +68,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .oneLine: nil
         case .image: nil
         case .recall: nil
+        case .site: nil
         }
     }
 
@@ -73,9 +78,9 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         switch self {
         case .webResults:
             Criterion(
-                what: "A standard page of web search results. The default for broad, vague, navigational or multi-part queries, for a specific website the user names, for browsing many pictures or videos, and for anything the other formats do not clearly fit. A bare topic with no ask, such as \"chocolate milk\" or \"quantum computing\", is one of these: the user wants the general spread, not one answer.",
-                notFor: "A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, or the bare name of one specific thing with a definitive look, which wants a picture.",
-                examples: ["best laptops 2026", "news", "chocolate milk", "python tutorial reddit", "github login", "quantum computing", "dune part 3 trailer", "golden retriever puppies"]
+                what: "A standard page of web search results. The default for broad, vague or multi-part queries, for a search for something on a site, for browsing many pictures or videos, and for anything the other formats do not clearly fit. A bare topic with no ask, such as \"chocolate milk\" or \"quantum computing\", is one of these: the user wants the general spread, not one answer.",
+                notFor: "A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, a request to open a website by its name, or the bare name of one specific thing with a definitive look, which wants a picture.",
+                examples: ["best laptops 2026", "news", "chocolate milk", "python tutorial reddit", "zillow homes in austin", "quantum computing", "dune part 3 trailer", "golden retriever puppies"]
             )
         case .narrative:
             Criterion(
@@ -135,7 +140,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .recall:
             Criterion(
                 what: "Something the user saw in this app before and wants back: a page they were on, an answer they got, a list they made. The query points at the past (\"that\", \"again\", \"my\", \"remember\", \"pull up\", \"where's\", \"go back to\") instead of asking something new.",
-                notFor: "A new question or search that merely contains such a word, like a film title or a package delivery; anything the user has not seen in this app.",
+                notFor: "A new question or search that merely contains such a word, like a film title or a package delivery; opening a website by its name with no pointer at the past (\"pull up zillow\"), which is site; anything the user has not seen in this app.",
                 examples: [
                     "where's my grocery list",
                     "remember that convo on the dyson pencilvac",
@@ -144,6 +149,12 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
                     "that thing about gingivitis again",
                     "go back to the reddit thread",
                 ]
+            )
+        case .site:
+            Criterion(
+                what: "Open a website or app by its name. The query is a go-to, open, pull-up or take-me-to verb and a site's name, or the bare name of a well-known site with nothing else; the user wants the site itself, not results about it.",
+                notFor: "A search for something on a site (\"zillow homes in austin\"), a question about a site, a page the user saw in this app before (\"that youtube page from earlier\", which is recall), and an address, which loads directly.",
+                examples: ["go to youtube", "pull up zillow", "open insta", "take me to airbnb", "launch netflix", "reddit"]
             )
         }
     }
