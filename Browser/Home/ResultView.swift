@@ -423,6 +423,15 @@ private struct MemoryTile: View {
                 .aspectRatio(0.72, contentMode: .fit)
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(Color.black.opacity(0.06)))
+                .overlay(alignment: .topTrailing) {
+                    // Long-term: it will not be flushed.
+                    if record.kept != nil {
+                        Image(systemName: "bookmark.fill")
+                            .font(.caption)
+                            .foregroundStyle(Palette.quiet)
+                            .padding(8)
+                    }
+                }
                 .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
             HStack(spacing: 6) {
                 Image(systemName: record.kind.symbol)

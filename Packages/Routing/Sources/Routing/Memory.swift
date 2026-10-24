@@ -1,8 +1,17 @@
 import Foundation
 
-/// One thing the user saw: a page, an answer, a picture, a results page.
-/// Written to the memories file on the device as the result appears, and
-/// found again by `MemorySearch` when a query is routed to `recall`.
+/// One thing the user saw, or several that belong together: a page, a
+/// results page, an answer and its follow-ups, a picture; later a note or a
+/// reminder attached to one of those. Written to the memories file on the
+/// device as the result appears, and found again by `MemorySearch` when a
+/// query is routed to `recall`.
+///
+/// A memory is an ordered list of `parts`. The first is the head: it
+/// decides the kind, the tile, the title's default, what a tap opens and
+/// what counts as the same thing. `cameFrom` is the memory that was on
+/// screen when this one was made (the search before a page, the page
+/// before the next), by id only. `kept` marks a long-term memory; the rest
+/// are short-term and go a week after they were last touched (`date`).
 public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
     public enum Kind: String, Codable, Sendable, CaseIterable {
         /// A page that loaded, with its address; replays by loading it.
@@ -39,31 +48,113 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         }
     }
 
-    public var id: UUID
-    public var date: Date
-    public var kind: Kind
-    /// The query that produced it, or the query that led to the page.
-    public var query: String
-    /// The page's title, else the query.
-    public var title: String
-    /// Pages only.
-    public var url: URL?
-    /// Narratives, and conversations: the first answer's markup, as `AnswerMarkup` renders it.
-    public var text: String?
-    /// An answer that grew into a conversation: every turn, first to last,
-    /// narrative or one-line. `query` and `text` stay the first turn's, so
-    /// the record is still the same thing as the answer it began as.
-    public var turns: [AnswerTurn]?
+    /// The shape written today; lines without a version are the flat shape
+    /// from before parts, read by `init(from:)` and rewritten in this one.
+    public static let currentVersion = 2
+    /// A short-term memory goes this long after it was last touched.
+    public static let shortTermWindow: TimeInterval = 7 * 86_400
 
-    public init(id: UUID = UUID(), date: Date = .now, kind: Kind, query: String, title: String? = nil, url: URL? = nil, text: String? = nil, turns: [AnswerTurn]? = nil) {
+    public var id: UUID
+    /// When last seen; a repeat within a day refreshes it.
+    public var date: Date
+    /// The head's own title (a page's title), else the query.
+    public var title: String
+    /// The words that started this memory: the search, the question. Empty
+    /// for a page browsed on from a search.
+    public var query: String
+    /// Head first; never empty.
+    public var parts: [MemoryPart]
+    /// The memory on screen when this one was made; nil at the start of a
+    /// run. A dangling id (the older memory flushed) just ends the chain.
+    public var cameFrom: UUID?
+    /// Long-term: when it was promoted. Nil is short-term.
+    public var kept: Date?
+    public var version: Int
+
+    public init(id: UUID = UUID(), date: Date = .now, title: String? = nil, query: String = "", parts: [MemoryPart], cameFrom: UUID? = nil, kept: Date? = nil) {
+        precondition(!parts.isEmpty, "a memory has at least its head")
         self.id = id
         self.date = date
-        self.kind = kind
         self.query = query
-        self.title = title ?? query
-        self.url = url
-        self.text = text
-        self.turns = turns
+        self.parts = parts
+        self.title = title ?? parts[0].content.ownTitle ?? query
+        self.cameFrom = cameFrom
+        self.kept = kept
+        self.version = Self.currentVersion
+    }
+
+    /// The flat shape, as a factory: one part per kind, a conversation as
+    /// one answer part per turn. What the session and the tests build with.
+    /// The parts' ids derive from the record's, so two builds of the same
+    /// flat record are equal.
+    public init(id: UUID = UUID(), date: Date = .now, kind: Kind, query: String, title: String? = nil, url: URL? = nil, text: String? = nil, turns: [AnswerTurn]? = nil, cameFrom: UUID? = nil, kept: Date? = nil) {
+        let parts = Self.parts(for: id, kind: kind, query: query, title: title, url: url, text: text, turns: turns)
+        self.init(id: id, date: date, title: title ?? query, query: query, parts: parts, cameFrom: cameFrom, kept: kept)
+    }
+
+    /// Stands in for a page's address when the flat shape had none (a
+    /// fixture); `url` reads it back as nil.
+    static let noAddress = URL(string: "about:blank")!
+
+    static func parts(for id: UUID, kind: Kind, query: String, title: String?, url: URL?, text: String?, turns: [AnswerTurn]?) -> [MemoryPart] {
+        let contents: [MemoryPart.Content]
+        switch kind {
+        case .page:
+            contents = [.page(address: url ?? noAddress, title: title ?? query)]
+        case .search:
+            contents = [.search(query: query)]
+        case .image:
+            contents = [.picture(query: query)]
+        case .narrative, .oneLine:
+            if let turns, !turns.isEmpty {
+                contents = turns.map { .answer(question: $0.query, text: $0.answer, format: $0.format) }
+            } else {
+                contents = [.answer(question: query, text: text ?? "", format: kind == .oneLine ? .oneLine : .narrative)]
+            }
+        }
+        return contents.enumerated().map { index, content in MemoryPart(id: MemoryPart.derivedID(from: id, index: index), content) }
+    }
+
+    // MARK: Read through the head
+
+    public var head: MemoryPart { parts[0] }
+
+    public var kind: Kind {
+        switch head.content {
+        case .page: .page
+        case .search: .search
+        case .picture: .image
+        case let .answer(_, _, format): format == .oneLine ? .oneLine : .narrative
+        case .note: .narrative
+        }
+    }
+
+    /// The head page's address.
+    public var url: URL? {
+        if case let .page(address, _) = head.content, address != Self.noAddress { return address }
+        return nil
+    }
+
+    /// The first answer's markup, as `AnswerMarkup` renders it; nil when
+    /// there is none or it is empty (a bare one-line answer).
+    public var text: String? {
+        guard case let .answer(_, text, _) = head.content, !text.isEmpty else { return nil }
+        return text
+    }
+
+    /// Every answer part as a turn, first to last.
+    public var exchanges: [AnswerTurn] {
+        parts.compactMap { part in
+            if case let .answer(question, text, format) = part.content { return AnswerTurn(query: question, answer: text, format: format) }
+            return nil
+        }
+    }
+
+    /// A conversation's turns, when there are at least two; nil for a
+    /// single answer, as the flat shape had it.
+    public var turns: [AnswerTurn]? {
+        let all = exchanges
+        return all.count > 1 ? all : nil
     }
 
     /// Two records of the same thing: a page by address, anything else by
@@ -72,6 +163,11 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         guard kind == other.kind else { return false }
         if kind == .page { return url == other.url }
         return query.lowercased() == other.query.lowercased()
+    }
+
+    /// Short-term and untouched for longer than the window.
+    public func expires(by now: Date) -> Bool {
+        kept == nil && now.timeIntervalSince(date) > Self.shortTermWindow
     }
 
     /// Query parameters that only track the click, never pick the page.
@@ -88,6 +184,107 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
             parts.queryItems = kept.isEmpty ? nil : kept
         }
         return parts.url ?? url
+    }
+
+    // MARK: Both shapes on disk
+
+    enum CodingKeys: String, CodingKey {
+        case id, date, title, query, parts, cameFrom, kept, version
+        // The flat shape, read only.
+        case kind, url, text, turns
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        date = try c.decode(Date.self, forKey: .date)
+        query = try c.decodeIfPresent(String.self, forKey: .query) ?? ""
+        cameFrom = try c.decodeIfPresent(UUID.self, forKey: .cameFrom)
+        kept = try c.decodeIfPresent(Date.self, forKey: .kept)
+        version = Self.currentVersion
+        if c.contains(.parts) {
+            // A part this build cannot read is dropped; a record left with
+            // nothing is not a memory.
+            let read = try c.decode([Tolerant<MemoryPart>].self, forKey: .parts).compactMap(\.value)
+            guard !read.isEmpty else {
+                throw DecodingError.dataCorruptedError(forKey: .parts, in: c, debugDescription: "no readable part")
+            }
+            parts = read
+        } else {
+            let kind = try c.decode(Kind.self, forKey: .kind)
+            parts = Self.parts(
+                for: id, kind: kind, query: query,
+                title: try c.decodeIfPresent(String.self, forKey: .title),
+                url: try c.decodeIfPresent(URL.self, forKey: .url),
+                text: try c.decodeIfPresent(String.self, forKey: .text),
+                turns: try c.decodeIfPresent([AnswerTurn].self, forKey: .turns)
+            )
+        }
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? parts[0].content.ownTitle ?? query
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(date, forKey: .date)
+        try c.encode(title, forKey: .title)
+        try c.encode(query, forKey: .query)
+        try c.encode(parts, forKey: .parts)
+        try c.encodeIfPresent(cameFrom, forKey: .cameFrom)
+        try c.encodeIfPresent(kept, forKey: .kept)
+        try c.encode(version, forKey: .version)
+    }
+}
+
+/// One piece of a memory. Each case is one format with its own fields, so
+/// every reader handles every kind by compiler's order, and a new kind
+/// later is a new case.
+public struct MemoryPart: Codable, Sendable, Hashable, Identifiable {
+    public enum Content: Codable, Sendable, Hashable {
+        /// A page, by address and title.
+        case page(address: URL, title: String)
+        /// A results page, by what was searched.
+        case search(query: String)
+        /// One exchange: a question and its answer, narrative or one-line.
+        case answer(question: String, text: String, format: ResponseFormat)
+        /// A picture result, by what was asked for.
+        case picture(query: String)
+        /// Words the user attached. Not produced yet.
+        case note(text: String)
+
+        /// The title a part brings of its own: a page's. The rest take the
+        /// memory's query.
+        var ownTitle: String? {
+            if case let .page(_, title) = self { return title }
+            return nil
+        }
+    }
+
+    public var id: UUID
+    public var content: Content
+
+    public init(id: UUID = UUID(), _ content: Content) {
+        self.id = id
+        self.content = content
+    }
+
+    /// A part id that follows from its record's id and its position, for
+    /// parts built from the flat shape: the record's bytes with the index
+    /// folded into the last two.
+    static func derivedID(from record: UUID, index: Int) -> UUID {
+        var bytes = record.uuid
+        bytes.14 ^= UInt8(truncatingIfNeeded: index >> 8)
+        bytes.15 ^= UInt8(truncatingIfNeeded: index)
+        return UUID(uuid: bytes)
+    }
+}
+
+/// Decodes to nil instead of failing, so one unreadable element does not
+/// take a whole list with it.
+struct Tolerant<T: Decodable>: Decodable {
+    let value: T?
+    init(from decoder: any Decoder) {
+        value = try? T(from: decoder)
     }
 }
 
@@ -296,19 +493,28 @@ public enum MemorySearch {
 }
 
 extension MemoryRecord {
-    /// Everything a term may match: the query, the title, the page's host
-    /// and path, the answer's text, and every later turn of a conversation.
+    /// Everything a term may match: the query, the title, and each part's
+    /// words: a page's host and path, a search, every question and answer,
+    /// a note.
     var haystack: String {
-        var parts = [query, title]
-        if let url {
-            if let host = url.host() { parts.append(host) }
-            parts.append(url.path())
+        var words = [query, title]
+        for part in parts {
+            switch part.content {
+            case let .page(address, title):
+                if let host = address.host() { words.append(host) }
+                words.append(address.path())
+                words.append(title)
+            case let .search(query):
+                words.append(query)
+            case let .answer(question, text, _):
+                words.append(question)
+                words.append(text)
+            case let .picture(query):
+                words.append(query)
+            case let .note(text):
+                words.append(text)
+            }
         }
-        if let text { parts.append(text) }
-        for turn in turns ?? [] {
-            parts.append(turn.query)
-            parts.append(turn.answer)
-        }
-        return parts.joined(separator: " ")
+        return words.joined(separator: " ")
     }
 }

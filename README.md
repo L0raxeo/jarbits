@@ -339,6 +339,23 @@ before searching.
 format, through the same confidence floor, so there is no phrase list in
 the app and no extra request.
 
+A memory is an ordered list of parts, each one thing of one format: a
+page (address and title), a search (its words), one exchange of an answer
+(question, text, format), a picture, and later a note or a reminder
+attached to one of those. The first part is the head: it decides the
+kind, the tile, the title's default, what a tap opens and what counts as
+the same thing. A memory may point, by id, at the memory that was on
+screen when it was made (`cameFrom`): the results page after a query
+points at nothing, the first page after it at the search, every page
+after at the page before, a search opened from an answer's "Web results"
+at the answer, a page opened from a recalled memory at that memory. A new
+query starts a run with no predecessor. Every memory is short-term and
+goes a week after it was last touched; one flag (`kept`) marks a
+long-term memory that stays until forgotten, shown with a bookmark on its
+tile. Nothing promotes a memory yet; that comes with notes and "remember
+this". Lines in the flat shape from before parts read as parts and are
+rewritten in the current shape as records are refreshed.
+
 Every result the user sees is written to `Application Support/Browser/memories.jsonl`
 as it appears: a page (its address and title, reported by the watcher at
 its first look, again when the page changes its address without a load,
@@ -354,8 +371,10 @@ skipped. The search that led to a page is attached to the first page
 after it only; pages browsed on from there answer to their own titles and
 addresses, so browsing on from "rick steves" does not make the next video
 answer to "rick steves". Seeing the same thing again within a day refreshes
-its record; past 5 000 records the oldest go, which keeps the file in the
-tens of megabytes at most. Nothing in it leaves the phone, and Google's
+its record (date, title and parts; never where it came from or whether it
+is kept); expired short-term memories go on first load and then once a
+day; past 5 000 records the oldest go, which keeps the file in the tens
+of megabytes at most. Nothing in it leaves the phone, and Google's
 interaction storage stays off.
 
 A recall is resolved in four steps. First, Jev's reading of the ask,

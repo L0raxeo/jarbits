@@ -4,10 +4,14 @@ import Routing
 /// The memories file: every result the user saw, so a `recall` query can
 /// bring one back. JSON Lines beside the decision log, loaded once, appended
 /// as results appear. A repeat of the same thing within a day refreshes its
-/// date instead of adding a line; past `capacity` the oldest go. A page
-/// memory may have a picture beside the file, `<id>.jpg` in `memories/`,
-/// kept for the newest `pictureCapacity` pages and deleted with the
-/// record. Nothing in it leaves the phone.
+/// date instead of adding a line; a short-term memory goes a week after it
+/// was last touched (`flush`), a kept one stays until forgotten; past
+/// `capacity` the oldest go regardless. A page memory may have a picture
+/// beside the file, `<id>.jpg` in `memories/`, kept for the newest
+/// `pictureCapacity` pages (kept memories exempt) and deleted with the
+/// record. Lines in the flat shape from before parts read through the
+/// record's own decoder and are rewritten in the current shape as records
+/// are refreshed. Nothing in it leaves the phone.
 actor MemoryStore {
     static let shared = MemoryStore()
 
@@ -21,7 +25,11 @@ actor MemoryStore {
     /// Seeing the same thing again within this refreshes the record.
     static let repeatWindow: TimeInterval = 86_400
 
+    /// Expired memories are looked for at most this often.
+    static let flushInterval: TimeInterval = 86_400
+
     private var loaded: [MemoryRecord]?
+    private var lastFlush: Date?
 
     init(fileURL: URL? = nil) {
         if let fileURL {
@@ -37,12 +45,16 @@ actor MemoryStore {
     /// repeat, so a picture taken afterwards lands on it.
     @discardableResult
     func remember(_ record: MemoryRecord) -> UUID {
+        flushIfDue(now: record.date)
         var all = records()
         if let i = all.lastIndex(where: { $0.sameThing(as: record) && abs(record.date.timeIntervalSince($0.date)) < Self.repeatWindow }) {
+            // The same thing again: the date and the title move on, and the
+            // parts when the new record has at least as many (a conversation
+            // that grew, a page whose title settled). Where it came from and
+            // whether it is kept are left as they were.
             all[i].date = record.date
             all[i].title = record.title
-            all[i].text = record.text ?? all[i].text
-            all[i].turns = record.turns ?? all[i].turns
+            if record.parts.count >= all[i].parts.count { all[i].parts = record.parts }
             loaded = all
             rewrite(all)
             return all[i].id
@@ -75,13 +87,53 @@ actor MemoryStore {
         }
     }
 
-    /// Pictures beyond the newest `pictureCapacity` page memories go.
+    /// Pictures beyond the newest `pictureCapacity` short-term page
+    /// memories go; a kept memory keeps its picture.
     private func prunePictures(_ all: [MemoryRecord]) {
-        let pages = all.filter { $0.kind == .page }
+        let pages = all.filter { $0.kind == .page && $0.kept == nil }
         guard pages.count > Self.pictureCapacity else { return }
         for old in pages.sorted(by: { $0.date > $1.date }).dropFirst(Self.pictureCapacity) {
             try? FileManager.default.removeItem(at: pictureURL(for: old.id))
         }
+    }
+
+    /// Short-term memories untouched for a week go, with their pictures.
+    /// Run on first load and then at most once a day, from `remember`.
+    @discardableResult
+    func flush(now: Date = .now) -> Int {
+        lastFlush = now
+        let all = records()
+        let gone = all.filter { $0.expires(by: now) }
+        guard !gone.isEmpty else { return 0 }
+        let keptRecords = all.filter { !$0.expires(by: now) }
+        loaded = keptRecords
+        rewrite(keptRecords)
+        for old in gone { try? FileManager.default.removeItem(at: pictureURL(for: old.id)) }
+        return gone.count
+    }
+
+    private func flushIfDue(now: Date) {
+        if let lastFlush, now.timeIntervalSince(lastFlush) < Self.flushInterval { return }
+        flush(now: now)
+    }
+
+    /// Long-term from now on: never flushed, its picture never pruned.
+    func keep(_ id: UUID, at date: Date = .now) {
+        var all = records()
+        guard let i = all.firstIndex(where: { $0.id == id }) else { return }
+        all[i].kept = date
+        loaded = all
+        rewrite(all)
+    }
+
+    /// Gone, with its picture.
+    func forget(_ id: UUID) {
+        var all = records()
+        guard let i = all.firstIndex(where: { $0.id == id }) else { return }
+        all.remove(at: i)
+        loaded = all
+        rewrite(all)
+        try? FileManager.default.removeItem(at: pictureURL(for: id))
     }
 
     func search(_ query: String) -> [MemoryRecord] {
@@ -120,7 +172,8 @@ actor MemoryStore {
             }
         }
         loaded = read
-        return read
+        if lastFlush == nil { flush() }
+        return loaded ?? read
     }
 
     private func append(_ record: MemoryRecord) {

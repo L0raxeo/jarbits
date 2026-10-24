@@ -51,6 +51,11 @@ final class BrowserSession {
     /// The search that led to the next page memorised, and to that one
     /// only: pages browsed on from it are remembered by what they are.
     private var queryForNextPage: String?
+    /// The memory on screen, as the write that produced it: what the next
+    /// memory points at as `cameFrom`. Nil at the start of a run (a new
+    /// query), set by every write and by a recall. Memory writes are
+    /// chained on it, so they land in order and each knows the id before.
+    private var currentMemory: Task<UUID?, Never>?
     /// A look through the memories that has not resolved by then goes to
     /// the web, so the wave line never waits on it.
     private let recallTimeout: Duration = .seconds(3)
@@ -182,6 +187,7 @@ final class BrowserSession {
         let opened = openedSite   // and the site opened by name, if one is on screen
         lastQuery = trimmed
         queryForNextPage = trimmed
+        currentMemory = nil
         stage = .routing
         Task {
             let result = await router.route(trimmed, thread: thread, opened: opened)
@@ -567,14 +573,11 @@ final class BrowserSession {
         )
         record(decision, query: query, recall: summary)
         let title = filters.countTitle ?? filters.allTitle ?? (filters.collection && !topic.isEmpty ? "Everything about \(topic)" : nil)
-        switch found.count {
-        case 0:
+        // Never opened straight away: even one memory is shown in the grid,
+        // so the user sees what was found before it takes the screen.
+        if found.isEmpty {
             load(QueryParser.searchURL(for: topic.isEmpty ? query : topic))
-        case 1 where filters.count == nil && filters.allTitle == nil:
-            // "the last 5 things" with one thing to show lists it: the ask
-            // was for a list, and the one found should be seen before it opens.
-            replay(found[0])
-        default:
+        } else {
             plans = [.recallPicker(found, title: title)]
             stage = .ready
         }
@@ -588,6 +591,8 @@ final class BrowserSession {
     func replay(_ record: MemoryRecord) {
         lastQuery = record.query.isEmpty ? record.title : record.query
         queryForNextPage = lastQuery
+        // What follows (a link tapped on the recalled page) came from it.
+        currentMemory = Task { record.id }
         switch record.kind {
         case .page:
             guard let url = record.url else { load(QueryParser.searchURL(for: record.query)); return }
@@ -611,11 +616,22 @@ final class BrowserSession {
         }
     }
 
-    private func remember(_ record: MemoryRecord) {
-        #if DEBUG
-        print("memory \(record.kind.rawValue) \"\(record.title)\" \(record.url?.absoluteString ?? "") for \"\(record.query)\"")
-        #endif
-        Task { await memory.remember(record) }
+    /// Writes a memory after the one before it, pointing at the memory on
+    /// screen when it was queued; the task's value is the id kept (the
+    /// existing record's on a repeat). The write becomes the current memory.
+    @discardableResult
+    private func remember(_ record: MemoryRecord) -> Task<UUID?, Never> {
+        let from = currentMemory
+        let task = Task { [memory] () -> UUID? in
+            var record = record
+            if record.cameFrom == nil { record.cameFrom = await from?.value }
+            #if DEBUG
+            print("memory \(record.kind.rawValue) \"\(record.title)\" \(record.url?.absoluteString ?? "") for \"\(record.query)\"" + (record.cameFrom.map { " ← \($0.uuidString.prefix(8))" } ?? ""))
+            #endif
+            return await memory.remember(record)
+        }
+        currentMemory = task
+        return task
     }
 
     /// The document that just finished, when it is a results page: a
@@ -652,12 +668,9 @@ final class BrowserSession {
             let url = MemoryRecord.canonical(url)
             let record = MemoryRecord(kind: .page, query: queryForNextPage ?? "", title: title, url: url)
             queryForNextPage = nil
-            #if DEBUG
-            print("memory \(record.kind.rawValue) \"\(record.title)\" \(url.absoluteString) for \"\(record.query)\"")
-            #endif
+            let write = remember(record)
             Task { [weak self] in
-                guard let self else { return }
-                let id = await memory.remember(record)
+                guard let self, let id = await write.value else { return }
                 await takePicture(of: url, for: id)
             }
         }
