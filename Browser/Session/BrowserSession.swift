@@ -559,8 +559,8 @@ final class BrowserSession {
 
     /// What a recall found, in the order to show: nothing, so the content
     /// words go to the web as a plain search ("that thing about gingivitis
-    /// again" searches "gingivitis"); one thing, shown at once; several, a
-    /// picker, titled by the topic when everything about it was asked for.
+    /// again" searches "gingivitis"); anything found, the grid, even one
+    /// thing, titled by the topic when everything about it was asked for.
     /// `source` says which path chose them, for the log.
     private func recalled(_ found: [MemoryRecord], shortlisted: Int?, source: String, latencyMs: Int? = nil, filters: RecallFilters, for query: String, decision: RouteDecision) {
         #if DEBUG

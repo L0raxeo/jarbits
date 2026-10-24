@@ -265,7 +265,7 @@ A `recall` pick is resolved in this order. First, Jev's reading of the ask, answ
 | yes | The query describes this memory: by what it is, when it was seen, what it was about, or a word of its title. |
 | no | A different thing, even if it shares a word with the query or is of the same kind. |
 
-A memory at or above 0.5 is the one asked for: alone, it opens at once. Otherwise every memory at or above 0.3 is plausible: one opens, several show the picker in Jev's order, so an unsure Jev leaves the choice to the user; none goes to web results for the query's content words ("that thing about gingivitis again" searches "gingivitis"). A failed or slow request, or no key, shows the shortlist in word order. The record's `recall` logs the shortlist size, how many were plausible, the path (`jev`, `words`, or the error) and the latency.
+A memory at or above 0.5 is the one asked for and is shown alone. Otherwise every memory at or above 0.3 is plausible and is shown in Jev's order, so an unsure Jev leaves the choice to the user. Nothing ever opens straight away: even a single memory is shown in the grid before it takes the screen; none goes to web results for the query's content words ("that thing about gingivitis again" searches "gingivitis"). A failed or slow request, or no key, shows the shortlist in word order. The record's `recall` logs the shortlist size, how many were plausible, the path (`jev`, `words`, or the error) and the latency.
 
 ### Everything about something
 

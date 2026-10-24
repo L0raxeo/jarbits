@@ -192,7 +192,7 @@ public enum RoutingReport {
         out.append("| yes | \(RecallRouting.recallCriteria.yes) |")
         out.append("| no | \(RecallRouting.recallCriteria.no) |")
         out.append("")
-        out.append("A memory at or above \(RecallRouting.recallThreshold.formatted()) is the one asked for: alone, it opens at once. Otherwise every memory at or above \(RecallRouting.maybeThreshold.formatted()) is plausible: one opens, several show the picker in Jev's order, so an unsure Jev leaves the choice to the user; none goes to web results for the query's content words (\"that thing about gingivitis again\" searches \"gingivitis\"). A failed or slow request, or no key, shows the shortlist in word order. The record's `recall` logs the shortlist size, how many were plausible, the path (`jev`, `words`, or the error) and the latency.")
+        out.append("A memory at or above \(RecallRouting.recallThreshold.formatted()) is the one asked for and is shown alone. Otherwise every memory at or above \(RecallRouting.maybeThreshold.formatted()) is plausible and is shown in Jev's order, so an unsure Jev leaves the choice to the user. Nothing ever opens straight away: even a single memory is shown in the grid before it takes the screen; none goes to web results for the query's content words (\"that thing about gingivitis again\" searches \"gingivitis\"). A failed or slow request, or no key, shows the shortlist in word order. The record's `recall` logs the shortlist size, how many were plausible, the path (`jev`, `words`, or the error) and the latency.")
         out.append("")
         out.append("### Everything about something")
         out.append("")
