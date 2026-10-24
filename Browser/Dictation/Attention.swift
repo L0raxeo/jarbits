@@ -1,11 +1,10 @@
 import Foundation
 import Observation
 
-/// Whether the user is doing anything: a finger down, a scroll still moving.
-/// Over a result the app listens only while they are not.
-/// `idle` drops the moment something happens and comes back the moment the
-/// last finger lifts; a scroll still moving holds it for `motionDelay`
-/// past its last frame, so a fling is one interaction and not sixty.
+/// Whether the user is doing anything: a finger on the screen. Over a
+/// result the app listens only while they are not. `idle` drops the moment
+/// a finger lands and comes back the moment the last one lifts; a fling
+/// still moving afterwards is the page's business, not the user's.
 @Observable
 @MainActor
 final class Attention {
@@ -13,8 +12,7 @@ final class Attention {
 
     /// How long after the last finger lifts the user counts as idle again.
     static let idleDelay: Duration = .zero
-    /// How long a scroll frame, a result arriving or the app returning
-    /// holds idle off: long enough to bridge the frames of a fling.
+    /// How long a result arriving or the app returning holds idle off.
     static let motionDelay: Duration = .milliseconds(150)
 
     /// Fingers on the screen, outside the foot row.
@@ -40,8 +38,8 @@ final class Attention {
         interrupt()
     }
 
-    /// Something happened just now: a scroll frame, a result arriving, the
-    /// app coming back. The bridge starts over.
+    /// Something happened just now: a result arriving, the app coming back.
+    /// The bridge starts over.
     func touched() {
         due = .now + Self.motionDelay
         interrupt()

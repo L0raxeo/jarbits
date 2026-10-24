@@ -161,7 +161,6 @@ private struct WebResultView: View {
                 // Pull to refresh: the web view installs the system control.
                 .refreshable { await session.reloadAndWait() }
                 .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
-                    session.attention.touched()
                     ResultView.scrolled(from: old, to: new, compact: &barCompact)
                 }
             if chrome.bottom != .none {
@@ -302,7 +301,6 @@ private struct AnswerView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
-                session.attention.touched()
                 ResultView.scrolled(from: old, to: new, compact: &barCompact)
             }
             .onChange(of: history.count) { _, count in
@@ -403,7 +401,6 @@ private struct RecallGridView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
-                session.attention.touched()
                 ResultView.scrolled(from: old, to: new, compact: &barCompact)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)

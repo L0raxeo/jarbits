@@ -38,6 +38,11 @@ struct HomeView: View {
     /// The foot row (the capsule and the listening buttons) in window
     /// coordinates: touches there are not interactions.
     @State private var footFrame = CGRect.null
+    /// Words were being gathered when listening stopped: the clay holds its
+    /// red for a moment, long enough to read as "you interrupted it".
+    @State private var interrupted = false
+    @State private var interruptionTask: Task<Void, Never>?
+    private static let interruptionLinger: Duration = .milliseconds(1500)
 
     private var mode: ClayForm {
         switch session.stage {
@@ -51,8 +56,8 @@ struct HomeView: View {
     private var showsResult: Bool { session.stage == .ready || session.showsThread }
     private var showsHint: Bool { mode == .circle }
     /// The microphone is on while the circle is on screen, and over a result
-    /// while the user does nothing: no finger down, no scroll moving, no
-    /// keyboard, nothing loading. A video or music playing is not a reason:
+    /// while the user does nothing: no finger down, no keyboard, nothing
+    /// loading. A fling still moving after the finger lifts does not count. A video or music playing is not a reason:
     /// the microphone shares the session and never touches what plays. Only
     /// recording on purpose stands it aside. The inactive phase is ignored:
     /// the permission alert itself causes it.
@@ -62,11 +67,13 @@ struct HomeView: View {
         return session.stage == .ready && !followingUp && !capsuleLoading && session.attention.idle
     }
     /// The microphone is open, or about to be: the clay is purple. Red
-    /// otherwise, so it is always plain whether the app can hear.
+    /// otherwise, so it is always plain whether the app can hear; and red a
+    /// moment longer after an interruption, so it can be seen.
     private var attentive: Bool {
+        guard !interrupted else { return false }
         switch session.dictation.phase {
-        case .listening, .starting: true
-        case .idle, .finishing, .unavailable: false
+        case .listening, .starting: return true
+        case .idle, .finishing, .unavailable: return false
         }
     }
     /// A word has been heard over the result: the capsule is the small circle.
@@ -277,7 +284,12 @@ struct HomeView: View {
                 print("listening off: stage \(session.stage), idle \(session.attention.idle), exclusive \(session.microphone.exclusive), loading \(capsuleLoading), keyboard \(followingUp || typing)")
             }
             #endif
-            if listening { session.startListening() } else { session.stopListening() }
+            if listening {
+                session.startListening()
+            } else {
+                if session.dictation.heardSpeech { noteInterruption() }
+                session.stopListening()
+            }
         }
         .onChange(of: hearing) { _, hearing in
             // The circle ignores the scroll; the reserve under it must match.
@@ -357,6 +369,17 @@ struct HomeView: View {
     private func submitSpokenFollowUp() {
         session.submitSpoken()
         if session.stage == .cleaning { capsuleSubmitted = true }
+    }
+
+    /// The user touched the screen mid-sentence: hold the red for a moment.
+    private func noteInterruption() {
+        interrupted = true
+        interruptionTask?.cancel()
+        interruptionTask = Task {
+            try? await Task.sleep(for: Self.interruptionLinger)
+            guard !Task.isCancelled else { return }
+            interrupted = false
+        }
     }
 
     /// From the hint: focus the clay's field.
