@@ -54,13 +54,12 @@ import Testing
         #expect(json["store"] as? Bool == false)
     }
 
-    @Test func historyIsCappedToTheLastTurns() throws {
+    @Test func theWholeHistoryGoes() throws {
         let history = (0..<10).map { AnswerTurn(query: "q\($0)", answer: "a\($0)") }
         let request = AnswerPrompt.request(format: .narrative, query: "q10", context: .example, history: history)
-        #expect(request.history.count == AnswerPrompt.maxHistoryTurns)
-        #expect(request.history.first?.query == "q\(10 - AnswerPrompt.maxHistoryTurns)")
+        #expect(request.history == history)
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
-        #expect((json["input"] as? [Any])?.count == 2 * AnswerPrompt.maxHistoryTurns + 1)
+        #expect((json["input"] as? [Any])?.count == 2 * history.count + 1)
     }
 
     @Test func keyOrderIsStableWithHistory() throws {

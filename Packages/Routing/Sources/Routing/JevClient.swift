@@ -34,35 +34,43 @@ public struct SystemOneRequest: Sendable, Equatable {
 }
 
 /// What Jev is asked about. Kept to the query and the user's locale so the
-/// model has nothing irrelevant to be distracted by; the previous exchange
+/// model has nothing irrelevant to be distracted by; the conversation
 /// rides along only while a narrative answer is on screen, for the
 /// `continues` question.
 public struct RouteState: Codable, Sendable, Equatable {
+    /// One exchange of the conversation on screen as Jev reads it: the
+    /// query and the answer in full, without the format.
+    public struct Exchange: Codable, Sendable, Equatable {
+        public var query: String
+        public var answer: String
+
+        public init(query: String, answer: String) {
+            self.query = query
+            self.answer = answer
+        }
+    }
+
     public var query: String
     public var locale: String
-    /// Every query of the conversation on screen, oldest first, and the text
-    /// of the last answer. Left out of the JSON when nil, so an ordinary
-    /// request is unchanged.
-    public var previousQueries: [String]?
-    public var previousAnswer: String?
+    /// Every exchange of the conversation on screen, oldest first, each
+    /// answer whole. Left out of the JSON when nil, so an ordinary request
+    /// is unchanged.
+    public var conversation: [Exchange]?
     /// The site this app opened by name and that is on screen, for the
     /// `rejects` question. Left out when nil.
     public var openedSiteName: String?
     public var openedSiteHost: String?
 
     enum CodingKeys: String, CodingKey {
-        case query, locale
-        case previousQueries = "previous_queries"
-        case previousAnswer = "previous_answer"
+        case query, locale, conversation
         case openedSiteName = "opened_site_name"
         case openedSiteHost = "opened_site_host"
     }
 
-    public init(query: String, locale: String, previousQueries: [String]? = nil, previousAnswer: String? = nil, openedSiteName: String? = nil, openedSiteHost: String? = nil) {
+    public init(query: String, locale: String, conversation: [Exchange]? = nil, openedSiteName: String? = nil, openedSiteHost: String? = nil) {
         self.query = query
         self.locale = locale
-        self.previousQueries = previousQueries
-        self.previousAnswer = previousAnswer
+        self.conversation = conversation
         self.openedSiteName = openedSiteName
         self.openedSiteHost = openedSiteHost
     }

@@ -16,7 +16,7 @@ State (what Jev reads):
 |---|---|
 | `query` | The text as typed, trimmed. |
 | `locale` | The device locale identifier, e.g. `en_US`. |
-| `previous_queries`, `previous_answer` | Only while a narrative or one-line answer is on screen and the query was typed over it: every query of that conversation, oldest first, and the last answer cut to 1500 characters. The format question then reads differently and one more question is asked; see "When an answer is on screen". |
+| `conversation` | Only while a narrative or one-line answer is on screen and the query was typed over it: every exchange of that conversation, oldest first, each `{"query": …, "answer": …}` with the answer whole. The format question then reads differently and one more question is asked; see "When an answer is on screen". |
 | `opened_site_name`, `opened_site_host` | Only while a site this app opened by name is on screen: the name asked for and the host opened. One more question is asked; see "When a site is on screen". |
 
 Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can decide itself becomes a card at once, opens a site the device already knows, or searches the term after a search verb; Jev is not asked in any of these cases.
@@ -187,7 +187,7 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 
 A follow-up typed over a narrative or one-line answer, Gemini's or the device's, is read as the conversation makes it. The `format` question's instructions become:
 
-> Which response format best answers this web search query? The state carries the conversation so far: the earlier queries and the answer on screen. Judge the query as that conversation makes it, not as typed on its own. A reply, a reaction or a question that leans on the answer, however short, wants narrative; or one_line when the reply is itself a single short fact, a number, a name, a date, a yes/no, as "and chile?" after a capital is. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, video, each described below; or web_results for a page to browse.
+> Which response format best answers this web search query? The state carries the whole conversation so far: every earlier query and every answer, oldest first. Judge the query as that conversation makes it, not as typed on its own. A reply, a reaction or a question that leans on the answer, however short, wants narrative; or one_line when the reply is itself a single short fact, a number, a name, a date, a yes/no, as "and chile?" after a capital is. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, video, each described below; or web_results for a page to browse.
 
 and one more question is asked:
 
@@ -195,7 +195,7 @@ and one more question is asked:
 
 A yes/no question answered with the probability of yes. Instructions sent with the question:
 
-> The state carries the previous query and the answer the user is looking at. Is this query a continuation of that exchange: a reply, a reaction, a request to go on or to clarify, or a question that only makes sense given that answer?
+> The state carries the whole conversation so far, every earlier query and every answer, oldest first; the last answer is the one the user is looking at. Is this query a continuation of that conversation: a reply, a reaction, a request to go on or to clarify, or a question that only makes sense given what was said in it?
 
 | Means | Description |
 |---|---|
@@ -321,7 +321,7 @@ Context (use for "today" and "now"; do not repeat it unless the query asks about
 
 ### Input for a narrative that continues
 
-When Jev judged the query a continuation of the narrative on screen (`continuation` in the decision), `input` is a list of `user_input` and `model_output` steps instead of a string, Google's stateless shape; `store` stays false. Oldest first: `{"type": "user_input", "content": [{"type": "text", "text": "<earlier query>"}]}`, `{"type": "model_output", "content": [{"type": "text", "text": "<earlier answer, markup included>"}]}`, and so on, then one last `user_input` step holding the block above. At most 6 earlier turns are sent.
+When Jev judged the query a continuation of the narrative on screen (`continuation` in the decision), `input` is a list of `user_input` and `model_output` steps instead of a string, Google's stateless shape; `store` stays false. Oldest first: `{"type": "user_input", "content": [{"type": "text", "text": "<earlier query>"}]}`, `{"type": "model_output", "content": [{"type": "text", "text": "<earlier answer, markup included>"}]}`, and so on, then one last `user_input` step holding the block above. Every earlier turn is sent, however long the conversation.
 
 ### `narrative` — system instruction, max 800 output tokens
 

@@ -36,7 +36,7 @@ import Testing
         #expect(markdown.contains("### `continues` — type `noul`"))
         #expect(markdown.contains(JevRouting.continuesCriteria.yes))
         #expect(markdown.contains(JevRouting.followUpInstructions))
-        #expect(markdown.contains("`previous_queries`"))
+        #expect(markdown.contains("`conversation`"))
         #expect(markdown.contains("`continuation` (the pick is kept as `suggested`)"))
         #expect(markdown.contains("## When an answer is on screen"))
         #expect(markdown.contains("as one line when `one_line` was picked with confidence"))

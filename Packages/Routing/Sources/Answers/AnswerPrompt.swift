@@ -71,12 +71,9 @@ public enum AnswerPrompt {
         ].joined(separator: "\n")
     }
 
-    /// The most earlier turns a continued narrative sends; older ones drop
-    /// off the front. Bounds the input tokens of a long conversation.
-    public static let maxHistoryTurns = 6
-
     /// `history` is the conversation so far when the query continues a
-    /// narrative on screen; empty for a fresh answer.
+    /// narrative on screen, sent whole: every earlier query and answer, so
+    /// a reply can lean on anything said in it. Empty for a fresh answer.
     public static func request(
         format: ResponseFormat,
         query: String,
@@ -88,7 +85,7 @@ public enum AnswerPrompt {
             model: model,
             systemInstruction: system(for: format),
             input: input(query: query, context: context),
-            history: Array(history.suffix(maxHistoryTurns)),
+            history: history,
             maxOutputTokens: maxOutputTokens(for: format)
         )
     }

@@ -140,8 +140,8 @@ first text arrives.
   logged as `recencyFallback`, because the model's knowledge is months old.
 - A follow-up typed over an answer, a narrative or a one-liner, Gemini's or
   the device's own (the time in a place), sends the conversation along in
-  the state (`previous_queries`, every query so far, and `previous_answer`,
-  the last answer cut to `JevRouting.maxPreviousAnswerCharacters`), swaps
+  the state (`conversation`, every query and every answer so far, oldest
+  first, each answer whole), swaps
   the format question's instructions for ones that judge the query as the
   conversation makes it (`JevRouting.followUpInstructions`), and asks a
   third yes/no question (`continues`): is this a reply to, or a continuation
@@ -250,7 +250,7 @@ An answer that a follow-up continues (see "How a query is routed") is
 sent as a conversation: `input` becomes Google's stateless list of
 `user_input` and `model_output` steps, the earlier queries bare, the earlier
 answers with their markup as shown, and the new query last with the context
-block; at most `AnswerPrompt.maxHistoryTurns` (6) earlier turns go. Both
+block; every earlier turn goes, however long the conversation. Both
 sets of rules tell the model to read the query as a reply to its last
 answer and not to repeat itself; the one-line rules add that the reply
 stays one line. The card shows the thread as a transcript, each query a

@@ -63,8 +63,12 @@ import Testing
         let data = try request.jsonData()
         let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let state = try #require(json["state"] as? [String: Any])
-        #expect(state["previous_queries"] as? [String] == ["how do you make chocolate milk", "why cold?"], "every query, oldest first")
-        #expect(state["previous_answer"] as? String == "Cocoa clumps in hot milk.", "the last answer only")
+        let conversation = try #require(state["conversation"] as? [[String: String]])
+        #expect(conversation == [
+            ["query": "how do you make chocolate milk", "answer": "Stir **cocoa and sugar** into cold milk."],
+            ["query": "why cold?", "answer": "Cocoa clumps in hot milk."],
+        ], "every query and every answer, oldest first, without the format")
+        #expect(state["previous_queries"] == nil && state["previous_answer"] == nil)
         let questions = try #require(json["questions"] as? [String: Any])
         let format = try #require(questions["format"] as? [String: Any])
         #expect(format["instructions"] as? String == JevRouting.followUpInstructions)
@@ -95,10 +99,12 @@ import Testing
         #expect(!JevRouting.instructions.contains("conversation"), "the standalone question is unchanged")
     }
 
-    @Test func thePreviousAnswerIsCut() {
-        let long = String(repeating: "x", count: JevRouting.maxPreviousAnswerCharacters + 100)
-        let request = JevRouting.request(for: "why", locale: Locale(identifier: "en_US"), thread: [AnswerTurn(query: "q", answer: long)])
-        #expect(request.state.previousAnswer?.count == JevRouting.maxPreviousAnswerCharacters)
+    @Test func aLongConversationGoesWhole() {
+        let long = String(repeating: "x", count: 20_000)
+        let thread = (0..<30).map { AnswerTurn(query: "q\($0)", answer: $0 == 0 ? long : "a\($0)") }
+        let request = JevRouting.request(for: "why", locale: Locale(identifier: "en_US"), thread: thread)
+        #expect(request.state.conversation?.count == 30)
+        #expect(request.state.conversation?.first?.answer == long, "no answer is cut, the first included")
     }
 
     @Test func noulAnswerDecodes() throws {

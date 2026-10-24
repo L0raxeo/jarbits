@@ -19,7 +19,7 @@ import Testing
         #expect(markdown.contains(GeminiClient.defaultModel))
         #expect(markdown.contains("### `narrative` — system instruction, max \(AnswerPrompt.maxOutputTokens(for: .narrative)) output tokens"))
         #expect(markdown.contains("`user_input`") && markdown.contains("`model_output`"), "the continued-narrative shape is documented")
-        #expect(markdown.contains("At most \(AnswerPrompt.maxHistoryTurns) earlier turns"))
+        #expect(markdown.contains("Every earlier turn is sent"))
     }
 
     /// The Gemini half must be in the file; `ImagesTests` checks the whole file.

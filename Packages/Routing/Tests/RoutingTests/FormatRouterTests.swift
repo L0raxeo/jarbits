@@ -54,8 +54,11 @@ import Testing
         let body = try #require(MockTransport.requests.first?.httpBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let state = try #require(json["state"] as? [String: Any])
-        #expect(state["previous_queries"] as? [String] == ["how do you make hot chocolate", "why low heat?"])
-        #expect(state["previous_answer"] as? String == "Milk scorches above a simmer.")
+        let conversation = try #require(state["conversation"] as? [[String: String]])
+        #expect(conversation == [
+            ["query": "how do you make hot chocolate", "answer": "Heat milk, whisk in cocoa."],
+            ["query": "why low heat?", "answer": "Milk scorches above a simmer."],
+        ])
         #expect((json["questions"] as? [String: Any])?["continues"] != nil)
     }
 

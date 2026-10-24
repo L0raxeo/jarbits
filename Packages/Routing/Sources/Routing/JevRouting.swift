@@ -23,10 +23,6 @@ public enum JevRouting {
     /// new turn instead of starting a fresh card.
     public static let continuationThreshold = 0.5
 
-    /// The previous answer is cut to this many characters before it goes to
-    /// Jev: enough to judge a follow-up against, about 350 input tokens.
-    public static let maxPreviousAnswerCharacters = 1500
-
     public static let instructions = """
         Which response format best answers this web search query? Judge the \
         query as typed. If several formats could work, prefer web_results.
@@ -37,8 +33,8 @@ public enum JevRouting {
     /// format added later is named here without another edit.
     public static var followUpInstructions: String {
         let cards = ResponseFormat.allCases.filter(\.outranksConversation).map(\.rawValue).joined(separator: ", ")
-        return "Which response format best answers this web search query? The state carries the conversation so far: "
-            + "the earlier queries and the answer on screen. Judge the query as that conversation makes it, not as typed on its own. "
+        return "Which response format best answers this web search query? The state carries the whole conversation so far: "
+            + "every earlier query and every answer, oldest first. Judge the query as that conversation makes it, not as typed on its own. "
             + "A reply, a reaction or a question that leans on the answer, however short, wants narrative; or one_line when the reply is itself a single short fact, "
             + "a number, a name, a date, a yes/no, as \"and chile?\" after a capital is. "
             + "Pick another format only when the query asks for the kind of thing that format shows: \(cards), each described below; "
@@ -46,10 +42,11 @@ public enum JevRouting {
     }
 
     public static let continuesInstructions = """
-        The state carries the previous query and the answer the user is looking \
-        at. Is this query a continuation of that exchange: a reply, a reaction, \
-        a request to go on or to clarify, or a question that only makes sense \
-        given that answer?
+        The state carries the whole conversation so far, every earlier query \
+        and every answer, oldest first; the last answer is the one the user is \
+        looking at. Is this query a continuation of that conversation: a reply, \
+        a reaction, a request to go on or to clarify, or a question that only \
+        makes sense given what was said in it?
         """
 
     public static let continuesCriteria = (
@@ -159,7 +156,7 @@ public enum JevRouting {
     )
 
     /// `thread` is the conversation on screen, oldest first, when the query
-    /// was typed over an answer: its queries and last answer go into the
+    /// was typed over an answer: every query and answer of it go into the
     /// state, the format question reads the query in that light, and the
     /// `continues` question is added. `opened` is a site this app opened by
     /// name and still shows: its name and host go into the state and the
@@ -174,9 +171,8 @@ public enum JevRouting {
             )),
             (recencyQuestionID, .noul(instructions: recencyInstructions, criteria: recencyCriteria)),
         ] + recallQuestions
-        if let last = thread.last {
-            state.previousQueries = thread.map(\.query)
-            state.previousAnswer = String(last.answer.prefix(maxPreviousAnswerCharacters))
+        if !thread.isEmpty {
+            state.conversation = thread.map { RouteState.Exchange(query: $0.query, answer: $0.answer) }
             questions.append((continuesQuestionID, .noul(instructions: continuesInstructions, criteria: continuesCriteria)))
         }
         if let opened {

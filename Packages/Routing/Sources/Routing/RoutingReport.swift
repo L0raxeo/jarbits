@@ -38,7 +38,7 @@ public enum RoutingReport {
         out.append("|---|---|")
         out.append("| `query` | The text as typed, trimmed. |")
         out.append("| `locale` | The device locale identifier, e.g. `en_US`. |")
-        out.append("| `previous_queries`, `previous_answer` | Only while a narrative or one-line answer is on screen and the query was typed over it: every query of that conversation, oldest first, and the last answer cut to \(JevRouting.maxPreviousAnswerCharacters) characters. The format question then reads differently and one more question is asked; see \"When an answer is on screen\". |")
+        out.append("| `conversation` | Only while a narrative or one-line answer is on screen and the query was typed over it: every exchange of that conversation, oldest first, each `{\"query\": …, \"answer\": …}` with the answer whole. The format question then reads differently and one more question is asked; see \"When an answer is on screen\". |")
         out.append("| `opened_site_name`, `opened_site_host` | Only while a site this app opened by name is on screen: the name asked for and the host opened. One more question is asked; see \"When a site is on screen\". |")
         out.append("")
         out.append("Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can decide itself becomes a card at once, opens a site the device already knows, or searches the term after a search verb; Jev is not asked in any of these cases.")
