@@ -99,7 +99,8 @@ final class AnswerSession {
         let clock = ContinuousClock()
         let start = clock.now
         let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
-        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history)
+        // An explicit ask ("ask AI what GDP means") sends the question alone; `query` keeps the words as typed.
+        let request = AnswerPrompt.request(format: format, query: AnswerQuery.question(for: query), context: context, model: client.model, history: history)
 
         var usage: AnswerUsage?
         var firstTokenMs: Int?

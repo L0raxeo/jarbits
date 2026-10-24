@@ -52,20 +52,25 @@ struct HomeView: View {
     private var showsHint: Bool { mode == .circle }
     /// The microphone is on while the circle is on screen, and over a result
     /// while the user does nothing: no finger down, no scroll moving, no
-    /// sound playing (the page's media, a full-screen player, another app's
-    /// audio), no keyboard, nothing loading. The inactive phase is
-    /// ignored: the permission alert itself causes it.
+    /// keyboard, nothing loading. A video or music playing is not a reason:
+    /// the microphone shares the session and never touches what plays. Only
+    /// recording on purpose stands it aside. The inactive phase is ignored:
+    /// the permission alert itself causes it.
     private var listening: Bool {
-        guard scenePhase != .background else { return false }
-        if mode == .circle { return !session.attention.busy }
+        guard scenePhase != .background, !session.microphone.exclusive else { return false }
+        if mode == .circle { return true }
         return session.stage == .ready && !followingUp && !capsuleLoading && session.attention.idle
+    }
+    /// The microphone is open, or about to be: the clay is purple. Red
+    /// otherwise, so it is always plain whether the app can hear.
+    private var attentive: Bool {
+        switch session.dictation.phase {
+        case .listening, .starting: true
+        case .idle, .finishing, .unavailable: false
+        }
     }
     /// A word has been heard over the result: the capsule is the small circle.
     private var hearing: Bool { session.stage == .ready && session.dictation.heardSpeech && !followingUp }
-    /// Whatever can be playing is looked at while on screen. The inactive
-    /// phase is kept, as for `listening`: Control Center over a video must
-    /// not clear it.
-    private var watchesAudio: Bool { scenePhase != .background }
     /// Over a result, or standing in for the clay while a follow-up loads.
     private var showsCapsule: Bool { showsResult || capsuleSubmitted }
     /// The wave while a query is in flight, or while the page behind a web
@@ -155,6 +160,7 @@ struct HomeView: View {
                         mode: mode,
                         width: proxy.size.width - 48,
                         voice: session.dictation.level,
+                        attentive: attentive,
                         onSubmit: submit,
                         onTap: {
                             if session.stage == .idle { typing = true } else { dismiss() }
@@ -227,6 +233,7 @@ struct HomeView: View {
                             loading: capsuleLoading,
                             hearing: hearing,
                             voice: session.dictation.level,
+                            attentive: attentive,
                             maxWidth: proxy.size.width - 32,
                             fieldWidth: proxy.size.width - 48,
                             draft: $followDraft,
@@ -265,10 +272,12 @@ struct HomeView: View {
             .frame(width: 0, height: 0)
         }
         .onChange(of: listening, initial: true) { _, listening in
+            #if DEBUG
+            if !listening {
+                print("listening off: stage \(session.stage), idle \(session.attention.idle), exclusive \(session.microphone.exclusive), loading \(capsuleLoading), keyboard \(followingUp || typing)")
+            }
+            #endif
             if listening { session.startListening() } else { session.stopListening() }
-        }
-        .onChange(of: watchesAudio, initial: true) { _, watches in
-            if watches { session.startWatchingAudio() } else { session.stopWatchingAudio() }
         }
         .onChange(of: hearing) { _, hearing in
             // The circle ignores the scroll; the reserve under it must match.

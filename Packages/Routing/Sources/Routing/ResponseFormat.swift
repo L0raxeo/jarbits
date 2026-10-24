@@ -16,6 +16,11 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     /// A website asked for by name ("go to youtube"). Resolved on the device
     /// from the site book, or searched once and learned; see `SiteBook`.
     case site
+    /// Videos to watch ("videos of pele", "the dune trailer"): Google's
+    /// video results for the term, with the asking gone; see `VideoQuery`.
+    /// Appended last, like every format after the first, so the options
+    /// Jev already knew keep their order.
+    case video
 
     /// What the app shows when the router cannot or should not decide.
     public static let fallback: ResponseFormat = .webResults
@@ -30,7 +35,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     public var outranksConversation: Bool {
         switch self {
         case .narrative, .oneLine, .webResults: false
-        case .map, .stock, .recall, .image, .site: true
+        case .map, .stock, .recall, .image, .video, .site: true
         }
     }
 
@@ -39,7 +44,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     public var stage: Stage {
         switch self {
         case .webResults: .verified
-        case .narrative, .oneLine, .image, .recall, .site: .built
+        case .narrative, .oneLine, .image, .video, .recall, .site: .built
         case .map, .stock: .routed
         }
     }
@@ -53,6 +58,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .stock: "Stock"
         case .oneLine: "One-line answer"
         case .image: "Image"
+        case .video: "Videos"
         case .recall: "Recall"
         case .site: "Site"
         }
@@ -67,6 +73,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .stock: "Ticker resolution, a market-data provider, Swift Charts card"
         case .oneLine: nil
         case .image: nil
+        case .video: nil
         case .recall: nil
         case .site: nil
         }
@@ -78,9 +85,9 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         switch self {
         case .webResults:
             Criterion(
-                what: "A standard page of web search results. The default for broad, vague or multi-part queries, for a search for something on a site, for browsing many pictures or videos, and for anything the other formats do not clearly fit. A bare topic with no ask, such as \"chocolate milk\" or \"quantum computing\", is one of these: the user wants the general spread, not one answer. So is a query that asks for the search itself, such as \"google steve jobs\" or \"look up flights to lima\", whatever the topic.",
-                notFor: "A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, a request to open a website by its name, or the bare name of one specific thing with a definitive look, which wants a picture.",
-                examples: ["best laptops 2026", "news", "chocolate milk", "google steve jobs", "python tutorial reddit", "zillow homes in austin", "quantum computing", "dune part 3 trailer", "golden retriever puppies"]
+                what: "A standard page of web search results. The default for broad, vague or multi-part queries, for a search for something on a site, for browsing many pictures, and for anything the other formats do not clearly fit. A bare topic with no ask, such as \"chocolate milk\" or \"quantum computing\", is one of these: the user wants the general spread, not one answer. So is a query that asks for the search itself, such as \"google steve jobs\" or \"look up flights to lima\", whatever the topic.",
+                notFor: "A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, a request to open a website by its name, the bare name of one specific thing with a definitive look, which wants a picture, or videos to watch, which want video results.",
+                examples: ["best laptops 2026", "news", "chocolate milk", "google steve jobs", "python tutorial reddit", "zillow homes in austin", "quantum computing", "golden retriever puppies"]
             )
         case .narrative:
             Criterion(
@@ -136,6 +143,12 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
                     "mona lisa",
                     "aston martin db5",
                 ]
+            )
+        case .video:
+            Criterion(
+                what: "A page of videos to watch. The query asks for videos, clips, highlights, a trailer, a music video, a performance, a tutorial to watch, or to watch or play something: the user wants to press play, not read.",
+                notFor: "A video the user saw in this app before (\"the video I was watching\"), which is recall; a website or app by its name (\"open youtube\"), which is site; one still picture of a thing, which is image; and a topic that merely has videos about it, with no ask to watch, which is web results.",
+                examples: ["videos of pele", "pele highlights", "dune part 3 trailer", "watch the super bowl halftime show", "show me cat videos", "how to tie a tie video", "lofi music video"]
             )
         case .recall:
             Criterion(

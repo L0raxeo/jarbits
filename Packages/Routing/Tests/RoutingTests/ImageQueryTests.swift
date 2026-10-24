@@ -22,7 +22,22 @@ import Testing
         #expect(ImageQuery.subject(for: query) == subject, "\(query)")
     }
 
-    @Test(arguments: ["dominican flag", "eiffel tower", "mona lisa", "starry night painting", "picture of", "show me", "please"])
+    /// Wikipedia ranks "Dominican flag, I said." with the flag of Panama
+    /// first; the bare subject finds the Dominican flag.
+    @Test(arguments: [
+        ("Dominican flag, I said.", "Dominican flag"),
+        ("dominican flag i said", "dominican flag"),
+        ("no not that, the dominican flag", "dominican flag"),
+        ("No, not that one. Show me the Dominican flag!", "Dominican flag"),
+        ("i meant the dominican flag", "dominican flag"),
+        ("the dominican flag is what I meant", "dominican flag"),
+        ("no not that one picture of the dominican flag please", "dominican flag"),
+    ])
+    func aCorrectionComesOffAroundTheSubject(query: String, subject: String) {
+        #expect(ImageQuery.subject(for: query) == subject, "\(query)")
+    }
+
+    @Test(arguments: ["dominican flag", "eiffel tower", "mona lisa", "starry night painting", "picture of", "show me", "please", "i said", "no man's sky"])
     func aBareSubjectIsLeftAlone(query: String) {
         #expect(ImageQuery.parse(query) == nil, "\(query)")
         #expect(ImageQuery.subject(for: query) == query)

@@ -90,8 +90,10 @@ actor MemoryStore {
 
     /// The candidates for a recall: filtered by the query's kind and time
     /// words, ranked by words then recency; see `MemorySearch.shortlist`.
-    func shortlist(_ query: String, now: Date = .now) -> [MemoryRecord] {
-        MemorySearch.shortlist(records(), query: query, now: now)
+    /// `intent` is Jev's reading of the ask from the routing decision; nil
+    /// leaves the word lists to decide.
+    func shortlist(_ query: String, now: Date = .now, intent: RecallIntent? = nil) -> [MemoryRecord] {
+        MemorySearch.shortlist(records(), query: query, now: now, intent: intent)
     }
 
     /// Everything goes: the file and every picture. Debug builds offer this

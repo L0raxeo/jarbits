@@ -31,11 +31,14 @@ final class BrowserSession {
     /// Streams Gemini answers; nil when no Gemini key is configured, in which
     /// case the router never produces an answer plan.
     let answer: AnswerSession?
-    /// Loads Wikipedia pictures for image plans.
-    let images = ImageSession()
-    /// The microphone, on the idle screen and over a result; what it hears
-    /// is never shown.
-    let dictation = DictationSession()
+    /// Loads pictures for image plans: Wikipedia, then Brave behind it.
+    let images = ImageSession(lookup: BrowserSession.makeImageLookup())
+    /// The one microphone: its session set once at launch, shared by whoever
+    /// listens, never touching what plays.
+    let microphone: Microphone
+    /// Passive listening, on the idle screen and over a result; what it
+    /// hears is never shown.
+    let dictation: DictationSession
     /// Whether the user is doing anything; over a result the microphone
     /// listens only while they are not.
     let attention = Attention()
@@ -93,12 +96,15 @@ final class BrowserSession {
     private let chromeHandler: PageChromeHandler
     private var loadTask: Task<Void, Never>?
     private var navigationWatch: Task<Void, Never>?
-    private var audioWatch: Task<Void, Never>?
-    /// How often everything that can be playing is looked at.
-    private static let audioPoll: Duration = .milliseconds(500)
-    /// How long past a finger lift the microphone waits before looking: a
-    /// video that lift started needs a beat to register as playing.
+    /// How long past a finger lift the microphone waits before looking at
+    /// what plays, when it has to look: a video that lift started needs a
+    /// beat to register as playing.
     private static let audioSettle: Duration = .milliseconds(300)
+    /// What the watcher last said about the page's own media: whether any
+    /// plays out loud, and how many elements the main document has. None
+    /// means a player, if there is one, sits in a frame the watcher cannot see.
+    private var pageAudible = false
+    private var pageMediaCount = 0
     private var loadGeneration = 0
     /// Counts navigations, so a stuck one can stop showing as loading.
     private var navigationCount = 0
@@ -126,6 +132,9 @@ final class BrowserSession {
     init(router: any Router, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared) {
         let handler = PageChromeHandler()
         chromeHandler = handler
+        let microphone = Microphone()
+        self.microphone = microphone
+        dictation = DictationSession(microphone: microphone)
         self.memory = memory
         self.recall = recall
         self.siteSearch = siteSearch
@@ -158,6 +167,10 @@ final class BrowserSession {
         }
         handler.onAddress = { [weak self] url, title in
             self?.addressChanged(to: url, title: title)
+        }
+        handler.onAudio = { [weak self] audible, media in
+            self?.pageAudible = audible
+            self?.pageMediaCount = media
         }
         watchNavigations()
     }
@@ -271,44 +284,36 @@ final class BrowserSession {
 
     // MARK: Attention
 
-    /// While on screen, twice a second: the page's media, a full-screen
-    /// player, or another app's audio, for `attention`. Nothing listens over
-    /// sound of any kind, a muted preview included: opening the microphone
-    /// takes the audio session and would pause what is playing.
-    func startWatchingAudio() {
-        guard audioWatch == nil else { return }
-        audioWatch = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                await observeAudio()
-                try? await Task.sleep(for: Self.audioPoll)
-            }
+    /// Whether anything is playing: the page's audible media, a full-screen
+    /// player, or another app's audio. Not a reason to stop listening, since
+    /// the microphone shares the session and never touches what plays; only
+    /// a reason not to take the session back when something else has it.
+    private func audioPlaying() async -> Bool {
+        let other = AVAudioSession.sharedInstance().isOtherAudioPlaying
+        let fullScreen = page.fullscreenState != .notInFullscreen
+        var unseen = false
+        if !other, !fullScreen, !pageAudible, pageMediaCount == 0 {
+            // A player in a frame the watcher cannot see counts whenever it
+            // plays, since nothing says whether it is heard.
+            unseen = await page.mediaPlaybackState() == .playing
         }
-    }
-
-    func stopWatchingAudio() {
-        audioWatch?.cancel()
-        audioWatch = nil
-        attention.busy = false
-    }
-
-    /// One look at everything that can be playing; `attention.busy` follows.
-    @discardableResult
-    private func observeAudio() async -> Bool {
-        var playing = AVAudioSession.sharedInstance().isOtherAudioPlaying || page.fullscreenState != .notInFullscreen
-        if !playing { playing = await page.mediaPlaybackState() == .playing }
-        attention.busy = playing
+        let playing = other || fullScreen || pageAudible || unseen
+        #if DEBUG
+        if playing {
+            print("audio: \(other ? "another app is playing" : fullScreen ? "page is full screen" : pageAudible ? "page audio is audible" : "a frame's player is playing"); the session stays theirs")
+        }
+        #endif
         return playing
     }
 
-    /// For the microphone, before it opens: a video started on the finger
-    /// lift that woke it has not registered yet, so wait until `audioSettle`
-    /// past the lift, which is no wait at all for any other start; then look.
+    /// For the microphone, when the session is not ours and it would have
+    /// to take it back: wait until `audioSettle` past the last finger lift
+    /// (no wait at all for any other start), then look.
     private func audioIsQuiet() async -> Bool {
         if let lift = attention.lastTouchEnded {
             try? await Task.sleep(until: lift + Self.audioSettle, clock: .continuous)
         }
-        return await !observeAudio()
+        return await !audioPlaying()
     }
 
     /// The Google results page for the current query, from under an answer;
@@ -324,7 +329,7 @@ final class BrowserSession {
         load(QueryParser.searchURL(for: lastQuery))
     }
 
-    /// A page the result links to, such as the Wikipedia article behind an image.
+    /// A page the result links to, such as the article or the site behind an image.
     func open(_ url: URL) {
         load(url)
     }
@@ -343,6 +348,8 @@ final class BrowserSession {
         learningSite = nil
         chrome = .plain
         pendingReport = nil
+        pageAudible = false
+        pageMediaCount = 0
         pageLoading = false
         stage = .idle
     }
@@ -394,36 +401,58 @@ final class BrowserSession {
                 load(QueryParser.searchURL(for: query))
                 return
             }
+            // Jev's reading of the ask came with the routing decision: the
+            // kinds, whether a thing is named, whether a set is wanted. No
+            // second request is needed for it; nil (no key, an error) leaves
+            // the word lists to decide.
+            let intent = decision.recall
+            let filters = RecallFilters.parse(query, now: .now, intent: intent)
             Task { [weak self] in
                 guard let self else { return }
-                let shortlist = await memory.shortlist(query)
+                let shortlist = await memory.shortlist(query, intent: intent)
                 guard query == lastQuery, stage == .routing else { return }
                 guard !shortlist.isEmpty else {
-                    recalled([], shortlisted: 0, source: "words", for: query, decision: decision)
+                    recalled([], shortlisted: 0, source: "words", filters: filters, for: query, decision: decision)
+                    return
+                }
+                // "my last five searches": the newest so many, as they are;
+                // a count is not a thing to judge.
+                if filters.count != nil {
+                    recalled(shortlist, shortlisted: shortlist.count, source: "count", filters: filters, for: query, decision: decision)
+                    return
+                }
+                // "all the videos from yesterday": a set of a kind with nothing
+                // named is listed as it is; there is no thing to judge against.
+                if filters.allTitle != nil {
+                    recalled(shortlist, shortlisted: shortlist.count, source: "all", filters: filters, for: query, decision: decision)
                     return
                 }
                 guard let recall else {
-                    recalled(shortlist, shortlisted: shortlist.count, source: "words", for: query, decision: decision)
+                    recalled(shortlist, shortlisted: shortlist.count, source: "words", filters: filters, for: query, decision: decision)
                     return
                 }
-                let verdict = await recall.resolve(query, candidates: shortlist)
+                // "everything about the dyson": every memory about it, not the one.
+                let collection = filters.collection
+                let verdict = await recall.resolve(query, candidates: shortlist, collection: collection)
                 guard query == lastQuery, stage == .routing else { return }
                 switch verdict {
                 case let .picked(picks, latencyMs):
                     // One sure pick opens; otherwise everything plausible goes
                     // to the picker, so an unsure Jev leaves the choice to the user.
+                    // A collection is everything Jev said was about it, newest first.
                     let sure = picks.filter { $0.probability >= RecallRouting.recallThreshold }
-                    let shown = sure.count == 1 ? [sure[0].record] : picks.map(\.record)
-                    recalled(shown, shortlisted: shortlist.count, source: "jev", latencyMs: latencyMs, for: query, decision: decision)
+                    let shown = collection ? picks.map(\.record).sorted { $0.date > $1.date }
+                        : sure.count == 1 ? [sure[0].record] : picks.map(\.record)
+                    recalled(shown, shortlisted: shortlist.count, source: "jev", latencyMs: latencyMs, filters: filters, for: query, decision: decision)
                 case let .failed(reason):
                     // Jev's own timeout is shorter than ours: the shortlist stands in, in word order.
-                    recalled(shortlist, shortlisted: shortlist.count, source: "error: \(reason)", for: query, decision: decision)
+                    recalled(shortlist, shortlisted: shortlist.count, source: "error: \(reason)", filters: filters, for: query, decision: decision)
                 }
             }
             Task { [weak self, timeout = recallTimeout] in
                 try? await Task.sleep(for: timeout)
                 guard let self, query == lastQuery, stage == .routing else { return }
-                recalled([], shortlisted: nil, source: "error: timeout", for: query, decision: decision)
+                recalled([], shortlisted: nil, source: "error: timeout", filters: filters, for: query, decision: decision)
             }
         case let .site(name):
             answer?.cancel()
@@ -522,25 +551,31 @@ final class BrowserSession {
 
     // MARK: Memories
 
-    /// What a recall found, in the order to show: nothing, so the words go
-    /// to the web as a plain search; one thing, shown at once; several, a
-    /// picker. `source` says which path chose them, for the log.
-    private func recalled(_ found: [MemoryRecord], shortlisted: Int?, source: String, latencyMs: Int? = nil, for query: String, decision: RouteDecision) {
+    /// What a recall found, in the order to show: nothing, so the content
+    /// words go to the web as a plain search ("that thing about gingivitis
+    /// again" searches "gingivitis"); one thing, shown at once; several, a
+    /// picker, titled by the topic when everything about it was asked for.
+    /// `source` says which path chose them, for the log.
+    private func recalled(_ found: [MemoryRecord], shortlisted: Int?, source: String, latencyMs: Int? = nil, filters: RecallFilters, for query: String, decision: RouteDecision) {
         #if DEBUG
         print("recall \"\(query)\" by \(source): \(found.count) of \(shortlisted.map(String.init) ?? "?") \(found.map { "\($0.kind.rawValue) \"\($0.title)\"" })")
         #endif
+        let topic = MemorySearch.topic(of: query)
         let summary = RecallSummary(
-            matches: found.count, picked: found.count == 1 ? found[0].kind : nil,
+            matches: found.count, collection: filters.collection, count: filters.count, picked: found.count == 1 ? found[0].kind : nil,
             shortlisted: shortlisted, judged: source == "jev" ? found.count : nil, source: source, latencyMs: latencyMs
         )
         record(decision, query: query, recall: summary)
+        let title = filters.countTitle ?? filters.allTitle ?? (filters.collection && !topic.isEmpty ? "Everything about \(topic)" : nil)
         switch found.count {
         case 0:
-            load(QueryParser.searchURL(for: query))
-        case 1:
+            load(QueryParser.searchURL(for: topic.isEmpty ? query : topic))
+        case 1 where filters.count == nil && filters.allTitle == nil:
+            // "the last 5 things" with one thing to show lists it: the ask
+            // was for a list, and the one found should be seen before it opens.
             replay(found[0])
         default:
-            plans = [.recallPicker(found)]
+            plans = [.recallPicker(found, title: title)]
             stage = .ready
         }
     }
@@ -676,7 +711,9 @@ final class BrowserSession {
             record(decision, query: images.query, image: summary)
         }
         if case .fellBackToWeb = summary.outcome {
-            load(QueryParser.searchURL(for: images.query))
+            // Neither Wikipedia nor Brave had a picture: Google Images for the
+            // subject alone, not web results for the whole sentence.
+            load(QueryParser.imageSearchURL(for: ImageQuery.subject(for: images.query)))
         }
     }
 
@@ -807,6 +844,9 @@ final class BrowserSession {
         documentGeneration += 1
         documentSettled = false
         pendingReport = nil
+        // A new page starts with no report; its watcher sends one on its first look.
+        pageAudible = false
+        pageMediaCount = 0
         let host = page.url?.host()
         if host != previousHost { chrome = .plain }
         previousHost = host

@@ -24,12 +24,16 @@ struct Clay: View {
     var width: CGFloat
     /// How loud the voice is, 0…1; the circle swells with it.
     var voice: Double = 0
+    /// The microphone is open: purple. Otherwise the clay turns a soft red.
+    var attentive: Bool = true
     var onSubmit: () -> Void
     /// A tap on the circle or the line.
     var onTap: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = VoicePulse()
+    /// 0 purple … 1 red, eased over a few frames rather than switched.
+    @State private var warmth = VoicePulse(attack: 0.35, release: 0.35)
 
     private static let circleSize: CGFloat = 168
     private static let capsuleHeight: CGFloat = 56
@@ -57,16 +61,17 @@ struct Clay: View {
             // The crest's position along the line, 0…1, swinging end to end.
             let crest = 0.5 + 0.5 * sin(2 * .pi * t / Self.wavePeriod)
             let heard = reduceMotion ? 0 : pulse.step(toward: voice, at: t)
+            let red = reduceMotion ? (attentive ? 0 : 1) : warmth.step(toward: attentive ? 0 : 1, at: t)
 
             WavyCapsule(
                 amplitude: mode == .line ? Self.waveHeight : 0,
                 crest: crest,
                 thickness: mode == .line ? Self.lineThickness : frameSize.height
             )
-                .fill(gradient(at: t))
+                .fill(Palette.breathingMesh(at: t, period: Self.breathPeriod, warmth: red))
                 .frame(width: frameSize.width, height: frameSize.height)
                 .scaleEffect(mode == .circle ? 1 + 0.05 * breath + 0.12 * heard : 1)
-                .shadow(color: Palette.glow.opacity(mode == .line ? 0.25 : 0.35), radius: 24, y: 10)
+                .shadow(color: Palette.glow(red).opacity(mode == .line ? 0.25 : 0.35), radius: 24, y: 10)
                 .contentShape(Capsule())
                 // A tap on the circle or the line; while a capsule the field
                 // itself takes the touches.
@@ -96,9 +101,6 @@ struct Clay: View {
             .animation(expanded ? .easeIn(duration: 0.25).delay(0.15) : .easeOut(duration: 0.15), value: expanded)
     }
 
-    private func gradient(at t: TimeInterval) -> MeshGradient {
-        Palette.breathingMesh(at: t, period: Self.breathPeriod)
-    }
 }
 
 /// Follows the microphone level between its updates, which arrive about ten
@@ -107,11 +109,20 @@ struct Clay: View {
 final class VoicePulse {
     private var value: Double = 0
     private var last: TimeInterval?
+    private let attack: Double
+    private let release: Double
+
+    /// `attack` and `release` are time constants, in seconds, for rising
+    /// and falling.
+    init(attack: Double = 0.05, release: Double = 0.18) {
+        self.attack = attack
+        self.release = release
+    }
 
     func step(toward target: Double, at t: TimeInterval) -> Double {
         let dt = min(0.1, max(0, t - (last ?? t)))
         last = t
-        let tau = target > value ? 0.05 : 0.18
+        let tau = target > value ? attack : release
         value += (target - value) * (1 - exp(-dt / tau))
         return value
     }

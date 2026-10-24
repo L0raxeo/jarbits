@@ -2,9 +2,9 @@
 
 An iOS browser where a query goes through a router that decides what kind of
 card to show. The router is TypeSafe's Jev, a System One model: it picks one of
-eight response formats and reports how sure it is. Five providers exist
+nine response formats and reports how sure it is. Five providers exist
 behind it: a Google results web view (`web_results`), Gemini answers for
-`narrative` and `one_line`, a Wikipedia picture for `image`, the phone's
+`narrative` and `one_line`, a Wikipedia (or Brave) picture for `image`, the phone's
 own memories for `recall` (something seen before, brought back), and the
 phone's site book for `site` (a website asked for by name, "go to youtube").
 
@@ -52,10 +52,12 @@ link tapped inside a page shows the same line while the page loads. Tapping
 the line while it waves returns to the circle. Pulling down at the top of
 a page reloads it, with the system's spinner. Over a result the microphone
 listens too, but only while you do nothing: no finger on the screen, no
-scroll moving, nothing playing on the page or from another app, no
-keyboard. Once a word is heard the
-capsule rounds into a small circle at the left with "Disregard" and "I'm
-done talking" beside it; any touch turns it back and forgets the words.
+scroll moving, no keyboard. A video or music playing is not a reason to
+stop: the audio session is set once, at launch, to record and play while
+mixing, and never touched again, so the microphone cannot pause anything.
+Whenever it is not open the clay turns a soft red. Once a word is heard
+the capsule rounds into a small circle at the left with "Disregard" and
+"I'm done talking" beside it; any touch turns it back and forgets the words.
 
 The page is SwiftUI's `WebView`. A site's tab bar is kept above the capsule
 by laying the page out to end there, and it follows the capsule as fast as
@@ -99,6 +101,13 @@ first text arrives.
   grammar (`SiteQuery`: leads, one opener, articles, the name, trailers)
   and the site book (`SiteBook`, see "Sites"). A bare name ("youtube") or
   a name the book does not know goes on to Jev. Logged as `local("site")`.
+- A question handed to the model by name ("ask AI what are some
+  alternatives to Dyson", "can you ask the AI what GDP means") is a
+  narrative answer to the question after the ask, with no format question
+  and no recency gate: the user asked for the model's answer knowing what
+  it is (`AnswerQuery`: leads, one opener, at most one connective, the
+  question, trailers). The card keeps the words as typed; Gemini gets the
+  question alone. Skipped without a Gemini key. Logged as `local("ask")`.
 - A query led by a verb that only ever means "search" ("search for steve
   jobs", "look up flights to lima") is web results for the term, with no
   model asked (`SearchQuery`). Logged as `local("search")`. "google steve
@@ -181,6 +190,48 @@ TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "som
 
 It prints the pick, the confidence and every option's probability.
 
+To run the whole golden set, `Packages/Routing/Evals/routing.jsonl` (one
+labelled query per line: the query, what was on screen, the format the app
+should act on, and optionally Jev's pick, the path, the search term, the
+image subject or the site name):
+
+```
+TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report eval --out before.jsonl
+```
+
+Every case goes through the device rules, the address check and then Jev,
+as in the app. It prints the misses with the gate that decided and the
+probability spread, then a pass count per format. Jev's answers are cached
+under `Packages/Routing/.evalcache/` by a hash of the request body, so a
+threshold or word-list change re-runs instantly and keyless (`--floor 0.6`,
+`--recency 0.4`, `--no-network`), and only an edited criterion or
+instruction asks again. `--baseline before.jsonl` lists what flipped
+pass→fail and fail→pass since that run and exits 1 on a regression;
+`--only image` runs one format. A query that routed wrongly on the phone
+becomes one more line in the file, with its intended format and a note.
+
+The golden set only catches what it already knows. To stress the router
+with queries nobody has labelled, by hand and whenever you like:
+
+```
+TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report sample 50
+```
+
+Fifty unlabelled queries drawn from
+`Packages/Routing/Evals/pool.txt` (a few hundred plausible phone queries
+across the nine formats, with the typos, casing, leads and trailers people
+type) go through the same chain, and the output is a triage list rather than
+pass/fail. Each row is what the app did (format, source, confidence,
+recency, the runner-up format), why to doubt it, and a `{"query": …,
+"format": …}` line labelled with what the app did, to paste into
+`routing.jsonl` as is when that was right or with the format corrected when
+it was not. Rows come most doubtful first: a confidence or recency within
+0.15 of its threshold or a gate that fired (the closest call first), then
+the device rules, then anything that failed or was not cached, then the
+sure rows. The draw is fixed by the day (or `--seed`), so a repeat the same
+day runs from the cache; `--from-log decisions.jsonl` samples the queries
+of a log exported from the phone instead of the pool.
+
 ## Answer cards
 
 `AnswerSession` streams one answer at a time from Gemini `gemini-3.1-flash-lite`
@@ -254,21 +305,31 @@ block without changing the cards.
 ## Image cards
 
 `image` is for one specific, named thing with a definitive look: a flag, a
-logo, a landmark, a painting, a person, a species. `ImageSession` asks
-Wikipedia, free and without a key: `ImageQuery` takes the asking off the
-query ("show me a picture of the eiffel tower" → "eiffel tower", "what does
-a capybara look like" → "capybara"), the REST page search turns the subject
-into article candidates, the page summary of the first three with a
-thumbnail gives each article's lead image, and disambiguation pages and
-articles without an image are skipped. The first picture is downloaded and
-decoded before the card fades in, so the wave line lasts until it is on
-screen; the others are alternates, up to two, shown as thumbnails under the
-title and description with a "Wikipedia" link to the article (which carries
-the image's licence and author) and the usual "Web results". Nothing found,
-or nothing within 10 s, falls back to web results. The log records the
-article, the candidate count, the latency and the outcome; if misses turn
-out to be common, the upgrade is to let Gemini turn the query into an
-article title before searching.
+logo, a landmark, a painting, a person, a species. `ImageSession` runs an
+`ImageLookup` over two sources in order. Wikipedia first, free and without
+a key: `ImageQuery` takes the asking off the query ("show me a picture of
+the eiffel tower" → "eiffel tower", "what does a capybara look like" →
+"capybara"), the REST page search turns the subject into article
+candidates, the page summary of the first three with a thumbnail gives each
+article's lead image, and disambiguation pages and articles without an
+image are skipped. When Wikipedia answers and has nothing (a 2025 product
+has no article yet), and a Brave key is configured, Brave's image search is
+asked for the same subject (`BraveImageSearch`, five results, strict safe
+search, the same key as the site search); the first result whose full-size
+image downloads and decodes is the picture. A Wikipedia error or timeout
+is not a miss and does not reach Brave. Either way the first picture is
+downloaded and decoded before the card fades in, so the wave line lasts
+until it is on screen; the others are alternates, up to two, shown as
+thumbnails under the title and description with a link to the page the
+picture came from, "Wikipedia" for the article (which carries the image's
+licence and author) or the site's host for a Brave result, and the usual
+"Web results". Nothing from either source, or nothing within 10 s per
+source, falls back to Google's image results for the subject alone, never
+web results for the whole sentence. The log records the article or
+result title, the source, the candidate count, the latency and the
+outcome, with what each source did on a miss; if misses turn out to be
+common, the upgrade is to let Gemini turn the query into an article title
+before searching.
 
 ## Recall
 
@@ -297,8 +358,17 @@ its record; past 5 000 records the oldest go, which keeps the file in the
 tens of megabytes at most. Nothing in it leaves the phone, and Google's
 interaction storage stays off.
 
-A recall is resolved in three steps. First the query's kind and time
-words become filters over what each record stores (`RecallFilters`):
+A recall is resolved in four steps. First, Jev's reading of the ask,
+answered inside the routing request itself so a recall costs no second
+round trip (`RecallIntent`, the `recall_*` questions in ROUTING.md): which
+kinds of memory are wanted, whether a particular thing is named, and
+whether a set is wanted. When nothing is named, no word in the query is
+matched against the memories at all, which is what keeps "the last 5
+things we were looking at" from landing on whatever page holds the word
+"were". The kind and collection words below are only the fallback when no
+intent came back. Second, the count and the time words, which the device
+reads itself, and in the fallback the kind words, become filters over what
+each record stores (`RecallFilters`):
 "video" or "watching" keeps pages on a video host (a short list in
 `MemoryRecord.videoHosts`; a host's front page, as "go to youtube" opens
 it, is the site and not a video) or titled as one, "answer" or "chat" keeps
@@ -313,12 +383,40 @@ at most ten (`MemorySearch.shortlist`). With no filter and no content word
 there is nothing to go on, and the words go to the web. Last, the
 shortlist goes to Jev in one request, a yes/no question per memory naming
 its kind, when, its host and its title (`RecallRouting`, see ROUTING.md).
-A memory at or above 0.5 is the one asked for and, alone, opens at once;
-otherwise everything at or above 0.3 is plausible: one opens, several show
-the picker in Jev's order, so an unsure Jev leaves the choice to the user; nothing
-plausible falls through to a Google search for the same words, so a wrong
+A memory at or above 0.5 is the one asked for and is shown alone;
+otherwise everything at or above 0.3 is plausible and is shown in Jev's
+order. Nothing ever opens straight away: even a single memory is shown in
+the grid, so the user sees what was found before it takes the screen; nothing
+plausible falls through to a Google search for the query's content words
+("that thing about gingivitis again" searches "gingivitis"), so a wrong
 judgement costs nothing visible. A failed or slow Jev request, or no key,
-shows the shortlist in word order instead.
+shows the shortlist in word order instead. The kind words are a preference,
+not a wall: "what you told me about the dyson" prefers an answer, but when
+no answer holds those words and pages or searches do, those are shortlisted.
+
+A query that asks for everything ("pull up everything we talked about with
+the Dyson PencilVac", "all the videos from yesterday") wants a collection,
+not one thing (`RecallFilters.collection`). The kind words are dropped, the
+shortlist is every memory holding any of the content words (the time words
+still hold), and Jev is asked, per memory, whether it is about the topic
+rather than whether it is the one. Everything at or above 0.5 is shown,
+newest first, in the grid titled "Everything about <topic>"; one alone
+opens; none searches the topic words. The log's `recall` carries
+`collection: true`.
+
+A query that asks for a count ("my last five searches", "the last 5
+things I asked you, including Google searches and AI stuff", "my recent
+pictures", "the last few pages"; "recent" or "latest" alone means five, and
+twenty is the most) wants the newest so many, not a thing
+(`RecallFilters.count`). The kind and time words filter as usual, a topic
+narrows the pool when the query names one, and the newest so many are shown
+in the grid titled "Last 5 searches and answers", even when only one was
+found, with no judge asked, since there is nothing to judge. The log's `recall` carries `count` and the
+path `count`. A set of a kind with nothing named ("all the videos from
+yesterday") is listed the same way, titled "All videos", with the path
+`all`. Try either offline with `report recall <memories.jsonl>
+"everything about the dyson"`, which prints the filters, the shortlist and
+Jev's verdict per memory.
 A page's address is kept without Google's click code or `utm_` tags, so
 the same page tapped twice from results is one memory. The picker is a
 two-wide grid of tiles, like Safari's tab overview: a page shows the
@@ -393,12 +491,12 @@ what `SiteQuery` makes of a query, what the seeded book says, and with
 
 | Path | Role |
 |---|---|
-| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence, recency, continuation and rejection gates, `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, over `QueryTokens`), the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client. `Sites`: the Brave web search client. Tests run on macOS. |
+| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence, recency, continuation and rejection gates, `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, over `QueryTokens`), the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
 | `Browser/Router/Router.swift` | The seam: query in, `RouteResult` out. |
-| `Browser/Router/LocalFirstRouter.swift` | Tries `LocalAnswers`, the site book and the search verbs before the router it wraps; a hit is a `.localAnswer`, `.site` or `.web` plan. |
+| `Browser/Router/LocalFirstRouter.swift` | Tries `LocalAnswers`, an explicit ask, the site book and the search verbs before the router it wraps; a hit is a `.localAnswer`, `.answer`, `.site` or `.web` plan. The same chain is `DeviceRouting` in the package, for the report CLI and the eval. |
 | `Browser/Router/JevRouter.swift` | Asks Jev, maps format → `CardPlan`. Also `BrowserSession.makeRouter()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
-| `Browser/Images/ImageSession.swift` | Loads one Wikipedia picture (and its alternates) for an image plan, and the summary for the log. |
+| `Browser/Images/ImageSession.swift` | Loads one picture (and its alternates) for an image plan, Wikipedia first and Brave behind it, and the summary for the log. |
 | `Browser/Memory/MemoryStore.swift` | The memories file: load once, append as results appear, refresh a repeat within a day, drop the oldest past the cap, search by words (`MemorySearch` in the package). |
 | `Browser/Memory/SiteStore.swift` | The site book on disk: seeded on first load, written whole on each learn, touch, forget or clear. |
 | `Browser/Router/LocalRouter.swift` | No-network fallback used when no key is configured. |

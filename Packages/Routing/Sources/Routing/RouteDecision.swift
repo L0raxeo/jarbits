@@ -21,6 +21,10 @@ public struct RouteDecision: Codable, Sendable, Equatable {
     /// by name; nil when no such site was on screen or the question went
     /// unanswered.
     public var rejection: Double?
+    /// Jev's reading of a recall ask, answered in the same request: which
+    /// kinds, whether a thing is named, whether a set is wanted. Set only
+    /// when `recall` was the pick; absent on older log lines.
+    public var recall: RecallIntent?
     public var source: Source
 
     public enum Source: Codable, Sendable, Equatable {
@@ -62,6 +66,7 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         recency: Double? = nil,
         continuation: Double? = nil,
         rejection: Double? = nil,
+        recall: RecallIntent? = nil,
         source: Source
     ) {
         self.format = format
@@ -74,6 +79,7 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         self.recency = recency
         self.continuation = continuation
         self.rejection = rejection
+        self.recall = recall
         self.source = source
     }
 

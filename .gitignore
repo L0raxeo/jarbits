@@ -18,3 +18,6 @@ build/
 
 # Secrets (see Config/Secrets.example.xcconfig)
 Config/Secrets.xcconfig
+
+# Routing eval cache (Jev answers keyed by request body, and the last results)
+Packages/Routing/.evalcache/

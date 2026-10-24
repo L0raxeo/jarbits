@@ -24,8 +24,14 @@ struct QueryTokens: Equatable {
     var isEmpty: Bool { tokens.isEmpty }
     var count: Int { tokens.count }
     var keys: [String] { tokens.map(\.key) }
-    /// What is left, as typed, joined by single spaces.
-    var text: String { tokens.map(\.text).joined(separator: " ") }
+    /// What is left, as typed, joined by single spaces, without the
+    /// punctuation that closed or opened the phrases stripped around it
+    /// ("Dominican flag, I said." leaves "Dominican flag").
+    var text: String {
+        tokens.map(\.text).joined(separator: " ").trimmingCharacters(in: Self.edgePunctuation)
+    }
+
+    private static let edgePunctuation = CharacterSet(charactersIn: ",.;:!?…\"“”'‘’")
 
     /// Removes the first phrase of `phrases` found at the front, never the
     /// whole query, and returns it.

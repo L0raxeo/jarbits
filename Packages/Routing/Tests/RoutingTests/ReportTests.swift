@@ -56,6 +56,7 @@ import Testing
         #expect(markdown.contains("\"\(SearchQuery.brandOpener)\""))
         #expect(markdown.contains("\"\(SearchQuery.googleProducts[0])\""))
         #expect(markdown.contains("\"\(SearchQuery.trailers[0])\""))
+        #expect(markdown.contains("\"\(SearchQuery.corrections[0])\""))
         #expect(markdown.contains("| A search verb and a term (see above) | Web results for the term | `local(\"search\")` |"))
         #expect(markdown.contains("### `rejects` — type `noul`"))
         #expect(markdown.contains(JevRouting.rejectsCriteria.yes))
@@ -129,6 +130,7 @@ import Testing
         #expect(try DecisionRecord.decoder.decode(RecallSummary.self, from: Data(old.utf8)).source == nil, "old recall lines decode")
         let oldRecord = #"{"timestamp":"2026-10-01T00:00:00Z","query":"x","decision":{"format":"web_results","probabilities":{},"source":{"noKey":{}}}}"#
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).site == nil, "lines without a site summary decode")
+        #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).decision.recall == nil, "lines without a recall intent decode")
         #expect(markdown.contains("| `web_results` | 1 | 1 | 0 | 0 | 0.30 | \"can I use water\" |"), "a continuation counts as acted on")
         #expect(markdown.contains("Follow-ups over an answer: 2 asked, 2 continued it (1 as one line), 0 went to another card, mean continuation 0.85."))
         #expect(markdown.contains("## Decided on the device"))

@@ -18,6 +18,9 @@ import Testing
         ("bring up gmail", "gmail"),
         ("show me hacker news", "hacker news"),
         ("goto ebay", "ebay"),
+        ("Yo, open up YouTube.", "youtube"),
+        ("hey siri open youtube", "youtube"),
+        ("um, yo, pull up zillow for me", "zillow"),
     ])
     func eachOpenerLeavesTheName(query: String, name: String) {
         let parsed = SiteQuery.parse(query)

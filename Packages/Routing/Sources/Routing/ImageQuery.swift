@@ -34,9 +34,17 @@ public struct ImageQuery: Equatable, Sendable {
         "pictures of", "photos of", "images of", "pics of",
     ]
 
+    /// A correction to the picture shown, at the front, any number of them:
+    /// "no not that, the dominican flag". Shared with `SearchQuery`.
+    public static let corrections: [String] = SearchQuery.corrections
+
     /// Words that may close the query without changing it, any number of
-    /// them. "look like" closes the "what does … look like" form.
-    public static let trailers: [String] = ["look like", "looks like", "look", "please", "for me"]
+    /// them. "look like" closes the "what does … look like" form; "i said"
+    /// closes a correction ("Dominican flag, I said").
+    public static let trailers: [String] = [
+        "look like", "looks like", "look", "is what i said", "is what i meant", "like i said", "i said", "i meant",
+        "i told you", "please", "for me",
+    ]
 
     /// The subject, or nil when the query is already the subject: nothing
     /// came off it, or everything would have.
@@ -45,6 +53,7 @@ public struct ImageQuery: Equatable, Sendable {
         guard !tokens.isEmpty else { return nil }
         var stripped = false
 
+        while tokens.stripFront(anyOf: corrections) != nil { stripped = true }
         var led = tokens
         while led.stripFront(anyOf: leads) != nil {}
         if led.stripFront(anyOf: openers) != nil {
@@ -54,14 +63,16 @@ public struct ImageQuery: Equatable, Sendable {
         var probe = tokens
         while probe.stripFront(anyOf: articles) != nil {}
         if probe.stripFront(anyOf: nounsOf) != nil {
-            while probe.stripFront(anyOf: articles) != nil {}
             tokens = probe
             stripped = true
-        } else if stripped {
-            // "show me the eiffel tower": the article goes with the opener.
-            while tokens.stripFront(anyOf: articles) != nil {}
         }
         while tokens.stripEnd(anyOf: trailers) != nil { stripped = true }
+        if stripped {
+            // "show me the eiffel tower", "the dominican flag, i said": the
+            // article goes with whatever came off; a bare "the eiffel tower"
+            // is left whole.
+            while tokens.stripFront(anyOf: articles) != nil {}
+        }
 
         guard stripped, !tokens.isEmpty else { return nil }
         return ImageQuery(subject: tokens.text)
@@ -70,6 +81,13 @@ public struct ImageQuery: Equatable, Sendable {
     /// The subject to search: the query with the asking gone, or the query
     /// itself when it is already the subject.
     public static func subject(for query: String) -> String {
-        parse(query)?.subject ?? query
+        parse(query)?.subject ?? bare(query)
+    }
+
+    /// The query as its own subject, without the punctuation dictation
+    /// closes a sentence with: "Flag of North Korea." is "Flag of North Korea".
+    static func bare(_ query: String) -> String {
+        let text = QueryTokens(query).text
+        return text.isEmpty ? query : text
     }
 }

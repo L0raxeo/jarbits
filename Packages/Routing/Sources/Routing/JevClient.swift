@@ -112,10 +112,15 @@ public enum Question: Sendable, Equatable {
 }
 
 /// Just enough JSON writing to keep object keys in the order given.
-/// Leaf values still go through `JSONEncoder`, so escaping stays Foundation's.
+/// Leaf values still go through `JSONEncoder`, so escaping stays Foundation's;
+/// their keys are sorted, because Foundation's order is otherwise random per
+/// process, and the same request must be the same bytes (the eval cache
+/// is keyed by them).
 package enum OrderedJSON {
     package static func encode<T: Encodable>(_ value: T) throws -> Data {
-        try JSONEncoder().encode(value)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return try encoder.encode(value)
     }
 
     package static func object(_ pairs: [(String, Data)]) throws -> Data {
@@ -249,6 +254,17 @@ public struct JevClient: Sendable {
     }
 
     public func systemOne(_ request: SystemOneRequest) async throws(JevError) -> SystemOneResponse {
+        let data = try await systemOneData(request)
+        do {
+            return try JSONDecoder().decode(SystemOneResponse.self, from: data)
+        } catch {
+            throw .decoding(String(describing: error))
+        }
+    }
+
+    /// The response body as the server sent it, after the HTTP checks; what
+    /// `systemOne` decodes. The eval cache keeps these bytes verbatim.
+    public func systemOneData(_ request: SystemOneRequest) async throws(JevError) -> Data {
         var urlRequest = URLRequest(url: baseURL.appending(path: "v1/systemone"))
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -278,11 +294,7 @@ public struct JevClient: Sendable {
         guard (200..<300).contains(http.statusCode) else {
             throw .http(status: http.statusCode, body: String(decoding: data.prefix(500), as: UTF8.self))
         }
-        do {
-            return try JSONDecoder().decode(SystemOneResponse.self, from: data)
-        } catch {
-            throw .decoding(String(describing: error))
-        }
+        return data
     }
 }
 

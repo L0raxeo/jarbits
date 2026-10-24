@@ -1,0 +1,94 @@
+{"query": "best laptops 2026", "format": "web_results", "note": "a broad spread; from the web_results criterion"}
+{"query": "news", "format": "web_results"}
+{"query": "chocolate milk", "format": "web_results", "note": "a bare topic with no ask"}
+{"query": "google steve jobs", "format": "web_results", "source": "jev", "term": "steve jobs", "note": "the brand verb is not a command on the device; it drops after a web pick"}
+{"query": "python tutorial reddit", "format": "web_results"}
+{"query": "zillow homes in austin", "format": "web_results", "note": "a search on a site, not the site"}
+{"query": "quantum computing", "format": "web_results"}
+{"query": "dune part 3 trailer", "format": "video", "note": "moved from the web examples when the video format arrived"}
+{"query": "golden retriever puppies", "format": "web_results", "note": "many pictures of a category, not one picture"}
+{"query": "at the end of attack on titan why is levi in a wheelchair", "format": "narrative"}
+{"query": "how did simon cowell get famous", "format": "narrative"}
+{"query": "why are highschool students protesting france?", "format": "web_results", "pick": "narrative", "source": "recencyFallback", "note": "picked as narrative, shown as web results: a recent event is past the model's knowledge"}
+{"query": "how is gingivitis healed", "format": "narrative"}
+{"query": "Why is INTR so low?", "format": "web_results", "pick": "narrative", "source": "recencyFallback", "note": "why a price moved is an explanation, not a chart; and it is recent, so web results"}
+{"query": "Is south africa safe right now", "format": "web_results", "pick": "narrative", "source": "recencyFallback", "note": "a judgement that needs context, but right now: web results"}
+{"query": "where did the phrase ok boomer come from", "format": "narrative"}
+{"query": "whats isi in ipe", "format": "narrative"}
+{"query": "what does gdp mean", "format": "narrative"}
+{"query": "define hegemony", "format": "narrative"}
+{"query": "coffee near me", "format": "map"}
+{"query": "directions to austin airport", "format": "map"}
+{"query": "where is machu picchu", "format": "map"}
+{"query": "blue bottle coffee san francisco", "format": "map"}
+{"query": "nasdaq", "format": "stock"}
+{"query": "AAPL", "format": "stock"}
+{"query": "tesla stock", "format": "stock"}
+{"query": "bitcoin price", "format": "stock"}
+{"query": "s&p 500 today", "format": "stock"}
+{"query": "what's the time in costa rica", "format": "one_line", "source": "local:time", "note": "the device clock answers a named country"}
+{"query": "will it rain today", "format": "one_line", "note": "live data: Gemini replies NEEDS_LIVE_DATA and the app shows web results, but the route is one_line"}
+{"query": "how long do cold sores last", "format": "one_line"}
+{"query": "capital of peru", "format": "one_line"}
+{"query": "100 usd to eur", "format": "web_results", "pick": "one_line", "source": "recencyFallback", "note": "a live rate: picked as one_line, shown as web results"}
+{"query": "where's my grocery list", "format": "recall"}
+{"query": "remember that convo on the dyson pencilvac", "format": "recall"}
+{"query": "pull up that youtube page from earlier", "format": "recall", "note": "pull up with a pointer at the past is recall, not site"}
+{"query": "pull up the video I was watching about muse", "format": "recall", "recall": {"kinds": ["videos"], "named": true, "all": false}}
+{"query": "that thing about gingivitis again", "format": "recall"}
+{"query": "go back to the reddit thread", "format": "recall"}
+{"query": "dominican flag", "format": "image", "subject": "dominican flag"}
+{"query": "eiffel tower", "format": "image", "subject": "eiffel tower"}
+{"query": "starry night painting", "format": "image"}
+{"query": "nvidia logo", "format": "image"}
+{"query": "what does a capybara look like", "format": "image", "subject": "capybara"}
+{"query": "mona lisa", "format": "image"}
+{"query": "aston martin db5", "format": "image"}
+{"query": "go to youtube", "format": "site", "source": "local:site", "site": "youtube"}
+{"query": "pull up zillow", "format": "site", "source": "local:site", "site": "zillow"}
+{"query": "open insta", "format": "site", "source": "local:site", "site": "insta"}
+{"query": "take me to airbnb", "format": "site", "source": "local:site", "site": "airbnb"}
+{"query": "launch netflix", "format": "site", "source": "local:site", "site": "netflix"}
+{"query": "reddit", "format": "site", "source": "jev", "site": "reddit", "note": "a bare known name has no opener, so Jev decides"}
+{"query": "what time is it in tokyo", "format": "one_line", "source": "local:time"}
+{"query": "What time is it in Mexico?", "format": "one_line", "source": "local:time", "note": "a country that spans zones; the card names the city"}
+{"query": "what's the time", "format": "one_line", "source": "local:time", "note": "the time here"}
+{"query": "look up steve jobs", "format": "web_results", "source": "local:search", "term": "steve jobs"}
+{"query": "search for flights to lima", "format": "web_results", "source": "local:search", "term": "flights to lima"}
+{"query": "can you go to the zillow website please", "format": "site", "source": "local:site", "site": "zillow", "note": "leads, an article and trailers around a known name"}
+{"query": "no not that, steve jobs", "format": "web_results", "term": "steve jobs", "note": "a correction with no search verb goes to Jev; a web pick drops the correction"}
+{"query": "google stock", "format": "stock", "note": "a product word after google: not a search verb"}
+{"query": "Dominican flag, I said.", "format": "image", "subject": "Dominican flag", "note": "the correction and its punctuation come off the subject"}
+{"query": "apple.com", "format": "web_results", "source": "directURL", "note": "an address loads as typed; no term"}
+{"query": "why?", "thread": [{"query": "how do you make hot chocolate", "answer": "Heat milk gently and whisk in cocoa and sugar until smooth; __keep it below a simmer__ so the milk does not scorch."}], "format": "narrative", "source": "continuation", "note": "a reply that only makes sense given the answer"}
+{"query": "and chile?", "thread": [{"query": "capital of peru", "answer": "==Lima==", "format": "one_line"}], "format": "one_line", "source": "continuation", "note": "a short fact as a reply stays one line"}
+{"query": "pictures of it", "thread": [{"query": "what is the eiffel tower", "answer": "The _Eiffel Tower_ is a wrought-iron lattice tower on the Champ de Mars in Paris, built for the 1889 World's Fair."}], "format": "image", "source": "jev", "note": "a card asked for inside a conversation beats continuing it"}
+{"query": "tesla stock", "thread": [{"query": "who founded tesla", "answer": "Tesla was founded in 2003 by **Martin Eberhard** and **Marc Tarpenning**; Elon Musk joined as chairman in 2004."}], "format": "stock", "source": "jev"}
+{"query": "no not this one", "opened": {"name": "zillow", "host": "www.zillow.com"}, "format": "site", "source": "rejection", "site": "zillow", "note": "the name is asked for again and the choices shown"}
+{"query": "zillow homes in austin", "opened": {"name": "zillow", "host": "www.zillow.com"}, "format": "web_results", "note": "over the site, a search is still a search"}
+{"query": "open youtube", "opened": {"name": "zillow", "host": "www.zillow.com"}, "format": "site", "source": "local:site", "site": "youtube", "note": "another site by its own name: the device rule fires before Jev"}
+{"query": "Can you ask AI what are some alternatives to Dyson", "format": "narrative", "source": "local:ask", "question": "what are some alternatives to Dyson", "note": "screenshot 2026-10-23: went to web results with the whole sentence in the box; an explicit ask is the model's, with no gate"}
+{"query": "ask ai about dyson alternatives", "format": "narrative", "source": "local:ask", "question": "dyson alternatives"}
+{"query": "hey could you ask the AI to tell me what GDP means please", "format": "narrative", "source": "local:ask", "question": "what GDP means"}
+{"query": "ask ai", "format": "web_results", "note": "nothing to ask: no rule, Jev decides"}
+{"query": "Yo, open up YouTube.", "format": "site", "source": "local:site", "site": "youtube", "note": "screenshot 2026-10-23: 'yo' was not a lead, so the whole phrase became the name and the choices card asked 'Which yo open up youtube?'"}
+{"query": "hey siri open youtube", "format": "site", "source": "local:site", "site": "youtube"}
+{"query": "um, yo, pull up zillow for me", "format": "site", "source": "local:site", "site": "zillow"}
+{"query": "Can you show me a picture of the Dyson PencilVac", "format": "image", "subject": "Dyson PencilVac", "note": "screenshot 2026-10-23: routed right; Wikipedia has no picture of a 2025 product, and the fallback was web results for the whole sentence. Now Google Images for the subject"}
+{"query": "Pull up everything we talked about with the Dyson PencilVac", "format": "recall", "source": "jev", "recall": {"named": true, "all": true}, "note": "screenshot 2026-10-23: the lookup read talked as answers-only; now Jev reads the kind"}
+{"query": "videos of pele", "format": "video", "term": "videos of pele"}
+{"query": "pele highlights", "format": "video"}
+{"query": "watch the super bowl halftime show", "format": "video", "term": "super bowl halftime show"}
+{"query": "show me cat videos", "format": "video", "term": "cat videos"}
+{"query": "how to tie a tie video", "format": "video"}
+{"query": "lofi music video", "format": "video"}
+{"query": "You'll pull up some videos of Pele.", "format": "video", "term": "videos of Pele", "note": "screenshot 2026-10-23: went to web results with the whole sentence in the box; 'You'll' is dictation for 'yo'"}
+{"query": "watch the dune part 3 trailer", "format": "video", "term": "dune part 3 trailer"}
+{"query": "Can you pull up the last 5 things we were looking at", "format": "recall", "recall": {"kinds": [], "named": false, "all": true}, "note": "screenshot 2026-10-23: 'were' was read as a topic and the one Instagram page holding it opened; nothing is named here"}
+{"query": "that answer about hot chocolate", "format": "recall", "recall": {"kinds": ["answers"], "named": true, "all": false}}
+{"query": "all the videos I watched yesterday", "format": "recall", "recall": {"kinds": ["videos"], "named": false, "all": true}}
+{"query": "my recent searches", "format": "recall", "recall": {"kinds": ["searches"], "named": false, "all": true}}
+{"query": "what you told me about gingivitis", "format": "recall", "recall": {"kinds": ["answers"], "named": true}}
+{"query": "that article on reddit", "format": "recall", "recall": {"kinds": ["pages"], "named": true, "all": false}}
+{"query": "pull up what I was looking at", "format": "recall", "recall": {"kinds": [], "named": false}, "note": "nothing named: the newest memories go to the judge"}
+{"query": "Flag of North Korea.", "format": "image", "subject": "Flag of North Korea", "note": "screenshot 2026-10-23: spoken as 'there you go. Flag of North Korea.', which dictation now strips before routing; Wikipedia had been asked for the whole sentence"}

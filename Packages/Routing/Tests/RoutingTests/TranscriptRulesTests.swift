@@ -26,6 +26,10 @@ import Testing
         #expect(TranscriptRules.strippingFillers("is it so hot in texas") == "is it so hot in texas")
         #expect(TranscriptRules.strippingFillers("well") == "well")
         #expect(TranscriptRules.strippingFillers("okay so") == "so")
+        #expect(TranscriptRules.strippingFillers("there you go. Flag of North Korea.") == "Flag of North Korea.", "a hand-over is not part of the subject")
+        #expect(TranscriptRules.strippingFillers("Here we go, open youtube") == "open youtube")
+        #expect(TranscriptRules.strippingFillers("go ahead and look up steve jobs") == "look up steve jobs")
+        #expect(TranscriptRules.strippingFillers("there you go") == "there you go", "never the whole text")
     }
 
     @Test func closersGoOnlyAtTheEnd() {

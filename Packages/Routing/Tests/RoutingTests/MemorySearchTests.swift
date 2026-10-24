@@ -42,6 +42,63 @@ import Testing
         #expect(MemorySearch.shortlist(all, query: "that chocolate search from today", now: now) == [microwave, water], "words first, then the rest of the filtered set")
     }
 
+    @Test func theKindWordIsAPreferenceNotAWall() {
+        let now = Date(timeIntervalSince1970: 1_792_600_000)
+        let answer = MemoryRecord(date: now.addingTimeInterval(-7200), kind: .narrative, query: "how is gingivitis healed", text: "Remove the plaque.")
+        let page = MemoryRecord(date: now.addingTimeInterval(-300), kind: .page, query: "dyson pencilvac", title: "Dyson PencilVac | Dyson", url: URL(string: "https://www.dyson.com/pencilvac"))
+        let search = MemoryRecord(date: now.addingTimeInterval(-600), kind: .search, query: "Can you show me a picture of the Dyson PencilVac")
+        let all = [answer, page, search]
+        #expect(MemorySearch.shortlist(all, query: "pull up everything we talked about with the dyson pencilvac", now: now) == [page, search], "no answer holds the words: the pages and searches that do")
+        #expect(MemorySearch.shortlist(all, query: "what you told me about gingivitis", now: now) == [answer], "an answer that holds the words is still preferred")
+        #expect(MemorySearch.shortlist(all, query: "the answer about the dyson from last week", now: now).isEmpty, "the time window is never relaxed")
+    }
+
+    @Test func everythingAboutSomethingIgnoresTheKindWords() {
+        let now = Date(timeIntervalSince1970: 1_792_600_000)
+        let answer = MemoryRecord(date: now.addingTimeInterval(-7200), kind: .narrative, query: "what are some alternatives to dyson", text: "Shark and Miele.")
+        let page = MemoryRecord(date: now.addingTimeInterval(-300), kind: .page, query: "dyson pencilvac", title: "Dyson PencilVac | Dyson", url: URL(string: "https://www.dyson.com/pencilvac"))
+        let search = MemoryRecord(date: now.addingTimeInterval(-600), kind: .search, query: "Can you show me a picture of the Dyson PencilVac")
+        let old = MemoryRecord(date: now.addingTimeInterval(-10 * 86_400), kind: .page, query: "dyson v15", title: "Dyson V15 review", url: URL(string: "https://example.com/v15"))
+        let other = MemoryRecord(date: now.addingTimeInterval(-100), kind: .narrative, query: "capital of peru", text: "Lima")
+        let all = [answer, page, search, old, other]
+        #expect(MemorySearch.shortlist(all, query: "pull up everything we talked about with the dyson", now: now) == [page, search, answer, old], "every kind, word matches, newest first")
+        #expect(MemorySearch.shortlist(all, query: "everything about the dyson from today", now: now) == [page, search, answer], "the time window still holds")
+        #expect(MemorySearch.shortlist(all, query: "pull up everything", now: now).isEmpty, "nothing to go on")
+    }
+
+    @Test func aCountIsTheNewestSoManyOfTheKindsNamed() {
+        let now = Date(timeIntervalSince1970: 1_792_600_000)
+        func record(_ kind: MemoryRecord.Kind, _ query: String, minutesAgo: Int) -> MemoryRecord {
+            MemoryRecord(date: now.addingTimeInterval(-Double(minutesAgo) * 60), kind: kind, query: query)
+        }
+        let s1 = record(.search, "alternatives to dyson", minutesAgo: 30)
+        let s2 = record(.search, "dyson pencilvac", minutesAgo: 5)
+        let s3 = record(.search, "flights to lima", minutesAgo: 400)
+        let a1 = record(.narrative, "how is gingivitis healed", minutesAgo: 200)
+        let p1 = record(.page, "reddit", minutesAgo: 10)
+        let all = [s1, s2, s3, a1, p1]
+        #expect(MemorySearch.shortlist(all, query: "pull up my last two searches", now: now) == [s2, s1], "newest first, that many, searches only")
+        #expect(MemorySearch.shortlist(all, query: "the last 5 things I asked you, including google searches and ai stuff", now: now) == [s2, s1, a1, s3], "searches and answers, no pages")
+        #expect(MemorySearch.shortlist(all, query: "my last 3 things", now: now) == [s2, p1, s1], "no kind: everything")
+        #expect(MemorySearch.shortlist(all, query: "my last 2 dyson searches", now: now) == [s2, s1], "a topic narrows the pool")
+        #expect(MemorySearch.shortlist(all, query: "my last 2 lima searches", now: now) == [s3])
+        #expect(MemorySearch.shortlist(all, query: "my last five pictures", now: now).isEmpty)
+        let insta = record(.page, "open insta", minutesAgo: 2000)
+        let withInsta = all + [insta]
+        #expect(MemorySearch.terms(from: "Can you pull up the last 5 things we were looking at").isEmpty, "all of it is asking")
+        #expect(MemorySearch.shortlist(withInsta, query: "Can you pull up the last 5 things we were looking at", now: now) == [s2, p1, s1, a1, s3], "no topic: the newest five, not whatever holds a word like \"were\"")
+    }
+
+    @Test func theTopicIsTheContentWordsAsTyped() {
+        #expect(MemorySearch.topic(of: "Pull up everything we talked about with the Dyson PencilVac") == "Dyson PencilVac")
+        #expect(MemorySearch.topic(of: "that thing about gingivitis again") == "gingivitis")
+        #expect(MemorySearch.topic(of: "pull up what I was looking at") == "")
+        #expect(MemorySearch.topic(of: "remember that convo on the dyson pencilvac") == "dyson pencilvac")
+        #expect(MemorySearch.topic(of: "You'll pull up the last 5 things I asked you, like including Google searches and AI stuff, and all that") == "", "a contraction is one word, and the padding goes: nothing named, so nothing to search")
+        #expect(MemorySearch.topic(of: "Pull up my last 5 queries") == "")
+        #expect(MemorySearch.terms(from: "what's that Macy's page") == ["macys"], "apostrophes join, as the memory's own words do")
+    }
+
     @Test func aLaterTurnOfAConversationIsFound() {
         let thread = MemoryRecord(kind: .narrative, query: "how do you make hot chocolate", text: "Heat milk.", turns: [
             AnswerTurn(query: "how do you make hot chocolate", answer: "Heat milk."),

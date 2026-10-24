@@ -18,8 +18,13 @@ public struct SiteQuery: Equatable, Sendable {
         self.hasOpener = hasOpener
     }
 
-    /// Words that may come before the opener, any number of them.
-    public static let leads: [String] = ["can you", "could you", "would you", "please", "hey", "ok", "okay", "just"]
+    /// Words that may come before the opener, any number of them: a
+    /// politeness, a hesitation, or the way a spoken query starts ("Yo,
+    /// open up YouTube", "hey siri open youtube"). Longer phrases first.
+    public static let leads: [String] = [
+        "can you", "could you", "would you", "hey siri", "please", "hey", "ok", "okay", "just",
+        "yo", "youll", "hi", "hello", "um", "uh", "alright", "yeah", "siri",
+    ]
 
     /// Phrases that ask for a site. Longer phrases first, so "open up" is
     /// tried before "open".

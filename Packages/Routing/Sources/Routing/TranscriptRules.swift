@@ -12,11 +12,13 @@ public enum TranscriptRules {
         "um", "umm", "uh", "uhh", "er", "erm", "ah", "eh", "hmm", "hm", "mm", "mhm", "mmhm", "mmhmm", "uhhuh", "uhuh",
     ]
 
-    /// Acknowledgements and lead-ins, stripped from the very start as long
-    /// as they keep coming ("Yeah. Okay, so what is…"); "so" and "well" mean
-    /// something later on. Longer phrases first, so "all right" is not "all".
+    /// Acknowledgements, lead-ins and hand-overs, stripped from the very
+    /// start as long as they keep coming ("Yeah. Okay, so what is…", "there
+    /// you go. Flag of North Korea"); "so" and "well" mean something later
+    /// on. Longer phrases first, so "all right" is not "all".
     public static let openers: [String] = [
-        "let me see", "let's see", "you know", "all right", "alright", "okay", "ok", "yeah", "yes", "yep", "yup", "so", "well",
+        "there you go", "here you go", "there we go", "here we go", "go ahead and", "let me see", "let's see", "you know",
+        "all right", "alright", "okay", "ok", "yeah", "yes", "yep", "yup", "so", "well",
     ]
 
     /// Sign-offs, stripped from the very end.

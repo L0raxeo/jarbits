@@ -23,6 +23,19 @@ import Testing
         return "{ \"model\": \"jev-1.13.0\", \"answers\": { \(pairs) }, \"usage\": { \"input_tokens\": 300, \"output_tokens\": 4 } }"
     }
 
+    @Test func aCollectionAsksWhetherEachMemoryIsAboutTheTopic() throws {
+        let request = RecallRouting.request(for: "everything about lisbon", candidates: [video, recipe], now: now, locale: Locale(identifier: "en_US"), calendar: calendar, collection: true)
+        let json = try #require(JSONSerialization.jsonObject(with: try request.jsonData()) as? [String: Any])
+        let questions = try #require(json["questions"] as? [String: Any])
+        let first = try #require(questions["m0"] as? [String: Any])
+        let text = try #require(first["instructions"] as? String)
+        #expect(text.hasPrefix("Is this memory about what the query asks for everything about? A web page from yesterday (m.youtube.com)"), "got: \(text)")
+        #expect((first["criteria"] as? [String: String])?["true"] == RecallRouting.collectionCriteria.yes)
+        let plain = RecallRouting.request(for: "the video from yesterday", candidates: [video], now: now, locale: Locale(identifier: "en_US"), calendar: calendar)
+        let plainText = try #require(((try JSONSerialization.jsonObject(with: try plain.jsonData()) as? [String: Any])?["questions"] as? [String: Any])?["m0"] as? [String: Any])["instructions"] as? String
+        #expect(plainText?.hasPrefix("Is this the memory the query asks for?") == true)
+    }
+
     @Test func oneYesNoQuestionPerCandidate() throws {
         let request = RecallRouting.request(for: "the video from yesterday", candidates: [video, recipe], now: now, locale: Locale(identifier: "en_US"), calendar: calendar)
         #expect(request.questions.map(\.id) == ["m0", "m1"])

@@ -1,11 +1,13 @@
 import Answers
 import Foundation
+import Images
 import Routing
 import Sites
 
 /// Asks Jev which format answers the query and maps the format to a plan.
 /// `narrative` and `one_line` become answer cards when a Gemini key is
-/// configured, `image` a Wikipedia picture, `recall` a look through the
+/// configured, `image` a Wikipedia picture (Brave's behind it), `video`
+/// Google's video results for the term, `recall` a look through the
 /// memories, `site` a look in the site book; `map` and `stock` still render
 /// web results.
 struct JevRouter: Router {
@@ -38,6 +40,10 @@ struct JevRouter: Router {
         case .image:
             assert(decision.format.stage == .built, "image is marked \(decision.format.stage)")
             return .image(query: query)
+        case .video:
+            // Google's video results for the term, with the asking gone.
+            assert(decision.format.stage == .built, "video is marked \(decision.format.stage)")
+            return .web(QueryParser.videoSearchURL(for: VideoQuery.term(for: query)))
         case .recall:
             assert(decision.format.stage == .built, "recall is marked \(decision.format.stage)")
             return .recall(query: query)
@@ -57,14 +63,21 @@ struct JevRouter: Router {
 extension BrowserSession {
     /// The device's own rules first; behind them Jev when a key is configured, the local fallback otherwise.
     static func makeRouter(sites: SiteStore = .shared) -> any Router {
-        guard let key = Secrets.typeSafeAPIKey else { return LocalFirstRouter(inner: LocalRouter(), sites: sites) }
-        return LocalFirstRouter(inner: JevRouter(formatRouter: FormatRouter(client: JevClient(apiKey: key)), canAnswer: Secrets.geminiAPIKey != nil), sites: sites)
+        let canAnswer = Secrets.geminiAPIKey != nil
+        guard let key = Secrets.typeSafeAPIKey else { return LocalFirstRouter(inner: LocalRouter(), sites: sites, canAnswer: canAnswer) }
+        return LocalFirstRouter(inner: JevRouter(formatRouter: FormatRouter(client: JevClient(apiKey: key)), canAnswer: canAnswer), sites: sites, canAnswer: canAnswer)
     }
 
     /// Brave's web search for the sites an unknown name might mean, when a
     /// key is configured; nil shows the Google results page for the name.
     static func makeSiteSearch() -> SiteSearch? {
         Secrets.braveAPIKey.map { SiteSearch(apiKey: $0) }
+    }
+
+    /// Wikipedia first for a picture; Brave's image search behind it when a
+    /// key is configured, else a Wikipedia miss goes to Google Images.
+    static func makeImageLookup() -> ImageLookup {
+        ImageLookup(wikipedia: ImageSearch(), brave: Secrets.braveAPIKey.map { BraveImageSearch(apiKey: $0) })
     }
 
     /// Jev judging a recall shortlist, when a key is configured; nil shows

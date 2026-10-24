@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-/// Whether the user is doing anything: a finger down, a scroll still moving,
-/// something playing. Over a result the app listens only while they are not.
+/// Whether the user is doing anything: a finger down, a scroll still moving.
+/// Over a result the app listens only while they are not.
 /// `idle` drops the moment something happens and comes back the moment the
 /// last finger lifts; a scroll still moving holds it for `motionDelay`
 /// past its last frame, so a fling is one interaction and not sixty.
@@ -10,17 +10,6 @@ import Observation
 @MainActor
 final class Attention {
     private(set) var idle = true
-
-    /// Held by the owner while anything plays: the page's media, a
-    /// full-screen player, another app's audio. Never idle while true; the
-    /// delay runs again once it clears. Set by the audio poll and by the
-    /// microphone's gate, so only a change counts.
-    var busy = false {
-        didSet {
-            guard busy != oldValue else { return }
-            if busy { interrupt() } else { touched() }
-        }
-    }
 
     /// How long after the last finger lifts the user counts as idle again.
     static let idleDelay: Duration = .zero
@@ -64,15 +53,15 @@ final class Attention {
         settle = Task { [weak self] in await self?.settleLoop() }
     }
 
-    /// Sleeps until `due`, then idles, unless a finger is still down or the
-    /// owner holds it busy; those start a new loop when they let go. A stamp
-    /// that moved `due` meanwhile sends it round again.
+    /// Sleeps until `due`, then idles, unless a finger is still down; its
+    /// lift starts a new loop. A stamp that moved `due` meanwhile sends it
+    /// round again.
     private func settleLoop() async {
         defer { settle = nil }
         while !Task.isCancelled {
             try? await Task.sleep(until: due, clock: .continuous)
             guard !Task.isCancelled else { return }
-            if fingers > 0 || busy { return }
+            if fingers > 0 { return }
             if ContinuousClock.now >= due {
                 idle = true
                 return

@@ -1,0 +1,390 @@
+# Unlabelled queries for `report sample`: plausible things typed into a phone
+# browser, across all eight formats, with the phrasing, typos, casing, leads
+# and trailers people actually use. Nothing here is a label; the section a
+# query sits under is only where it was written. One per line; `#` comments
+# and blank lines are skipped; a repeat is kept once.
+
+# web results
+best wireless earbuds 2026
+cheap flights to denver
+how to tie a tie video
+reddit best budget mechanical keyboard
+amazon prime day deals
+chicken tikka masala recipe
+iphone 17 vs pixel 10
+things to do in lisbon
+Taylor Swift tour dates
+oscars 2026 winners
+nfl scores
+premier league table
+air fryer salmon
+nike running shoes sale
+remote jobs near me
+imdb inception
+world cup 2026 schedule
+how to screenshot on mac
+best pizza nyc reddit
+can you find me a good lasagna recipe
+pls show me cheap hotels in miami
+costco hours sunday
+new movies streaming this week
+python list comprehension examples
+bluetooth not connecting iphone
+Ikea desk hack
+sourdough starter troubleshooting
+ps5 restock
+toyota camry 2026 review
+elden ring boss order
+Hiking trails near boulder
+nba trade rumors
+cheapest way to ship a package
+spotify wrapped
+javascript fetch example
+duolingo vs babbel
+Hamilton tickets chicago
+what to watch on netflix
+search for used bikes craigslist
+look up best sunscreen for face
+find me a flight to tokyo please
+google best tacos in la
+gaming laptop under 1000
+kindle paperwhite review
+mortgage rates
+how to unclog a drain
+diy bookshelf plans
+black friday tv deals
+wedding venues austin
+best vpn 2026
+how to change a tire
+lego star wars sets
+kids halloween costumes
+marathon training plan 16 weeks
+pasta recipes with what i have
+best podcasts true crime
+honda civic for sale near me
+learn spanish free
+
+# narrative
+why is the sky blue
+how does a nuclear reactor work
+what is the difference between a crocodile and an alligator
+why did rome fall
+how do vaccines work
+what does ngl mean
+what is a roth ira
+explain quantum entanglement simply
+why do cats purr
+how did the beatles break up
+what happened at chernobyl
+whats the story behind the mona lisa
+why is housing so expensive
+what is the electoral college
+how do airplanes stay in the air
+can you explain how bitcoin mining works
+why do we dream
+what is stoicism
+what does wsg mean
+how did the internet start
+what is the plot of dune
+why is venice sinking
+what is inflation and why does it matter
+whats the deal with daylight savings
+how does a 401k work
+why do onions make you cry
+what is the trolley problem
+how was the grand canyon formed
+what caused the 2008 financial crisis
+why is the ocean salty
+what's the difference between weather and climate
+how do noise cancelling headphones work
+what is cognitive dissonance
+explain the offside rule
+why do leaves change color
+what does carpe diem mean
+how do bees make honey
+why is my sourdough so dense
+is it safe to travel to egypt right now
+who is the current ceo of openai
+what does the fed rate cut mean for me
+wht is photosynthesis
+How Does Compound Interest Work
+what is the meaning of the word sonder
+why do we have leap years
+Can you tell me how tides work
+whats an api
+why did blockbuster fail
+what is the meaning of life
+how do i know if i have a cold or the flu
+why is it called black friday
+what is a credit score and how is it calculated
+what's going on with the strike
+how does chatgpt work
+
+# map
+pizza near me
+nearest gas station
+sushi in downtown portland
+how do i get to lax
+directions to the nearest costco
+where is the louvre
+closest pharmacy open now
+coffee shops near union square
+tacos el gordo las vegas
+starbucks near me
+where is yellowstone national park
+dentist near me open saturday
+how far is boston from new york
+walgreens on 5th ave
+whole foods austin tx
+parking near madison square garden
+best brunch spots near me
+hotels near disneyland
+urgent care near me
+Trader Joe's Brooklyn
+car wash near me
+where is bali
+directions to grand central
+laundromat nearby
+ramen shop in the mission sf
+nearest ev charger
+in n out burger san diego
+bike shops close to me
+where's the eiffel tower
+mcdonalds open late near me
+can you show me gyms near me
+vet clinic near me pls
+Target on university ave
+Where Is Mount Everest
+how do I get home
+nearest atm
+thai food delivery near me
+where is the nearest post office
+apple store fifth avenue
+beaches near los angeles
+
+# stock
+tsla
+apple stock
+NVDA
+nvidia share price
+dow jones
+s&p today
+bitcoin
+eth price
+msft stock price
+amazon stock
+how is the market doing today
+GOOG
+dogecoin price
+nikkei
+ftse 100
+berkshire hathaway stock
+spy
+amd stock
+palantir
+coinbase stock price
+gold price
+oil price today
+disney stock
+netflix shares
+rivian stock
+VTI
+why is nvidia stock down today
+qqq
+sofi stock
+Tesla Stock Price
+can you show me the apple stock chart
+btc
+microsoft stock pls
+solana price
+russell 2000
+is tesla a good buy
+hood stock
+euro to dollar
+boeing shares
+nasdaq futures
+
+# one line
+what time is it in london
+what's the time in sydney
+time in paris right now
+what day is thanksgiving 2026
+how many ounces in a cup
+how tall is the eiffel tower
+capital of australia
+how many days until christmas
+what year did ww2 end
+boiling point of water in fahrenheit
+how many weeks in a year
+how old is barack obama
+population of japan
+whats 15% of 80
+how many feet in a mile
+when was the iphone released
+is tomorrow a holiday
+what's the weather today
+how far is a marathon
+how many calories in a banana
+speed of light
+tallest mountain in the world
+how long to boil an egg
+who wrote pride and prejudice
+what time zone is chicago
+current time in tokyo pls
+how many teaspoons in a tablespoon
+largest country by area
+what's the date today
+How Many Continents Are There
+who won the super bowl
+who is the president of france
+how much is a big mac
+what is the square root of 144
+10 kilometers to miles
+when is the next full moon
+hwo many legs does a spider have
+can you tell me what time it is in dubai
+what time is it
+how many bones in the human body
+is 2028 a leap year
+freezing point of water celsius
+what is pi
+distance from earth to mars
+gestation period of an elephant
+how many people live in nyc
+what's 20% of 65
+when does daylight saving time end
+how many ml in a liter
+age of the universe
+
+# recall
+that article about sleep from yesterday
+pull up the recipe I was looking at
+show me that video again
+where's the page I had open about taxes
+the thing I read about intermittent fasting
+go back to that amazon listing
+find the hotel I was looking at earlier
+that reddit post about keyboards
+bring back the map I had up
+what was that site with the cheap flights
+the video i watched last night about space
+remember the article on gingivitis
+that page about the camry
+pull up what I searched this morning
+show me yesterdays searches
+the pdf I was reading
+that song lyrics page
+where did I see that quote about stoicism
+go back to the pizza place I found
+can you find that youtube video from last week
+the chatgpt page I had open
+that convo about dyson vacuums again
+the thing about leap years I looked up
+open the tab I had about lisbon
+what did I search for on tuesday
+the eiffel tower picture from earlier
+show me the stock chart I had up
+that wikipedia article from yesterday
+pull up my earlier search about mortgage rates
+the recipe from last weekend
+what was i reading before
+the shoes i was looking at
+that thing from earlier
+go back
+my last search
+
+# image
+golden gate bridge
+picture of a red panda
+what does a narwhal look like
+mount fuji
+starry night
+tesla cybertruck
+japanese flag
+show me a picture of the northern lights
+burj khalifa
+pic of a corgi
+periodic table
+mona lisa painting
+what does the amazon logo look like
+taj mahal
+great wall of china
+blue whale
+a picture of saturn
+sagrada familia
+show me the mercedes logo
+what does a platypus look like
+van gogh sunflowers
+machu picchu photo
+human heart diagram
+map of europe
+the scream painting
+statue of liberty
+koala
+world map
+nike logo
+what does bitcoin look like
+Golden Retriever
+pictures of the aurora please
+girl with a pearl earring
+colosseum rome
+what does a ferrari f40 look like
+flag of brazil
+what does a tick look like
+leaning tower of pisa
+the last supper
+canadian flag pls
+
+# site
+go to reddit
+open youtube
+pull up amazon
+take me to netflix
+open gmail please
+can you open spotify
+launch twitch
+go to the wikipedia website
+open up instagram
+youtube
+go to github
+open tiktok
+take me to zillow
+open linkedin pls
+pull up espn
+go to nytimes
+open the bbc website
+can you go to airbnb
+open chatgpt
+go to google maps
+open discord
+take me to ebay
+open craigslist
+pinterest
+go to twitter
+open x
+launch doordash
+go to uber eats
+open google docs
+take me to yelp
+open hulu
+go to stackoverflow
+open bbc news
+can u open facebook
+goto reddit
+open insta pls
+pull up the weather channel
+open my bank
+take me to the nyt
+hey open youtube for me
+amazon
+open the apple website
+go to duolingo
+ok open gmail
+
+# addresses
+apple.com
+nytimes.com
+en.wikipedia.org
+github.com/apple/swift
+www.bbc.co.uk/news
+reddit.com/r/swift

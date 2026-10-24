@@ -44,8 +44,20 @@ public struct SearchQuery: Equatable, Sendable {
         "account", "assistant", "lens", "tv", "fiber", "workspace", "search", "io", "glass", "voice",
     ]
 
-    /// Words that may close the query without changing it, any number of them.
-    public static let trailers: [String] = ["on google", "for me", "please"]
+    /// A correction to what the app did last, at the front, any number of
+    /// them: "no not that, steve jobs". They come off with or without an
+    /// opener. A bare "no" is not one: "no man's sky" is a game.
+    public static let corrections: [String] = [
+        "no not that one", "no not that", "no not this", "no i said", "no i meant", "not that one", "not that",
+        "i said", "i meant", "i told you", "like i said",
+    ]
+
+    /// Words that may close the query without changing it, any number of
+    /// them, with or without an opener: "steve jobs, I said".
+    public static let trailers: [String] = [
+        "is what i said", "is what i meant", "like i said", "i said", "i meant", "i told you",
+        "on google", "for me", "please",
+    ]
 
     /// The command and its term, or nil when the query names no search:
     /// nothing came off it, or everything would have.
@@ -55,6 +67,7 @@ public struct SearchQuery: Equatable, Sendable {
         var stripped = false
         var isCommand = false
 
+        while tokens.stripFront(anyOf: corrections) != nil { stripped = true }
         var led = tokens
         while led.stripFront(anyOf: leads) != nil {}
         if led.stripFront(anyOf: openers) != nil {
@@ -75,6 +88,6 @@ public struct SearchQuery: Equatable, Sendable {
     /// The term to search: the query with its command gone, or the query
     /// itself when it names no search.
     public static func term(for query: String) -> String {
-        parse(query)?.term ?? query
+        parse(query)?.term ?? ImageQuery.bare(query)
     }
 }

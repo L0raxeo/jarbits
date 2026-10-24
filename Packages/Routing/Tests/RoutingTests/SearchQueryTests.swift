@@ -39,9 +39,22 @@ import Testing
         #expect(parsed?.isCommand == false)
     }
 
-    @Test func theTermIsKeptAsTyped() {
-        #expect(SearchQuery.parse("Google Steve Jobs?")?.term == "Steve Jobs?")
+    @Test(arguments: [
+        ("steve jobs, I said.", "steve jobs"),
+        ("no not that, google steve jobs", "steve jobs"),
+        ("No, not that one. Look up Steve Jobs!", "Steve Jobs"),
+        ("i meant steve jobs", "steve jobs"),
+        ("google steve jobs is what i said", "steve jobs"),
+        ("I told you, search for steve jobs", "steve jobs"),
+    ])
+    func aCorrectionComesOffWithOrWithoutAVerb(query: String, term: String) {
+        #expect(SearchQuery.term(for: query) == term, "\(query)")
+    }
+
+    @Test func theTermIsKeptAsTypedButNotItsClosingPunctuation() {
+        #expect(SearchQuery.parse("Google Steve Jobs?")?.term == "Steve Jobs")
         #expect(SearchQuery.parse("Google: Steve Jobs")?.term == "Steve Jobs")
+        #expect(SearchQuery.parse("google \"steve jobs\"")?.term == "steve jobs")
         #expect(SearchQuery.parse("look up what's new in Swift 6")?.term == "what's new in Swift 6")
         #expect(SearchQuery.parse("search for café in Lyon")?.term == "café in Lyon")
     }
@@ -52,7 +65,7 @@ import Testing
         #expect(SearchQuery.term(for: query) == query)
     }
 
-    @Test(arguments: ["google", "search for", "look up", "please", "best laptops 2026", "chocolate milk", "search engine optimization", "steve jobs"])
+    @Test(arguments: ["google", "search for", "look up", "please", "i said", "no not that", "best laptops 2026", "chocolate milk", "search engine optimization", "steve jobs", "no man's sky", "no country for old men"])
     func aQueryThatNamesNoSearchIsLeftAlone(query: String) {
         #expect(SearchQuery.parse(query) == nil, "\(query)")
         #expect(SearchQuery.term(for: query) == query)

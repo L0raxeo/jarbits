@@ -188,7 +188,9 @@ public enum DecisionsReport {
             out.append("")
             let shown = imaged.filter { if case .shown = $0.1.outcome { true } else { false } }
             let withAlternates = shown.filter { if case let .shown(alternates) = $0.1.outcome { alternates > 0 } else { false } }.count
-            out.append("\(imaged.count) image queries: \(shown.count) shown (\(withAlternates) with alternates), \(imaged.count - shown.count) fell back to web. Median latency \(median(imaged.compactMap(\.1.latencyMs))).")
+            let fromBrave = shown.filter { $0.1.source == .brave }.count
+            let braveNote = fromBrave > 0 ? ", \(fromBrave) from Brave" : ""
+            out.append("\(imaged.count) image queries: \(shown.count) shown (\(withAlternates) with alternates\(braveNote)), \(imaged.count - shown.count) fell back to web. Median latency \(median(imaged.compactMap(\.1.latencyMs))).")
             out.append("")
             let missed = imaged.filter { if case .fellBackToWeb = $0.1.outcome { true } else { false } }
             if !missed.isEmpty {
@@ -215,8 +217,13 @@ public enum DecisionsReport {
             if !judged.isEmpty {
                 let latencies = judged.compactMap(\.1.latencyMs).sorted()
                 let median = latencies.isEmpty ? "–" : "\(latencies[latencies.count / 2]) ms"
-                let fellBack = recalls.filter { $0.1.source.map { $0 != "jev" && $0 != "words" } ?? false }.count
+                let listed = ["count", "all"]
+                let fellBack = recalls.filter { $0.1.source.map { $0 != "jev" && $0 != "words" && !listed.contains($0) } ?? false }.count
                 line += " Jev judged \(judged.count), median \(median); \(fellBack) fell back to word order."
+            }
+            let intents = recalls.filter { $0.0.decision.recall != nil }.count
+            if intents > 0 {
+                line += " Jev read the ask for \(intents)."
             }
             out.append(line)
             if !none.isEmpty {

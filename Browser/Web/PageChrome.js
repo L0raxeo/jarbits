@@ -286,8 +286,30 @@
     try { window.webkit.messageHandlers.pageAddress.postMessage({ url: address, title }); } catch (e) {}
   }
 
+  // --- Audio ---------------------------------------------------------------
+
+  // Whether anything on the page plays out loud. Media events do not bubble,
+  // but a capture listener on the document sees them all, outside shadow
+  // roots and iframes. Posted only when the answer changes; the count lets
+  // the app tell "nothing here" from "a player it cannot see".
+  let reportedAudible = null;
+  let reportedMedia = null;
+  function audible(el) { return !el.paused && !el.ended && !el.muted && el.volume > 0; }
+  function reportAudio() {
+    const media = document.querySelectorAll('video, audio');
+    const playing = Array.prototype.some.call(media, audible);
+    if (playing === reportedAudible && media.length === reportedMedia) return;
+    reportedAudible = playing;
+    reportedMedia = media.length;
+    try { window.webkit.messageHandlers.pageAudio.postMessage({ audible: playing, media: media.length }); } catch (e) {}
+  }
+  for (const name of ['play', 'playing', 'pause', 'ended', 'emptied', 'volumechange']) {
+    document.addEventListener(name, reportAudio, { capture: true, passive: true });
+  }
+
   function evaluate(force) {
     reportAddress();
+    reportAudio();
     if (window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.01) return null;
     const scroller = document.scrollingElement;
     const atTop = (scroller ? scroller.scrollTop : window.scrollY) <= 1;
@@ -352,7 +374,7 @@
   window.addEventListener('popstate', schedule);
   window.addEventListener('hashchange', schedule);
   window.addEventListener('pageshow', (event) => {
-    if (event.persisted) { lastKey = null; schedule(); }
+    if (event.persisted) { lastKey = null; reportedAudible = null; reportedMedia = null; schedule(); }
   });
 
   window.__pageChrome = { evaluate };

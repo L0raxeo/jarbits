@@ -16,29 +16,45 @@ public enum RecallRouting {
         no: "A different thing, even if it shares a word with the query or is of the same kind."
     )
 
+    /// At or above this, a memory belongs to a collection ("everything
+    /// about the dyson"): every one that does is shown, newest first.
+    public static let collectionThreshold = 0.5
+
+    public static let collectionCriteria = (
+        yes: "This memory is about the thing, topic or name the query asks for everything about: its title, its query, its address or its text concerns it, whatever kind of memory it is.",
+        no: "About something else, even of the same kind, from the same day, or sharing an unrelated word with the query."
+    )
+
     public static func questionID(_ index: Int) -> String { "m\(index)" }
 
+    /// `collection` asks, per memory, whether it is about the topic rather
+    /// than whether it is the one thing asked for.
     public static func request(
         for query: String,
         candidates: [MemoryRecord],
         now: Date,
         locale: Locale = .current,
         model: String = JevClient.defaultModel,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        collection: Bool = false
     ) -> SystemOneRequest {
         SystemOneRequest(
             model: model,
             state: RouteState(query: query, locale: locale.identifier),
             questions: candidates.enumerated().map { index, record in
-                (questionID(index), .noul(instructions: instructions(for: record, now: now, calendar: calendar), criteria: recallCriteria))
+                (questionID(index), .noul(
+                    instructions: instructions(for: record, now: now, calendar: calendar, collection: collection),
+                    criteria: collection ? collectionCriteria : recallCriteria
+                ))
             }
         )
     }
 
     /// One candidate, as Jev reads it: its kind, when, its host for a page,
     /// its title, and the start of a written answer.
-    public static func instructions(for record: MemoryRecord, now: Date, calendar: Calendar = .current) -> String {
-        var line = "Is this the memory the query asks for? A \(describe(record.kind)) from \(when(record.date, now: now, calendar: calendar))"
+    public static func instructions(for record: MemoryRecord, now: Date, calendar: Calendar = .current, collection: Bool = false) -> String {
+        var line = collection ? "Is this memory about what the query asks for everything about?" : "Is this the memory the query asks for?"
+        line += " A \(describe(record.kind)) from \(when(record.date, now: now, calendar: calendar))"
         if let host = record.url?.host() { line += " (\(host))" }
         line += ": \"\(record.title)\"."
         if let text = record.text {
@@ -111,9 +127,12 @@ public struct RecallResolver: Sendable {
         self.locale = locale
     }
 
-    public func resolve(_ query: String, candidates: [MemoryRecord], now: Date = .now, threshold: Double = RecallRouting.maybeThreshold) async -> RecallVerdict {
+    /// `collection` asks the "about" question and keeps every memory at or
+    /// above the collection threshold.
+    public func resolve(_ query: String, candidates: [MemoryRecord], now: Date = .now, threshold: Double? = nil, collection: Bool = false) async -> RecallVerdict {
         guard !candidates.isEmpty else { return .picked([], latencyMs: 0) }
-        let request = RecallRouting.request(for: query, candidates: candidates, now: now, locale: locale, model: client.model)
+        let threshold = threshold ?? (collection ? RecallRouting.collectionThreshold : RecallRouting.maybeThreshold)
+        let request = RecallRouting.request(for: query, candidates: candidates, now: now, locale: locale, model: client.model, collection: collection)
         let clock = ContinuousClock()
         let start = clock.now
         do {

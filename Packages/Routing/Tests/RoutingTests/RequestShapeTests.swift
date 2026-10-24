@@ -51,7 +51,7 @@ import Testing
         let questions = try #require(json["questions"] as? [String: Any])
         #expect(questions["continues"] == nil)
         #expect((questions["format"] as? [String: Any])?["instructions"] as? String == JevRouting.instructions)
-        #expect(request.questions.map(\.id) == ["format", "recent"])
+        #expect(request.questions.map(\.id) == ["format", "recent"] + JevRouting.recallQuestionIDs)
     }
 
     @Test func aThreadAddsStateReadsTheQueryInContextAndAsksIfItContinues() throws {
@@ -73,7 +73,7 @@ import Testing
         let criteria = try #require(continues["criteria"] as? [String: String])
         #expect(Set(criteria.keys) == ["true", "false"])
         #expect(criteria["true"]?.contains("can I use water") == true)
-        #expect(request.questions.map(\.id) == ["format", "recent", "continues"], "the format choice stays first")
+        #expect(request.questions.map(\.id) == ["format", "recent"] + JevRouting.recallQuestionIDs + ["continues"], "the format choice stays first")
     }
 
     @Test func aTurnDecodesAsNarrativeWithoutAFormatAndKeepsOneLine() throws {
@@ -190,7 +190,7 @@ import Testing
         #expect(criteria["false"]?.contains("open youtube") == true)
         #expect(questions["continues"] == nil, "a page on screen means no narrative is")
         #expect((questions["format"] as? [String: Any])?["instructions"] as? String == JevRouting.instructions, "the format question reads the query as typed")
-        #expect(request.questions.map(\.id) == ["format", "recent", "rejects"], "the format choice stays first")
+        #expect(request.questions.map(\.id) == ["format", "recent"] + JevRouting.recallQuestionIDs + ["rejects"], "the format choice stays first")
     }
 
     @Test func withoutAnOpenedSiteNothingIsAdded() throws {
@@ -198,9 +198,9 @@ import Testing
         let json = try #require(JSONSerialization.jsonObject(with: try request.jsonData()) as? [String: Any])
         let state = try #require(json["state"] as? [String: Any])
         #expect(Set(state.keys) == ["query", "locale"])
-        #expect(request.questions.map(\.id) == ["format", "recent"])
+        #expect(request.questions.map(\.id) == ["format", "recent"] + JevRouting.recallQuestionIDs)
         let criteria = try #require(((json["questions"] as? [String: Any])?["format"] as? [String: Any])?["criteria"] as? [String: Any])
         #expect(criteria["site"] != nil, "site is one of the options")
-        #expect(Array(ResponseFormat.allCases.map(\.rawValue)).last == "site", "appended last, so the other options keep their order")
+        #expect(Array(ResponseFormat.allCases.map(\.rawValue)).suffix(2) == ["site", "video"], "appended in order, so the other options keep theirs")
     }
 }

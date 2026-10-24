@@ -190,6 +190,10 @@ final class PageChromeHandler: NSObject, WKScriptMessageHandler {
     var onReport: ((PageChromeReport) -> Void)?
     /// The page changed its address without loading; the title as it stands.
     var onAddress: ((URL, String) -> Void)?
+    /// Whether the page's own media plays out loud, and how many media
+    /// elements the main document has (none means a player, if any, is in a
+    /// frame the watcher cannot see).
+    var onAudio: ((_ audible: Bool, _ media: Int) -> Void)?
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame else { return }
@@ -198,6 +202,9 @@ final class PageChromeHandler: NSObject, WKScriptMessageHandler {
             guard let body = message.body as? [String: Any],
                   let string = body["url"] as? String, let url = URL(string: string) else { return }
             onAddress?(url, body["title"] as? String ?? "")
+        case PageChrome.audioHandlerName:
+            guard let body = message.body as? [String: Any], let audible = body["audible"] as? Bool else { return }
+            onAudio?(audible, body["media"] as? Int ?? 0)
         default:
             guard let report = PageChromeReport(message.body) else { return }
             onReport?(report)
@@ -208,6 +215,7 @@ final class PageChromeHandler: NSObject, WKScriptMessageHandler {
 extension PageChrome {
     static let handlerName = "pageChrome"
     static let addressHandlerName = "pageAddress"
+    static let audioHandlerName = "pageAudio"
     /// The watcher's content world: the page's own scripts cannot see the
     /// handler or the watcher, and a direct call from the app can.
     static let world = WKContentWorld.defaultClient
@@ -231,6 +239,7 @@ extension PageChrome {
         }
         content.add(handler, contentWorld: world, name: handlerName)
         content.add(handler, contentWorld: world, name: addressHandlerName)
+        content.add(handler, contentWorld: world, name: audioHandlerName)
         configuration.userContentController = content
         return configuration
     }

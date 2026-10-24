@@ -25,6 +25,20 @@ import Testing
         #expect((json["questions"] as? [String: Any])?["continues"] == nil, "no answer on screen, no continues question")
     }
 
+    @Test func aRecallPickBringsItsIntentInTheSameRequest() async throws {
+        let client = MockTransport.client(status: 200, body: jevResponse(
+            choice: "recall", confidence: 0.95, probabilities: ["recall": 0.96, "web_results": 0.04], recency: 0.1,
+            nouls: recallNouls(kinds: [.searches, .answers], named: false, all: true)))
+        let decision = await FormatRouter(client: client, locale: Locale(identifier: "en_US")).decide("the last 5 things I asked you, including google searches and AI stuff")
+        #expect(decision.format == .recall)
+        #expect(decision.recall?.wanted == [.searches, .answers])
+        #expect(decision.recall?.namesThing == false)
+        #expect(MockTransport.requests.count == 1, "the intent rides in the routing request; no second call")
+        let body = try #require(MockTransport.requests.first?.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect((json["questions"] as? [String: Any])?["recall_named"] != nil)
+    }
+
     @Test func aPreviousTurnReachesJevAndTheAnswerComesBack() async throws {
         let client = MockTransport.client(status: 200, body: jevResponse(
             choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9, "web_results": 0.1], recency: 0.1, continues: 0.85))

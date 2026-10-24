@@ -21,6 +21,8 @@ struct ClayCapsule: View {
     var hearing: Bool = false
     /// Microphone loudness, 0…1.
     var voice: Double = 0
+    /// The microphone is open: purple. Otherwise the capsule turns a soft red.
+    var attentive: Bool = true
     /// Widest the label form may hug to.
     var maxWidth: CGFloat
     /// The field form's width, the clay's capsule width.
@@ -34,6 +36,8 @@ struct ClayCapsule: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = VoicePulse()
+    /// 0 purple … 1 red, eased over a few frames rather than switched.
+    @State private var warmth = VoicePulse(attack: 0.35, release: 0.35)
 
     static let openHeight: CGFloat = 46
     static let compactHeight: CGFloat = 34
@@ -82,6 +86,7 @@ struct ClayCapsule: View {
             let crest = 0.5 + 0.5 * sin(2 * .pi * t / Self.wavePeriod)
             let breath = sin(2 * .pi * t / Self.breathPeriod)
             let heard = reduceMotion ? 0 : pulse.step(toward: voice, at: t)
+            let red = reduceMotion ? (attentive ? 0 : 1) : warmth.step(toward: attentive ? 0 : 1, at: t)
             ZStack {
                 Text(text)
                     .font(.subheadline.weight(.semibold))
@@ -105,7 +110,7 @@ struct ClayCapsule: View {
                     crest: crest,
                     thickness: loading ? Self.lineThickness : height
                 )
-                .fill(Palette.breathingMesh(at: t))
+                .fill(Palette.breathingMesh(at: t, warmth: red))
             }
             // The circle breathes and swells with the voice, as the clay does.
             .scaleEffect(circular ? 1 + 0.05 * breath + 0.12 * heard : 1)
@@ -118,7 +123,7 @@ struct ClayCapsule: View {
                     .allowsHitTesting(editing)
                     .animation(editing ? .easeIn(duration: 0.25).delay(0.15) : .easeOut(duration: 0.15), value: editing)
             }
-            .shadow(color: Palette.glow.opacity(loading ? 0.25 : 0.3), radius: 12, y: 6)
+            .shadow(color: Palette.glow(red).opacity(loading ? 0.25 : 0.3), radius: 12, y: 6)
             // As the listening circle, the same shadow as the buttons beside it.
             .shadow(color: ListeningCapsule.shadowColor.opacity(circular ? 1 : 0), radius: ListeningCapsule.shadowRadius, y: ListeningCapsule.shadowY)
         }

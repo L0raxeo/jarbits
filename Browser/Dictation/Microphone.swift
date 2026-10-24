@@ -1,0 +1,199 @@
+import AVFAudio
+import Foundation
+import Observation
+import os
+
+/// The one microphone. The audio session is set once, at launch, to record
+/// and play while mixing with everything else, and is never touched again
+/// while anything plays: so opening the microphone cannot pause a page's
+/// video or another app's music. One tap on the input, shared by whoever
+/// subscribes (passive listening today; a voice memo tomorrow). And an
+/// exclusive mode for recording on purpose, which stands passive listening
+/// aside. If WebKit takes the session for an audible video, the category is
+/// re-asserted only once the owner says nothing is playing.
+@Observable
+@MainActor
+final class Microphone {
+    /// Something records on purpose: passive listening stands aside.
+    private(set) var exclusive = false
+
+    private let engine = MicrophoneEngine()
+    private var observers: [any NSObjectProtocol] = []
+
+    static let category: AVAudioSession.Category = .playAndRecord
+    /// Speaker rather than earpiece; mixing, so nothing else is silenced;
+    /// Bluetooth and AirPlay output kept, which record categories otherwise drop.
+    static let options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .mixWithOthers, .allowBluetoothA2DP, .allowAirPlay]
+
+    init() {
+        prepareSession()
+        #if DEBUG
+        // Whether WebKit takes the session for a page's media: the one
+        // thing about this design Apple does not document.
+        observers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { note in
+            let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            guard raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:)) == .categoryChange else { return }
+            let session = AVAudioSession.sharedInstance()
+            print("audio session category now \(session.category.rawValue), options \(session.categoryOptions.rawValue)")
+        })
+        #endif
+    }
+
+    /// The session is in our category, so the tap can run.
+    var sessionIsOurs: Bool {
+        AVAudioSession.sharedInstance().category == Self.category
+    }
+
+    /// Sets the category when it is not ours and activates the session.
+    /// At launch, and later only when the owner has found nothing playing.
+    func prepareSession() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            if session.category != Self.category || session.categoryOptions != Self.options {
+                try session.setCategory(Self.category, mode: .default, options: Self.options)
+            }
+            try session.setActive(true)
+        } catch {
+            #if DEBUG
+            print("audio session: \(error)")
+            #endif
+        }
+    }
+
+    /// The input's own format; what a subscriber converts from.
+    var inputFormat: AVAudioFormat { engine.inputFormat }
+
+    /// Buffers from the input, on Core Audio's thread, until `unsubscribe`.
+    /// The tap runs while anyone is subscribed.
+    func subscribe(_ handler: @escaping MicrophoneEngine.Handler) throws -> UUID {
+        prepareSession()
+        let id = UUID()
+        try engine.add(id, handler)
+        return id
+    }
+
+    func unsubscribe(_ id: UUID) {
+        engine.remove(id)
+    }
+
+    /// For recording on purpose: while on, passive listening stands aside.
+    func setExclusive(_ on: Bool) {
+        exclusive = on
+    }
+}
+
+enum MicrophoneFailure: Error {
+    /// The input has no format: the Simulator, no microphone, or the
+    /// session's category does not allow recording right now.
+    case noInput
+}
+
+/// The engine and its one tap, fanned out to the subscribers. The tap block
+/// runs on Core Audio's thread and touches only the lock, which is why this
+/// class is unchecked.
+nonisolated final class MicrophoneEngine: @unchecked Sendable {
+    typealias Handler = @Sendable (AVAudioPCMBuffer) -> Void
+
+    private let engine = AVAudioEngine()
+    private let handlers = OSAllocatedUnfairLock<[UUID: Handler]>(initialState: [:])
+
+    var inputFormat: AVAudioFormat { engine.inputNode.outputFormat(forBus: 0) }
+
+    func add(_ id: UUID, _ handler: @escaping Handler) throws {
+        let wasEmpty = handlers.withLock { table in
+            let empty = table.isEmpty
+            table[id] = handler
+            return empty
+        }
+        if wasEmpty || !engine.isRunning { try start() }
+    }
+
+    func remove(_ id: UUID) {
+        let empty = handlers.withLock { table in
+            table[id] = nil
+            return table.isEmpty
+        }
+        if empty { stop() }
+    }
+
+    private func start() throws {
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else { throw MicrophoneFailure.noInput }
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 2048, format: format) { [handlers] buffer, _ in
+            for handler in handlers.withLock({ Array($0.values) }) {
+                handler(buffer)
+            }
+        }
+        engine.prepare()
+        try engine.start()
+    }
+
+    private func stop() {
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+    }
+
+    /// Root mean square of the first channel, 0…1.
+    static func rms(of buffer: AVAudioPCMBuffer) -> Float {
+        guard let channels = buffer.floatChannelData, buffer.frameLength > 0 else { return 0 }
+        let samples = channels[0]
+        var sum: Float = 0
+        for i in 0..<Int(buffer.frameLength) {
+            let s = samples[i]
+            sum += s * s
+        }
+        return (sum / Float(buffer.frameLength)).squareRoot()
+    }
+}
+
+/// Converts the input's buffers to a subscriber's format, on the tap's
+/// thread only, which is why it is unchecked. Nothing to do when the
+/// formats already agree.
+nonisolated final class BufferConverter: @unchecked Sendable {
+    private let converter: AVAudioConverter?
+    private let target: AVAudioFormat
+    private let ratio: Double
+
+    init(from input: AVAudioFormat, to target: AVAudioFormat) throws {
+        self.target = target
+        ratio = target.sampleRate / input.sampleRate
+        if input.sampleRate == target.sampleRate, input.channelCount == target.channelCount, input.commonFormat == target.commonFormat {
+            converter = nil
+        } else {
+            guard let made = AVAudioConverter(from: input, to: target) else { throw MicrophoneFailure.noInput }
+            made.primeMethod = .none
+            converter = made
+        }
+    }
+
+    func convert(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let converter else { return buffer }
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
+        guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return nil }
+        let handoff = Handoff(buffer)
+        var error: NSError?
+        let status = converter.convert(to: out, error: &error) { _, outStatus in
+            guard let input = handoff.take() else {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            outStatus.pointee = .haveData
+            return input
+        }
+        guard status != .error, out.frameLength > 0 else { return nil }
+        return out
+    }
+
+    /// Hands one buffer to the converter's input block, once; the block is
+    /// typed as concurrent though it runs inline, which is why this is unchecked.
+    private final class Handoff: @unchecked Sendable {
+        private var buffer: AVAudioPCMBuffer?
+        init(_ buffer: AVAudioPCMBuffer) { self.buffer = buffer }
+        func take() -> AVAudioPCMBuffer? {
+            defer { buffer = nil }
+            return buffer
+        }
+    }
+}

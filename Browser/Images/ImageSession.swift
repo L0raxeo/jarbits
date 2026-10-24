@@ -4,9 +4,9 @@ import Observation
 import Routing
 import UIKit
 
-/// One image plan in flight: the Wikipedia search, the first picture decoded
-/// before anything is shown, the alternates, and the summary for the log. A
-/// new query cancels the old one.
+/// One image plan in flight: the lookup (Wikipedia, then Brave behind it),
+/// the first picture decoded before anything is shown, the alternates, and
+/// the summary for the log. A new query cancels the old one.
 @Observable
 @MainActor
 final class ImageSession {
@@ -29,13 +29,11 @@ final class ImageSession {
     /// Called once per query with the summary; on a fallback the owner shows web results.
     var onFinish: ((ImageSummary) -> Void)?
 
-    private let search: ImageSearch
+    private let lookup: ImageLookup
     private var task: Task<Void, Never>?
-    /// Search plus the first download must finish within this.
-    private let totalTimeout: Duration = .seconds(10)
 
-    init(search: ImageSearch = ImageSearch()) {
-        self.search = search
+    init(lookup: ImageLookup = ImageLookup()) {
+        self.lookup = lookup
     }
 
     func start(query: String) {
@@ -58,10 +56,10 @@ final class ImageSession {
     /// Makes an alternate the picture, once its bytes have arrived.
     func select(_ index: Int) {
         guard results.indices.contains(index), index != primaryIndex else { return }
-        let url = results[index].imageURL
+        let result = results[index]
         let generation = query
         Task {
-            guard let data = try? await search.data(for: url), let image = UIImage(data: data), generation == query else { return }
+            guard let data = try? await lookup.data(for: result), let image = UIImage(data: data), generation == query else { return }
             primaryIndex = index
             primary = image
         }
@@ -70,15 +68,13 @@ final class ImageSession {
     private func run(_ query: String) async {
         let clock = ContinuousClock()
         let start = clock.now
-        let search = self.search
+        let lookup = self.lookup
         do {
-            let (found, data) = try await withTimeout(totalTimeout) {
-                let found = try await search.find(query)
-                let data = try await search.data(for: found[0].imageURL)
-                return (found, data)
-            }
+            // Each source gets its own budget for the search and the first download.
+            let pick = try await lookup.find(query) { UIImage(data: $0) != nil }
             if Task.isCancelled { return }
-            guard let image = UIImage(data: data) else { throw ImageError.decoding("picture") }
+            guard let image = UIImage(data: pick.data) else { throw ImageError.decoding("picture") }
+            let found = pick.results
             results = found
             primaryIndex = 0
             primary = image
@@ -87,6 +83,7 @@ final class ImageSession {
                 article: found[0].title,
                 candidates: found.count,
                 latencyMs: Self.elapsedMs(clock, since: start),
+                source: pick.source,
                 outcome: .shown(alternates: found.count - 1)
             )
             self.summary = summary
@@ -109,11 +106,7 @@ final class ImageSession {
     private static func describe(_ error: any Error) -> String {
         switch error {
         case is TimeoutError: "timeout"
-        case ImageError.timeout: "timeout"
-        case ImageError.noImage: "no image"
-        case let ImageError.transport(message): "transport: \(message)"
-        case let ImageError.http(status, body): "http \(status): \(body)"
-        case let ImageError.decoding(message): "decoding: \(message)"
+        case let error as ImageError: error.reason
         default: String(describing: error)
         }
     }

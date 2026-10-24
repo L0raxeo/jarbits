@@ -5,15 +5,15 @@ import Routing
 import Speech
 import UIKit
 
-/// The microphone listening on the idle screen: the clay's pulse, whether
-/// a word has been heard, and, when the user is done, what was said. The
-/// words are recognised as they are spoken, so they are ready the moment
-/// the button is pressed, but they are never shown; `finish()` is the only
-/// way out. A word counts only once the dictionary vouches for it, so
-/// noises do not raise the button; and what was heard is forgotten after
-/// a silence, or once the talk has gone on too long to be a query, so the
-/// button goes back to the keyboard hint. Owned by `BrowserSession`,
-/// driven by the home screen.
+/// The microphone listening on the idle screen and over a result: the
+/// clay's pulse, whether a word has been heard, and, when the user is done,
+/// what was said. The words are recognised as they are spoken, so they are
+/// ready the moment the button is pressed, but they are never shown;
+/// `finish()` is the only way out. A word counts only once the dictionary
+/// vouches for it, so noises do not raise the button; and what was heard is
+/// forgotten after a silence, or once the talk has gone on too long to be a
+/// query, so the button goes back to the keyboard hint. A subscriber of the
+/// shared `Microphone`, owned by `BrowserSession`, driven by the home screen.
 @Observable
 @MainActor
 final class DictationSession {
@@ -34,7 +34,8 @@ final class DictationSession {
     /// Enough real words have arrived: the user is speaking to it.
     private(set) var heardSpeech = false
 
-    private let capture = AudioCapture()
+    private let microphone: Microphone
+    private var subscription: UUID?
     /// The screen's intent, kept across interruptions and a finish in flight.
     private var wanted = false
     /// Bumped by every stop; a start checks it after each await.
@@ -47,9 +48,11 @@ final class DictationSession {
     private var finalized: [AttributedString] = []
     private var volatile = AttributedString()
     private var observers: [any NSObjectProtocol] = []
-    /// Asked before the microphone opens: false holds the start off and
-    /// tries again shortly, while still wanted. Set by the owner, who knows
-    /// what else is playing.
+    /// Asked before a start would re-assert the audio session's category,
+    /// which only happens when something else has taken it: false holds the
+    /// start off and tries again shortly, while still wanted. Set by the
+    /// owner, who knows what is playing. Never asked while the session is
+    /// already ours, so nothing playing is ever disturbed.
     var mayListen: (@MainActor () async -> Bool)?
     private var retryTask: Task<Void, Never>?
     /// Vouches for words; built for the transcriber's locale.
@@ -63,13 +66,16 @@ final class DictationSession {
     private static let finishTimeout: Duration = .seconds(3)
     /// How long a start held off by `mayListen` waits before asking again.
     private static let retryDelay: Duration = .milliseconds(500)
+    /// How long a start that failed waits before trying again.
+    private static let unavailableRetryDelay: Duration = .seconds(2)
     /// A pause this long after talking means it was not for the app.
     private static let silenceLimit: TimeInterval = 6
     /// Talk this long, or this many words, is a conversation, not a query.
     private static let attentionLimit: TimeInterval = 30
     private static let wordLimit = 40
 
-    init() {
+    init(microphone: Microphone) {
+        self.microphone = microphone
         let centre = NotificationCenter.default
         observers.append(centre.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { note in
             let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
@@ -125,7 +131,7 @@ final class DictationSession {
     func finish() -> Task<String?, Never> {
         guard phase == .listening, let analyzer else { return Task { nil } }
         phase = .finishing
-        capture.stop()
+        unsubscribe()
         audio?.finish()
         audio = nil
         levelTask?.cancel()
@@ -158,7 +164,8 @@ final class DictationSession {
     // MARK: Bringing up
 
     private func bringUp(_ generation: Int) async {
-        // Nothing is built for a start that something playing holds off.
+        // Nothing is built for a start that would have to take the session
+        // back from something playing.
         guard await allowed(generation) else { return }
         do {
             guard await AVAudioApplication.requestRecordPermission() else { throw Unavailable.microphoneDenied }
@@ -202,10 +209,17 @@ final class DictationSession {
             }
             try await analyzer.start(inputSequence: audioStream)
             guard generation == self.generation else { return }
-            // Asked again right before the microphone opens: something may
-            // have started playing during the awaits above.
+            // Asked again right before the tap: the session may have been
+            // taken during the awaits above.
             guard await allowed(generation) else { return }
-            try capture.start(target: format, audio: audioContinuation, levels: levelContinuation)
+            microphone.prepareSession()
+            let converter = try BufferConverter(from: microphone.inputFormat, to: format)
+            subscription = try microphone.subscribe { buffer in
+                levelContinuation.yield(MicrophoneEngine.rms(of: buffer))
+                if let converted = converter.convert(buffer) {
+                    audioContinuation.yield(AnalyzerInput(buffer: converted))
+                }
+            }
             phase = .listening
             watchTask = Task { [weak self] in
                 while !Task.isCancelled {
@@ -221,6 +235,9 @@ final class DictationSession {
             #if DEBUG
             print("dictation unavailable: \(error)")
             #endif
+            // Nothing else restarts it while the screen keeps wanting it:
+            // try again in a while, in case it was a passing failure.
+            scheduleRetry(after: Self.unavailableRetryDelay)
         }
     }
 
@@ -293,12 +310,17 @@ final class DictationSession {
 
     // MARK: Tearing down
 
+    private func unsubscribe() {
+        if let subscription { microphone.unsubscribe(subscription) }
+        subscription = nil
+    }
+
     /// Everything off and forgotten; `wanted` is left as it was.
     private func teardown() {
         generation += 1
         retryTask?.cancel()
         retryTask = nil
-        capture.stop()
+        unsubscribe()
         audio?.finish()
         audio = nil
         resultsTask?.cancel()
@@ -315,10 +337,12 @@ final class DictationSession {
         level = 0
     }
 
-    /// True when nothing is playing. False when something is, or when the
-    /// start went stale during the ask; a held-off start is tried again.
+    /// True when the session is ours, or when the owner finds nothing
+    /// playing that taking it back would disturb. False when something is,
+    /// or when the start went stale during the ask; a held-off start is
+    /// tried again.
     private func allowed(_ generation: Int) async -> Bool {
-        guard let mayListen else { return true }
+        guard !microphone.sessionIsOurs, let mayListen else { return true }
         let may = await mayListen()
         guard generation == self.generation else { return false }
         if may { return true }
@@ -328,14 +352,18 @@ final class DictationSession {
         return false
     }
 
-    /// Asks again after `retryDelay`, if the screen still wants to listen
-    /// and nothing else has started or stopped it meanwhile.
-    private func scheduleRetry() {
+    /// Asks again after `delay`, if the screen still wants to listen and
+    /// nothing else has started or stopped it meanwhile.
+    private func scheduleRetry(after delay: Duration = retryDelay) {
         retryTask?.cancel()
         let generation = generation
         retryTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.retryDelay)
-            guard let self, !Task.isCancelled, generation == self.generation, wanted, phase == .idle else { return }
+            try? await Task.sleep(for: delay)
+            guard let self, !Task.isCancelled, generation == self.generation, wanted else { return }
+            switch phase {
+            case .idle, .unavailable: break
+            case .starting, .listening, .finishing: return
+            }
             retryTask = nil
             start()
         }
@@ -343,7 +371,7 @@ final class DictationSession {
 
     /// A call, Siri, headphones unplugged, or a page's media taking the
     /// session: off while it lasts, then back if the screen still wants it,
-    /// through `mayListen`, so media that caused it holds the restart off.
+    /// through `mayListen`, so media that took the session is left alone.
     private func interrupted(ended: Bool) {
         if ended {
             guard wanted, phase == .idle || phase == .listening else { return }

@@ -101,8 +101,8 @@ struct ResultView: View {
                 clayY: clayY, barCompact: $barCompact, recalledOn: record.date,
                 history: Array(turns.dropLast()), query: turns.count > 1 ? turns.last?.query : nil
             )
-        case let .recallPicker(records):
-            RecallGridView(records: records, topInset: topInset, barCompact: $barCompact)
+        case let .recallPicker(records, title):
+            RecallGridView(records: records, title: title, topInset: topInset, barCompact: $barCompact)
         case let .siteChoices(name, candidates):
             SiteChoicesView(name: name, candidates: candidates, clayY: clayY)
         case .recall, .site:
@@ -364,16 +364,25 @@ private struct AnswerView: View {
 private struct RecallGridView: View {
     @Environment(BrowserSession.self) private var session
     let records: [MemoryRecord]
+    /// What the set is, when a set was asked for ("Everything about Dyson
+    /// PencilVac", "Last 5 searches"); nil for a plain choice.
+    let title: String?
     let topInset: CGFloat
     @Binding var barCompact: Bool
 
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
+    private var heading: String {
+        let count = records.count == 1 ? "1 memory" : "\(records.count) memories"
+        guard let title else { return count }
+        return "\(title) · \(count)"
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("\(records.count) memories")
+                    Text(heading)
                         .font(.footnote)
                         .foregroundStyle(Palette.quiet)
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
@@ -487,9 +496,10 @@ private struct MemoryTile: View {
     }
 }
 
-/// A Wikipedia picture where the line was: the image large, its article title
-/// and description under it, up to two alternates as thumbnails, and links to
-/// the article and to web results.
+/// A picture where the line was: the image large, its title and description
+/// under it, up to two alternates as thumbnails, and links to the page it
+/// came from (the Wikipedia article, or the site Brave found it on) and to
+/// web results.
 private struct ImageCardView: View {
     @Environment(BrowserSession.self) private var session
     let images: ImageSession
@@ -520,7 +530,7 @@ private struct ImageCardView: View {
                     }
                     alternates
                     HStack(spacing: 20) {
-                        Button("Wikipedia") { session.open(result.pageURL) }
+                        Button(result.sourceName) { session.open(result.pageURL) }
                         Button("Web results") { session.showWebResults() }
                     }
                     .buttonStyle(.plain)
@@ -537,14 +547,17 @@ private struct ImageCardView: View {
         }
     }
 
-    /// Up to two other matches, small; a tap makes one the picture.
+    /// Up to two other matches, small; a tap makes one the picture. The
+    /// results are taken here, with their positions, not looked up again in
+    /// each row: a new query empties the session's results, and a row from
+    /// the old list can be asked for before this list is rebuilt. Indexing
+    /// then would crash ("Dominican flag", then "Panamanian flag").
     @ViewBuilder
     private var alternates: some View {
-        let others = images.results.indices.filter { $0 != images.primaryIndex }.prefix(2)
+        let others = Array(images.results.enumerated().filter { $0.offset != images.primaryIndex }.prefix(2))
         if !others.isEmpty {
             HStack(spacing: 16) {
-                ForEach(Array(others), id: \.self) { index in
-                    let result = images.results[index]
+                ForEach(others, id: \.offset) { index, result in
                     Button {
                         images.select(index)
                     } label: {

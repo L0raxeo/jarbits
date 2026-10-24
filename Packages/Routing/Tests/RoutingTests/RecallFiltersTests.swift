@@ -20,6 +20,39 @@ import Testing
         return DateInterval(start: start, end: calendar.date(byAdding: .day, value: 1, to: start)!)
     }
 
+    @Test func everythingAsksForACollection() {
+        let everything = parse("Pull up everything we talked about with the Dyson PencilVac")
+        #expect(everything.collection)
+        #expect(everything.kinds == [.narrative, .oneLine], "the kind words are still read; the shortlist decides what to do with them")
+        #expect(parse("all the videos I watched yesterday").collection)
+        #expect(parse("anything about lisbon").collection)
+        #expect(!parse("that answer about hot chocolate").collection)
+        #expect(!parse("the video from yesterday").collection)
+        #expect(RecallFilters(all: true).isEmpty, "a set ask alone is no constraint")
+    }
+
+    @Test func aCountAsksForTheNewestSoMany() {
+        #expect(parse("Pull up my last five queries").count == 5)
+        #expect(parse("Pull up my last 5 queries").count == 5)
+        let spoken = parse("You'll pull up the last 5 things I asked you, like including Google searches and AI stuff, and all that")
+        #expect(spoken.count == 5)
+        #expect(spoken.kinds == [.narrative, .oneLine, .search])
+        #expect(spoken.countTitle == "Last 5 answers and searches")
+        #expect(parse("my latest three pictures").count == 3)
+        #expect(parse("the 3 most recent videos I watched").count == 3)
+        #expect(parse("the last few pages").count == 3)
+        #expect(parse("a couple of recent answers").count == 2)
+        #expect(parse("my recent searches").count == RecallFilters.defaultCount)
+        #expect(parse("my last 50 searches").count == RecallFilters.maxCount)
+        #expect(parse("my last hundred searches").count == nil, "not a number the filters know")
+        #expect(parse("the video from last week").count == nil, "last week is a time")
+        #expect(parse("last night's video").count == nil)
+        #expect(parse("that answer about hot chocolate").count == nil)
+        #expect(parse("my last five searches").countTitle == "Last 5 searches")
+        #expect(parse("the last 4 things").countTitle == "Last 4 memories")
+        #expect(parse("last 2 videos").countTitle == "Last 2 videos")
+    }
+
     @Test func kindWordsNameWhatIsWanted() {
         let videos = parse("Can you pull up the videos I was watching yesterday")
         #expect(videos.video)

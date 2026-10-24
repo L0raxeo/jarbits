@@ -1,19 +1,23 @@
 import Foundation
 import Routing
 
-/// One article with a picture.
+/// One picture: a Wikipedia article's lead image, or a Brave image result.
 public struct ImageResult: Sendable, Equatable {
     public var title: String
-    /// The article key, as in its URL.
+    /// The article key, as in its URL; for a Brave result, the page URL.
     public var key: String
     public var description: String?
-    /// The lead image, large: Wikipedia renders an SVG as a PNG of about 960 px.
+    /// The full-size image. Wikipedia renders an SVG as a PNG of about 960 px;
+    /// Brave gives the original on the source site.
     public var imageURL: URL
+    /// Brave does not always know the size; then both are 0.
     public var width: Int
     public var height: Int
+    /// The article, or the page the picture sits on.
     public var pageURL: URL
+    public var source: ImageSource
 
-    public init(title: String, key: String, description: String? = nil, imageURL: URL, width: Int, height: Int, pageURL: URL) {
+    public init(title: String, key: String, description: String? = nil, imageURL: URL, width: Int, height: Int, pageURL: URL, source: ImageSource = .wikipedia) {
         self.title = title
         self.key = key
         self.description = description
@@ -21,6 +25,18 @@ public struct ImageResult: Sendable, Equatable {
         self.width = width
         self.height = height
         self.pageURL = pageURL
+        self.source = source
+    }
+
+    /// What the card's link is called: "Wikipedia", or the page's host
+    /// without `www.` for a Brave result.
+    public var sourceName: String {
+        switch source {
+        case .wikipedia: return "Wikipedia"
+        case .brave:
+            let host = (pageURL.host() ?? "").lowercased()
+            return host.hasPrefix("www.") ? String(host.dropFirst(4)) : (host.isEmpty ? "Source" : host)
+        }
     }
 }
 
@@ -31,13 +47,29 @@ public enum ImageError: Error, Sendable, Equatable {
     case decoding(String)
     /// The search found nothing with a picture.
     case noImage
+    /// Every source was tried and none gave a picture; the detail says what
+    /// each one did, for the log.
+    case nothingFound(String)
+
+    /// One line for the log.
+    public var reason: String {
+        switch self {
+        case let .transport(message): "transport: \(message)"
+        case .timeout: "timeout"
+        case let .http(status, body): "http \(status): \(body)"
+        case let .decoding(message): "decoding: \(message)"
+        case .noImage: "no image"
+        case let .nothingFound(detail): detail
+        }
+    }
 }
 
 /// Finds a picture for a query on Wikipedia, free and without a key: the
 /// REST page search gives article candidates, the page summary of each gives
 /// its lead image. Disambiguation pages and articles without an image are
 /// skipped. Results keep the search order, so the first is the best match
-/// and the rest are alternates.
+/// and the rest are alternates. `ImageLookup` runs this first and
+/// `BraveImageSearch` behind it.
 public struct ImageSearch: Sendable {
     public static let defaultBaseURL = URL(string: "https://en.wikipedia.org")!
     /// Wikimedia asks every client for a descriptive user agent.

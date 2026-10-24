@@ -74,6 +74,78 @@ public enum JevRouting {
         no: "Anything else: a new search or question, a request for another site by its own name (\"open youtube\"), or something to do on the open site."
     )
 
+    // MARK: Recall intent, asked in every request so a recall costs no second round trip
+
+    public static let recallQuestionPrefix = "recall_"
+    public static func recallKindQuestionID(_ kind: RecallIntent.Kind) -> String { recallQuestionPrefix + kind.rawValue }
+    public static let recallNamedQuestionID = "recall_named"
+    public static let recallAllQuestionID = "recall_all"
+    /// Every recall question, in the order asked.
+    public static let recallQuestionIDs: [String] = RecallIntent.Kind.allCases.map(recallKindQuestionID) + [recallNamedQuestionID, recallAllQuestionID]
+
+    /// Each question is judged alone, so each carries the recall framing.
+    static let recallLead = "Read the query as a request to bring back something the user saw earlier in this app: a web page, a written answer, a picture, a search, or a video. "
+
+    public static func recallKindInstructions(_ kind: RecallIntent.Kind) -> String {
+        let ask = switch kind {
+        case .pages: "a web page: an article, a post, a site, a link, a thread, or something read or visited?"
+        case .answers: "an answer this app wrote: a chat, a conversation, a question it answered, something it told or said?"
+        case .pictures: "a picture: a photo or an image the user saw?"
+        case .searches: "a search: a results page, or what was searched or googled?"
+        case .videos: "a video: a clip, or something watched?"
+        }
+        return recallLead + "Does it ask for " + ask
+    }
+
+    public static func recallKindCriteria(_ kind: RecallIntent.Kind) -> (yes: String, no: String) {
+        switch kind {
+        case .pages: (
+            yes: "The query names a page, article, post, site, link or thread, or something the user was reading or visited: \"that article on reddit\", \"the site I was looking at about hennessy\", \"pull up that youtube page from earlier\".",
+            no: "It names an answer, a picture, a search or a video instead; or it names no kind at all (\"the last 5 things we were looking at\", \"that thing about gingivitis\"), which is a no for every kind."
+        )
+        case .answers: (
+            yes: "The query names an answer, a chat, a conversation, a question asked of the app, or what the app said or told the user: \"that answer about hot chocolate\", \"remember that convo on the dyson pencilvac\", \"what you told me about gingivitis\".",
+            no: "It names a page, a picture, a search or a video; or it names no kind. \"Talked about\", \"looked at\" or \"things\" say what the user did, not that an answer is wanted: \"everything we talked about with the dyson\" is a no."
+        )
+        case .pictures: (
+            yes: "The query names a picture, photo or image: \"the picture of the pencilvac\", \"that photo from yesterday\", \"my recent pictures\".",
+            no: "It names another kind, or no kind. \"Show me\" or \"looked at\" alone is not a picture."
+        )
+        case .searches: (
+            yes: "The query names a search, a results page, or what was searched or googled: \"my last five searches\", \"what I googled yesterday\", \"the last 5 things I asked you, including google searches\".",
+            no: "It names another kind, or no kind. \"Looking at\" or \"pull up\" alone is not a search."
+        )
+        case .videos: (
+            yes: "The query names a video or clip, or something the user was watching: \"the video I was watching about muse\", \"all the videos from yesterday\", \"the last 2 videos\".",
+            no: "It names another kind, or no kind. A wristwatch is not watching: \"that watch I was looking at\" is a no."
+        )
+        }
+    }
+
+    public static let recallNamedInstructions = recallLead + "Does it name a particular thing to find, a topic, a title, a name, a site, or a word of what it was, rather than only a kind of thing, a count or a time?"
+
+    public static let recallNamedCriteria = (
+        yes: "There is a subject to look for: \"the dyson pencilvac\", \"that thing about gingivitis\", \"the reddit thread\", \"the video about muse\", \"my grocery list\", \"that youtube page\".",
+        no: "Only a kind, a count, a time, or the asking itself: \"the last 5 things we were looking at\", \"the videos from yesterday\", \"my recent searches\", \"pull up what I was looking at\". Words that describe the asking (\"we were looking at\", \"things\", \"stuff\", \"earlier\") name nothing."
+    )
+
+    public static let recallAllInstructions = recallLead + "Does it ask for everything, all, or several things, everything about a topic, all of a kind, or the last so many, rather than one particular thing?"
+
+    public static let recallAllCriteria = (
+        yes: "A set is wanted: \"everything we talked about with the dyson\", \"all the videos from yesterday\", \"the last 5 things\", \"my recent searches\", \"anything about lisbon\".",
+        no: "One thing: \"that answer about hot chocolate\", \"the video I was watching about muse\", \"go back to the reddit thread\", \"where's my grocery list\"."
+    )
+
+    /// The seven recall questions, in order.
+    static var recallQuestions: [(id: String, question: Question)] {
+        RecallIntent.Kind.allCases.map { kind in
+            (recallKindQuestionID(kind), Question.noul(instructions: recallKindInstructions(kind), criteria: recallKindCriteria(kind)))
+        } + [
+            (recallNamedQuestionID, .noul(instructions: recallNamedInstructions, criteria: recallNamedCriteria)),
+            (recallAllQuestionID, .noul(instructions: recallAllInstructions, criteria: recallAllCriteria)),
+        ]
+    }
+
     public static let recencyInstructions = """
         Would the correct answer to this query depend on something that may have \
         changed in the last two years? For example whether a person is alive, who \
@@ -101,7 +173,7 @@ public enum JevRouting {
                 options: ResponseFormat.allCases.map { ($0.rawValue, $0.criterion) }
             )),
             (recencyQuestionID, .noul(instructions: recencyInstructions, criteria: recencyCriteria)),
-        ]
+        ] + recallQuestions
         if let last = thread.last {
             state.previousQueries = thread.map(\.query)
             state.previousAnswer = String(last.answer.prefix(maxPreviousAnswerCharacters))
@@ -127,6 +199,20 @@ public enum JevRouting {
         if case let .noul(value)? = response.answers[continuesQuestionID] { continuation = value }
         var rejection: Double?
         if case let .noul(value)? = response.answers[rejectsQuestionID] { rejection = value }
+        func noul(_ id: String) -> Double? {
+            if case let .noul(value)? = response.answers[id] { value } else { nil }
+        }
+        // Read only on a recall pick: the questions are framed as a recall
+        // ask, so for a stock pick their answers mean nothing. A missing
+        // answer is a no.
+        func recallIntent(for pick: ResponseFormat) -> RecallIntent? {
+            guard pick == .recall, recallQuestionIDs.contains(where: { noul($0) != nil }) else { return nil }
+            return RecallIntent(
+                pages: noul(recallKindQuestionID(.pages)) ?? 0, answers: noul(recallKindQuestionID(.answers)) ?? 0,
+                pictures: noul(recallKindQuestionID(.pictures)) ?? 0, searches: noul(recallKindQuestionID(.searches)) ?? 0,
+                videos: noul(recallKindQuestionID(.videos)) ?? 0, named: noul(recallNamedQuestionID) ?? 0, all: noul(recallAllQuestionID) ?? 0
+            )
+        }
         guard case let .choice(answer)? = response.answers[questionID] else {
             return RouteDecision(
                 format: .fallback,
@@ -183,6 +269,7 @@ public enum JevRouting {
             recency: recency,
             continuation: continuation,
             rejection: rejection,
+            recall: recallIntent(for: suggested),
             source: source
         )
     }

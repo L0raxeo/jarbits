@@ -53,11 +53,12 @@ final class MockTransport: URLProtocol {
 }
 
 /// A response in the shape TypeSafe documents, with `format` as the question id.
-func jevResponse(choice: String, confidence: Double, probabilities: [String: Double], recency: Double? = nil, continues: Double? = nil, rejects: Double? = nil, model: String = "jev-1.13.0") -> String {
+func jevResponse(choice: String, confidence: Double, probabilities: [String: Double], recency: Double? = nil, continues: Double? = nil, rejects: Double? = nil, nouls: [String: Double] = [:], model: String = "jev-1.13.0") -> String {
     let probs = probabilities.map { "\"\($0.key)\": \($0.value)" }.joined(separator: ", ")
     let recent = (recency.map { ", \"recent\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
         + (continues.map { ", \"continues\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
         + (rejects.map { ", \"rejects\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
+        + nouls.sorted { $0.key < $1.key }.map { ", \"\($0.key)\": { \"type\": \"noul\", \"noul\": \($0.value) }" }.joined()
     return """
     {
       "model": "\(model)",
@@ -72,4 +73,13 @@ func jevResponse(choice: String, confidence: Double, probabilities: [String: Dou
       "usage": { "input_tokens": 512, "output_tokens": 9 }
     }
     """
+}
+
+/// The seven recall answers, yes as 1 and no as 0, keyed by question id.
+func recallNouls(kinds: Set<RecallIntent.Kind> = [], named: Bool, all: Bool) -> [String: Double] {
+    var answers: [String: Double] = [:]
+    for kind in RecallIntent.Kind.allCases { answers[JevRouting.recallKindQuestionID(kind)] = kinds.contains(kind) ? 1 : 0 }
+    answers[JevRouting.recallNamedQuestionID] = named ? 1 : 0
+    answers[JevRouting.recallAllQuestionID] = all ? 1 : 0
+    return answers
 }

@@ -13,7 +13,7 @@ enum CardPlan: Hashable, Sendable {
     /// `AnswerSession`. `history` is the conversation this answer continues,
     /// oldest first; empty for a fresh answer.
     case answer(format: ResponseFormat, query: String, history: [AnswerTurn])
-    /// A Wikipedia picture of the thing named, loaded by `ImageSession`.
+    /// A picture of the thing named, from Wikipedia or Brave, loaded by `ImageSession`.
     case image(query: String)
     /// A one-line answer computed on the device by a `LocalAnswers` rule; `text` carries the format's markup.
     case localAnswer(format: ResponseFormat, query: String, text: String)
@@ -21,7 +21,10 @@ enum CardPlan: Hashable, Sendable {
     /// resolves it from the memories into one of the plans below.
     case recall(query: String)
     /// Several memories matched; a card lists them and a tap replays one.
-    case recallPicker([MemoryRecord])
+    /// `title` says what they are when the query asked for a set
+    /// ("Everything about Dyson PencilVac", "Last 5 searches"); nil for a
+    /// plain choice between candidates.
+    case recallPicker([MemoryRecord], title: String?)
     /// A remembered narrative, shown from its saved text with its date.
     case memory(MemoryRecord)
     /// A website asked for by name (what `SiteQuery` left of the query);

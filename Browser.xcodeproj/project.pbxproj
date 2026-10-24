@@ -245,16 +245,17 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = B10000000000000000000010 /* Debug.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FA45M2PG8T;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Browser/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hears what you ask. Nothing leaves the phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hears what you ask. Nothing leaves the phone.";
 				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -277,16 +278,17 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = B10000000000000000000011 /* Release.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FA45M2PG8T;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Browser/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hears what you ask. Nothing leaves the phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hears what you ask. Nothing leaves the phone.";
 				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
