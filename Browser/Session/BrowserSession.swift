@@ -1,3 +1,4 @@
+import AVFAudio
 import Answers
 import Foundation
 import Images
@@ -92,7 +93,12 @@ final class BrowserSession {
     private let chromeHandler: PageChromeHandler
     private var loadTask: Task<Void, Never>?
     private var navigationWatch: Task<Void, Never>?
-    private var mediaWatch: Task<Void, Never>?
+    private var audioWatch: Task<Void, Never>?
+    /// How often everything that can be playing is looked at.
+    private static let audioPoll: Duration = .milliseconds(500)
+    /// How long past a finger lift the microphone waits before looking: a
+    /// video that lift started needs a beat to register as playing.
+    private static let audioSettle: Duration = .milliseconds(300)
     private var loadGeneration = 0
     /// Counts navigations, so a stuck one can stop showing as loading.
     private var navigationCount = 0
@@ -143,6 +149,9 @@ final class BrowserSession {
         }
         images.onFinish = { [weak self] summary in
             self?.imageFinished(summary)
+        }
+        dictation.mayListen = { [weak self] in
+            await self?.audioIsQuiet() ?? true
         }
         handler.onReport = { [weak self] report in
             self?.received(report)
@@ -262,25 +271,44 @@ final class BrowserSession {
 
     // MARK: Attention
 
-    /// A web result is on screen: once a second, whether the page has gone
-    /// full screen, for `attention`. A video playing inline is not an
-    /// interruption, so the user may still talk over it; a full-screen
-    /// player is, since the page has taken the screen.
-    func startWatchingMedia() {
-        guard mediaWatch == nil else { return }
-        mediaWatch = Task { [weak self] in
+    /// While on screen, twice a second: the page's media, a full-screen
+    /// player, or another app's audio, for `attention`. Nothing listens over
+    /// sound of any kind, a muted preview included: opening the microphone
+    /// takes the audio session and would pause what is playing.
+    func startWatchingAudio() {
+        guard audioWatch == nil else { return }
+        audioWatch = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                attention.busy = page.fullscreenState != .notInFullscreen
-                try? await Task.sleep(for: .seconds(1))
+                await observeAudio()
+                try? await Task.sleep(for: Self.audioPoll)
             }
         }
     }
 
-    func stopWatchingMedia() {
-        mediaWatch?.cancel()
-        mediaWatch = nil
+    func stopWatchingAudio() {
+        audioWatch?.cancel()
+        audioWatch = nil
         attention.busy = false
+    }
+
+    /// One look at everything that can be playing; `attention.busy` follows.
+    @discardableResult
+    private func observeAudio() async -> Bool {
+        var playing = AVAudioSession.sharedInstance().isOtherAudioPlaying || page.fullscreenState != .notInFullscreen
+        if !playing { playing = await page.mediaPlaybackState() == .playing }
+        attention.busy = playing
+        return playing
+    }
+
+    /// For the microphone, before it opens: a video started on the finger
+    /// lift that woke it has not registered yet, so wait until `audioSettle`
+    /// past the lift, which is no wait at all for any other start; then look.
+    private func audioIsQuiet() async -> Bool {
+        if let lift = attention.lastTouchEnded {
+            try? await Task.sleep(until: lift + Self.audioSettle, clock: .continuous)
+        }
+        return await !observeAudio()
     }
 
     /// The Google results page for the current query, from under an answer;

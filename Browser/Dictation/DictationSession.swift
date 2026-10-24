@@ -47,6 +47,11 @@ final class DictationSession {
     private var finalized: [AttributedString] = []
     private var volatile = AttributedString()
     private var observers: [any NSObjectProtocol] = []
+    /// Asked before the microphone opens: false holds the start off and
+    /// tries again shortly, while still wanted. Set by the owner, who knows
+    /// what else is playing.
+    var mayListen: (@MainActor () async -> Bool)?
+    private var retryTask: Task<Void, Never>?
     /// Vouches for words; built for the transcriber's locale.
     private var checker: (UITextChecker, String)?
     private var watchTask: Task<Void, Never>?
@@ -56,6 +61,8 @@ final class DictationSession {
 
     /// How long the last words may take to settle before they are given up on.
     private static let finishTimeout: Duration = .seconds(3)
+    /// How long a start held off by `mayListen` waits before asking again.
+    private static let retryDelay: Duration = .milliseconds(500)
     /// A pause this long after talking means it was not for the app.
     private static let silenceLimit: TimeInterval = 6
     /// Talk this long, or this many words, is a conversation, not a query.
@@ -87,6 +94,8 @@ final class DictationSession {
         case .idle, .unavailable: break
         }
         generation += 1
+        retryTask?.cancel()
+        retryTask = nil
         let generation = generation
         phase = .starting
         Task { await bringUp(generation) }
@@ -149,6 +158,8 @@ final class DictationSession {
     // MARK: Bringing up
 
     private func bringUp(_ generation: Int) async {
+        // Nothing is built for a start that something playing holds off.
+        guard await allowed(generation) else { return }
         do {
             guard await AVAudioApplication.requestRecordPermission() else { throw Unavailable.microphoneDenied }
             guard generation == self.generation else { return }
@@ -191,6 +202,9 @@ final class DictationSession {
             }
             try await analyzer.start(inputSequence: audioStream)
             guard generation == self.generation else { return }
+            // Asked again right before the microphone opens: something may
+            // have started playing during the awaits above.
+            guard await allowed(generation) else { return }
             try capture.start(target: format, audio: audioContinuation, levels: levelContinuation)
             phase = .listening
             watchTask = Task { [weak self] in
@@ -282,6 +296,8 @@ final class DictationSession {
     /// Everything off and forgotten; `wanted` is left as it was.
     private func teardown() {
         generation += 1
+        retryTask?.cancel()
+        retryTask = nil
         capture.stop()
         audio?.finish()
         audio = nil
@@ -299,8 +315,35 @@ final class DictationSession {
         level = 0
     }
 
-    /// A call, Siri, or headphones unplugged: off while it lasts, then back
-    /// if the screen still wants it.
+    /// True when nothing is playing. False when something is, or when the
+    /// start went stale during the ask; a held-off start is tried again.
+    private func allowed(_ generation: Int) async -> Bool {
+        guard let mayListen else { return true }
+        let may = await mayListen()
+        guard generation == self.generation else { return false }
+        if may { return true }
+        teardown()
+        phase = .idle
+        scheduleRetry()
+        return false
+    }
+
+    /// Asks again after `retryDelay`, if the screen still wants to listen
+    /// and nothing else has started or stopped it meanwhile.
+    private func scheduleRetry() {
+        retryTask?.cancel()
+        let generation = generation
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.retryDelay)
+            guard let self, !Task.isCancelled, generation == self.generation, wanted, phase == .idle else { return }
+            retryTask = nil
+            start()
+        }
+    }
+
+    /// A call, Siri, headphones unplugged, or a page's media taking the
+    /// session: off while it lasts, then back if the screen still wants it,
+    /// through `mayListen`, so media that caused it holds the restart off.
     private func interrupted(ended: Bool) {
         if ended {
             guard wanted, phase == .idle || phase == .listening else { return }

@@ -52,20 +52,20 @@ struct HomeView: View {
     private var showsHint: Bool { mode == .circle }
     /// The microphone is on while the circle is on screen, and over a result
     /// while the user does nothing: no finger down, no scroll moving, no
-    /// full-screen video, no keyboard, nothing loading. The inactive phase is
+    /// sound playing (the page's media, a full-screen player, another app's
+    /// audio), no keyboard, nothing loading. The inactive phase is
     /// ignored: the permission alert itself causes it.
     private var listening: Bool {
         guard scenePhase != .background else { return false }
-        if mode == .circle { return true }
+        if mode == .circle { return !session.attention.busy }
         return session.stage == .ready && !followingUp && !capsuleLoading && session.attention.idle
     }
     /// A word has been heard over the result: the capsule is the small circle.
     private var hearing: Bool { session.stage == .ready && session.dictation.heardSpeech && !followingUp }
-    private var isWebPlan: Bool {
-        if case .web = session.plans.first { true } else { false }
-    }
-    /// A page on screen may go full screen: poll it.
-    private var watchesMedia: Bool { session.stage == .ready && isWebPlan && scenePhase == .active }
+    /// Whatever can be playing is looked at while on screen. The inactive
+    /// phase is kept, as for `listening`: Control Center over a video must
+    /// not clear it.
+    private var watchesAudio: Bool { scenePhase != .background }
     /// Over a result, or standing in for the clay while a follow-up loads.
     private var showsCapsule: Bool { showsResult || capsuleSubmitted }
     /// The wave while a query is in flight, or while the page behind a web
@@ -267,8 +267,8 @@ struct HomeView: View {
         .onChange(of: listening, initial: true) { _, listening in
             if listening { session.startListening() } else { session.stopListening() }
         }
-        .onChange(of: watchesMedia, initial: true) { _, watches in
-            if watches { session.startWatchingMedia() } else { session.stopWatchingMedia() }
+        .onChange(of: watchesAudio, initial: true) { _, watches in
+            if watches { session.startWatchingAudio() } else { session.stopWatchingAudio() }
         }
         .onChange(of: hearing) { _, hearing in
             // The circle ignores the scroll; the reserve under it must match.

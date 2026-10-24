@@ -52,7 +52,8 @@ link tapped inside a page shows the same line while the page loads. Tapping
 the line while it waves returns to the circle. Pulling down at the top of
 a page reloads it, with the system's spinner. Over a result the microphone
 listens too, but only while you do nothing: no finger on the screen, no
-scroll moving, no full-screen video, no keyboard. Once a word is heard the
+scroll moving, nothing playing on the page or from another app, no
+keyboard. Once a word is heard the
 capsule rounds into a small circle at the left with "Disregard" and "I'm
 done talking" beside it; any touch turns it back and forgets the words.
 

@@ -72,11 +72,16 @@ nonisolated final class AudioCapture: @unchecked Sendable {
 
     /// Record for the tap; play so a page's media keeps its route; the
     /// speaker rather than the earpiece; and mixing, so launching the app
-    /// does not silence whatever the user is playing elsewhere. Set on every
-    /// start, since WebKit rewrites the category when a page plays media.
+    /// does not silence whatever the user is playing elsewhere. Checked on
+    /// every start, since WebKit rewrites the category when a page plays
+    /// media, but set only when it differs: setting it again would itself
+    /// fire a configuration change.
     private func configureSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .mixWithOthers])
+        let options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .mixWithOthers]
+        if session.category != .playAndRecord || session.mode != .default || session.categoryOptions != options {
+            try session.setCategory(.playAndRecord, mode: .default, options: options)
+        }
         try session.setActive(true)
     }
 
