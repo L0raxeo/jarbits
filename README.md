@@ -54,7 +54,9 @@ a page reloads it, with the system's spinner. Over a result the microphone
 listens too, but only while you do nothing: no finger on the screen, no
 keyboard; a fling still moving after the finger lifts does not count. A video or music playing is not a reason to
 stop: the audio session is set once, at launch, to record and play while
-mixing, and never touched again, so the microphone cannot pause anything.
+mixing, and never touched again, so the microphone cannot pause anything;
+voice processing cancels the phone's own output from what it hears, so a
+video talking does not read as you talking.
 Whenever it is not open the clay turns a soft red. Once a word is heard
 the capsule rounds into a small circle at the left with "Disregard" and
 "I'm done talking" beside it; any touch turns it back and forgets the words.

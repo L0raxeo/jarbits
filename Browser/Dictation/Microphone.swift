@@ -24,6 +24,10 @@ final class Microphone {
     /// Speaker rather than earpiece; mixing, so nothing else is silenced;
     /// Bluetooth and AirPlay output kept, which record categories otherwise drop.
     static let options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .mixWithOthers, .allowBluetoothA2DP, .allowAirPlay]
+    /// Voice chat: what the input's voice processing needs, so the phone's
+    /// own output (a video's speaker, music) is cancelled out of what the
+    /// microphone hears and only the user's voice remains.
+    static let mode: AVAudioSession.Mode = .voiceChat
 
     init() {
         prepareSession()
@@ -49,8 +53,8 @@ final class Microphone {
     func prepareSession() {
         let session = AVAudioSession.sharedInstance()
         do {
-            if session.category != Self.category || session.categoryOptions != Self.options {
-                try session.setCategory(Self.category, mode: .default, options: Self.options)
+            if session.category != Self.category || session.mode != Self.mode || session.categoryOptions != Self.options {
+                try session.setCategory(Self.category, mode: Self.mode, options: Self.options)
             }
             try session.setActive(true)
         } catch {
@@ -118,6 +122,12 @@ nonisolated final class MicrophoneEngine: @unchecked Sendable {
 
     private func start() throws {
         let input = engine.inputNode
+        // Echo cancellation: the phone's own playback is subtracted from the
+        // input, so a video talking does not read as the user talking. Set
+        // before the format is read, since it changes the format.
+        if !input.isVoiceProcessingEnabled {
+            try input.setVoiceProcessingEnabled(true)
+        }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw MicrophoneFailure.noInput }
         input.removeTap(onBus: 0)
