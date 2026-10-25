@@ -83,7 +83,9 @@ struct HomeView: View {
     /// A word has been heard over the result: the capsule is the small circle.
     private var hearing: Bool { session.stage == .ready && session.dictation.heardSpeech && !followingUp }
     /// Over a result, or standing in for the clay while a follow-up loads.
-    private var showsCapsule: Bool { (showsResult || capsuleSubmitted) && !keyboardForPage }
+    /// Over a result the clay is out and the capsule stands in for it.
+    private var claysOut: Bool { showsResult || capsuleSubmitted }
+    private var showsCapsule: Bool { claysOut && !keyboardForPage }
     /// The keyboard is up for something other than our fields: a form in the
     /// page. The capsule stays out of its way until it goes.
     private var keyboardForPage: Bool { keyboardUp && !followingUp && !typing }
@@ -183,9 +185,9 @@ struct HomeView: View {
                     .position(x: proxy.size.width / 2, y: clayY)
                     // The cross-fade: the line fades out in place as the result fades in.
                     // During a follow-up the capsule is the line, so the clay stays out.
-                    .opacity(showsCapsule ? 0 : 1)
-                    .allowsHitTesting(!showsCapsule)
-                    .animation(.easeOut(duration: 0.4), value: showsCapsule)
+                    .opacity(claysOut ? 0 : 1)
+                    .allowsHitTesting(!claysOut)
+                    .animation(.easeOut(duration: 0.4), value: claysOut)
 
                     // Removed from the tree over a result, not just faded, so
                     // nothing of it sits over the page.
