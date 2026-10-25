@@ -11,7 +11,8 @@ import WebKit
 /// strip when it scrolls, as in Safari.
 struct ResultView: View {
     @Environment(BrowserSession.self) private var session
-    let plan: CardPlan
+    /// The layer shown: its plan, and its page, answer or pictures.
+    let layer: Layer
     /// The clay's vertical centre, so a one-line answer lands where the line faded.
     let clayY: CGFloat
     /// Height of the status-bar zone above this view.
@@ -20,6 +21,10 @@ struct ResultView: View {
     let bottomInset: CGFloat
     /// Set while the result scrolls down, cleared on the way up or at the top.
     @Binding var barCompact: Bool
+
+    private var plan: CardPlan { layer.plan }
+    /// What the layer's page pins to its edges; plain for a card.
+    private var chrome: PageChrome { layer.page?.chrome ?? .plain }
 
     /// How far below the status bar the frost keeps fading. A page's frost
     /// ends sooner than an answer's.
@@ -31,7 +36,7 @@ struct ResultView: View {
         content
             .overlay(alignment: .top) {
                 topZone
-                    .animation(.easeInOut(duration: 0.25), value: session.chrome.top)
+                    .animation(.easeInOut(duration: 0.25), value: chrome.top)
             }
     }
 
@@ -43,7 +48,7 @@ struct ResultView: View {
     /// above it in the layout would be drawn beneath it.
     @ViewBuilder
     private var topZone: some View {
-        if case .web = plan, case let .solid(color) = session.chrome.top {
+        if case .web = plan, case let .solid(color) = chrome.top {
             Rectangle()
                 .fill(color.color)
                 .frame(height: topInset)
@@ -80,9 +85,12 @@ struct ResultView: View {
     private var content: some View {
         switch plan {
         case .web:
-            WebResultView(page: session.page, bottomInset: bottomInset, chrome: session.chrome, barCompact: $barCompact)
+            // An unloaded layer has no page until its reload begins, a frame later.
+            if let host = layer.page {
+                WebResultView(host: host, bottomInset: bottomInset, barCompact: $barCompact)
+            }
         case let .answer(format, query, history):
-            if let answer = session.answer {
+            if let answer = layer.answer {
                 AnswerView(
                     spans: answer.styledSpans, stoppedEarly: answer.stoppedEarly, format: format, clayY: clayY, barCompact: $barCompact,
                     history: history, query: query, failed: answer.failedBeforeText, needsLiveData: answer.needsLiveData
@@ -91,7 +99,9 @@ struct ResultView: View {
         case let .localAnswer(format, _, text):
             AnswerView(spans: AnswerMarkup.styled(text, for: format), stoppedEarly: false, format: format, clayY: clayY, barCompact: $barCompact)
         case .image:
-            ImageCardView(images: session.images, clayY: clayY)
+            if let images = layer.images {
+                ImageCardView(images: images, clayY: clayY)
+            }
         case let .memory(record):
             // A remembered conversation shows its earlier turns and ends on its last.
             let turns = record.turns ?? []
@@ -144,22 +154,23 @@ struct ResultView: View {
 /// colour, following the clay's size; or a frost strip under a floating
 /// button, constant. It is a later sibling, so it draws over the page.
 private struct WebResultView: View {
-    @Environment(BrowserSession.self) private var session
-    let page: WebPage
+    /// The layer's live page, with what it pins to its edges.
+    let host: PageHost
     let bottomInset: CGFloat
-    let chrome: PageChrome
     @Binding var barCompact: Bool
+
+    private var chrome: PageChrome { host.chrome }
 
     var body: some View {
         VStack(spacing: 0) {
-            WebView(page)
+            WebView(host.page)
                 .webViewBackForwardNavigationGestures(.enabled)
                 // Sideways only when the page is wider than the screen; by
                 // default the web view rubber-bands sideways on every page,
                 // so a vertical drag with a little drift wobbles the page.
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                 // Pull to refresh: the web view installs the system control.
-                .refreshable { await session.reloadAndWait() }
+                .refreshable { await host.reloadAndWait() }
                 .webViewOnScrollGeometryChange(for: CGFloat.self, of: ResultView.offset) { old, new in
                     ResultView.scrolled(from: old, to: new, compact: &barCompact)
                 }

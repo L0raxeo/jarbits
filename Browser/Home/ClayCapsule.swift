@@ -8,7 +8,9 @@ import SwiftUI
 /// field. While something loads it is the clay's wave line, small. While a
 /// word is being heard over the result it is a small circle, the query
 /// hidden, swelling with the voice as the clay does. One view, so the looks
-/// morph rather than swap.
+/// morph rather than swap. A swipe across it goes back a layer (to the
+/// right) or forward (to the left); the capsule collapses from the side the
+/// swipe started on toward where it goes, and springs back.
 struct ClayCapsule: View {
     var text: String
     var compact: Bool
@@ -33,9 +35,19 @@ struct ClayCapsule: View {
     var selection: Binding<TextSelection?>
     var onTap: () -> Void
     var onSubmit: () -> Void
+    /// A swipe to the right across the capsule: the previous layer.
+    var onSwipeBack: () -> Void = {}
+    /// A swipe to the left: the layer swiped away from.
+    var onSwipeForward: () -> Void = {}
+    /// A finger is swiping the capsule; the owner stops listening meanwhile.
+    @Binding var swiping: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = VoicePulse()
+    /// The swipe under way: how far the finger has gone, signed (right is
+    /// positive). The capsule collapses from the side the swipe started on
+    /// toward the direction it goes.
+    @State private var swipeTravel: CGFloat = 0
     /// 0 purple … 1 red, eased over a few frames rather than switched.
     @State private var warmth = VoicePulse(attack: 0.35, release: 0.35)
 
@@ -78,6 +90,44 @@ struct ClayCapsule: View {
     private var circular: Bool { hearing && !editing && !loading }
     private var widest: CGFloat { editing ? fieldWidth : circular ? Self.openHeight : maxWidth }
     private var hidesText: Bool { editing || loading || hearing }
+    /// Only the plain label swipes: not the field, the line or the circle.
+    private var swipeable: Bool { !editing && !loading && !hearing }
+
+    /// How much of its width the capsule gives up at most, and how far a
+    /// swipe must travel to count.
+    private static let swipeCollapse: CGFloat = 0.45
+    private static let swipeDistance: CGFloat = 60
+
+    /// The collapse: the width eases toward `1 - swipeCollapse`, anchored
+    /// on the far side, so the near edge moves with the finger.
+    private var swipeScale: CGFloat {
+        guard swipeable, swipeTravel != 0 else { return 1 }
+        return 1 - Self.swipeCollapse * tanh(abs(swipeTravel) / 120)
+    }
+
+    /// The side that stays put: the one the finger moves toward.
+    private var swipeAnchor: Alignment { swipeTravel > 0 ? .trailing : .leading }
+
+    /// The label fades as the shape gives up its width.
+    private var swipeTextOpacity: Double {
+        Double((swipeScale - (1 - Self.swipeCollapse)) / Self.swipeCollapse)
+    }
+
+    private var swipe: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onChanged { value in
+                swipeTravel = value.translation.width
+                swiping = true
+            }
+            .onEnded { value in
+                withAnimation(.spring(duration: 0.35, bounce: 0.2)) { swipeTravel = 0 }
+                swiping = false
+                let dx = value.translation.width
+                guard abs(dx) > Self.swipeDistance, abs(dx) > abs(value.translation.height) else { return }
+                // Left to right goes back, right to left forward.
+                if dx > 0 { onSwipeBack() } else { onSwipeForward() }
+            }
+    }
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
@@ -96,7 +146,8 @@ struct ClayCapsule: View {
                     // Only the capsule's height changes between the two sizes: the
                     // text and its side padding stay put.
                     .padding(.horizontal, 18)
-                    .opacity(hidesText ? 0 : 1)
+                    // Gone while hidden; fading out as a swipe collapses the shape.
+                    .opacity(hidesText ? 0 : swipeTextOpacity)
                     .animation(.easeOut(duration: 0.15), value: hidesText)
             }
             .frame(height: height)
@@ -105,12 +156,19 @@ struct ClayCapsule: View {
             // The clay's shape: a capsule when flat, the wave line when
             // `loading` lifts a crest, so one morphs into the other.
             .background {
-                WavyCapsule(
-                    amplitude: loading ? Self.waveHeight : 0,
-                    crest: crest,
-                    thickness: loading ? Self.lineThickness : height
-                )
-                .fill(Palette.breathingMesh(at: t, warmth: red))
+                // The shape alone contracts from the side the swipe started
+                // on, drawn narrower rather than squashed so its ends stay
+                // round; the far edge stays put and the text only fades.
+                GeometryReader { proxy in
+                    WavyCapsule(
+                        amplitude: loading ? Self.waveHeight : 0,
+                        crest: crest,
+                        thickness: loading ? Self.lineThickness : height
+                    )
+                    .fill(Palette.breathingMesh(at: t, warmth: red))
+                    .frame(width: proxy.size.width * swipeScale)
+                    .frame(maxWidth: .infinity, alignment: swipeAnchor)
+                }
             }
             // The circle breathes and swells with the voice, as the clay does.
             .scaleEffect(circular ? 1 + 0.05 * breath + 0.12 * heard : 1)
@@ -136,6 +194,10 @@ struct ClayCapsule: View {
         .onTapGesture {
             if !editing && !loading { onTap() }
         }
+        .gesture(swipe, including: swipeable ? .all : .none)
+        // A swipe to another layer changes the query: the capsule grows or
+        // shrinks to it from both sides rather than jumping.
+        .animation(.spring(duration: 0.35, bounce: 0.1), value: text)
         .animation(.spring(duration: 0.35, bounce: 0.1), value: compact)
         .animation(.spring(duration: 0.35, bounce: 0.1), value: editing)
         .animation(.spring(duration: 0.35, bounce: 0.1), value: hearing)

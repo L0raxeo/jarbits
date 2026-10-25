@@ -33,11 +33,9 @@ enum CardPlan: Hashable, Sendable {
     /// The sites a name might mean; a tap learns one and opens it.
     case siteChoices(name: String, [SiteCandidate])
 
-    /// Which card a plan is, for SwiftUI's identity. An answer that grows
-    /// into a conversation keeps its card (named by the thread's first
-    /// query, which a device-computed answer shares); any other change of
-    /// plan is a new card, so the old one can leave through its transition
-    /// instead of changing under the reader.
+    /// Which card a plan is, for the console: a short name, an answer's
+    /// carrying the thread's first query (which a device-computed answer
+    /// shares). The screen keys cards by their layer, not by this.
     var cardID: String {
         switch self {
         case .web: "web"

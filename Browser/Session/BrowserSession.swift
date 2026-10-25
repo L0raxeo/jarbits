@@ -5,11 +5,25 @@ import Images
 import Observation
 import Routing
 import Sites
+import UIKit
 import WebKit
 
-/// One browsing session: the single web page, the current plan, the router
-/// that turns a query into a plan, the answer stream for answer plans, and
-/// where the current query is on its way to the screen.
+/// One browsing session: the layers (one per query, like Safari's tabs,
+/// the current one on screen), the router that turns a query into a plan,
+/// the answer and image streams of the layers that have them, and where the
+/// current query is on its way to the screen.
+///
+/// Layers: every query opens a new layer; a query that continues the
+/// conversation on screen grows the current one instead. A layer that shows
+/// a page keeps that page live (`Layer.page`), so a swipe back on the clay
+/// finds a video where it was and a form as filled. The current layer and
+/// the newest `maxLive - 1` others stay live; past that the oldest go,
+/// pages in use (a video part way, a form typed into) last; a background
+/// layer idle for `idleWindow` goes too, and a memory warning takes every
+/// background page not in use (the rest on a second warning within a
+/// minute). An unloaded layer keeps `notes` and reloads to the same spot
+/// when swiped back to. A new query from the middle of the stack drops the
+/// layers ahead, like browser history. Nothing of this outlives the app.
 @Observable
 @MainActor
 final class BrowserSession {
@@ -27,12 +41,18 @@ final class BrowserSession {
         case ready
     }
 
-    let page: WebPage
-    /// Streams Gemini answers; nil when no Gemini key is configured, in which
-    /// case the router never produces an answer plan.
-    let answer: AnswerSession?
-    /// Loads pictures for image plans: Wikipedia, then Brave behind it.
-    let images = ImageSession(lookup: BrowserSession.makeImageLookup())
+    /// Live pages kept: the current layer and the newest three others.
+    static let maxLive = 4
+    /// A background page untouched for this long is unloaded.
+    static let idleWindow: TimeInterval = 30 * 60
+    /// How often background pages are looked over for idleness.
+    private static let sweepInterval: Duration = .seconds(60)
+
+    /// Gemini, for the answer layers; nil when no key is configured, in
+    /// which case the router never produces an answer plan.
+    private let answerClient: GeminiClient?
+    /// Pictures for the image layers: Wikipedia, then Brave behind it.
+    private let imageLookup = BrowserSession.makeImageLookup()
     /// The one microphone: its session set once at launch, shared by whoever
     /// listens, never touching what plays.
     let microphone: Microphone
@@ -48,14 +68,6 @@ final class BrowserSession {
     /// A memory's query being asked again: Jev may not answer `recall` for
     /// it, or a memory could replay itself forever.
     private var replayingQuery: String?
-    /// The search that led to the next page memorised, and to that one
-    /// only: pages browsed on from it are remembered by what they are.
-    private var queryForNextPage: String?
-    /// The memory on screen, as the write that produced it: what the next
-    /// memory points at as `cameFrom`. Nil at the start of a run (a new
-    /// query), set by every write and by a recall. Memory writes are
-    /// chained on it, so they land in order and each knows the id before.
-    private var currentMemory: Task<UUID?, Never>?
     /// A look through the memories that has not resolved by then goes to
     /// the web, so the wave line never waits on it.
     private let recallTimeout: Duration = .seconds(3)
@@ -65,32 +77,41 @@ final class BrowserSession {
     /// Brave's web search for the sites an unknown name might mean; nil
     /// shows the Google results page for the name instead.
     private let siteSearch: SiteSearch?
-    /// A site this route opened and that is on screen, by the name asked
-    /// for: routing asks Jev whether a follow-up rejects it.
-    private(set) var openedSite: OpenedSite?
-    /// The name the next page teaches the site book, while the results
-    /// page stands in for the choices: the first site tapped off it.
-    private var learningSite: String?
     /// A page's picture for the recall grid: this wide in points (three
     /// times that in pixels), as a JPEG at this quality, a few tens of KB.
     /// An export slower than the timeout is skipped.
     private let pictureWidth: CGFloat = 120
     private let pictureQuality: CGFloat = 0.6
     private let pictureTimeout: Duration = .seconds(2)
-    private(set) var plans: [CardPlan] = []
+
+    /// The layers, oldest first, and which one is on screen.
+    private(set) var layers: [Layer] = []
+    private(set) var index = 0
+    var current: Layer? { layers.indices.contains(index) ? layers[index] : nil }
+    /// The query most recently sent, in flight or shown; a newer one wins.
     private(set) var lastQuery = ""
     private(set) var stage: Stage = .idle
-    /// Why the current plan is what it is; logged with the record.
-    private(set) var lastDecision: RouteDecision?
-    /// What the page pins to its edges, from the watcher that runs inside it.
-    private(set) var chrome = PageChrome.plain
-    /// A page navigation is in flight, ours or a link tapped inside the
-    /// page: the clay shows the wave line meanwhile.
-    private(set) var pageLoading = false
-    /// The window's size and the safe area above the page, from the screen:
-    /// where the page's edges are when a guessed colour is sampled.
-    var window = CGSize.zero
-    var topInset: CGFloat = 0
+
+    /// What the current layer shows, and the bookkeeping that goes with it.
+    var plan: CardPlan? { current?.plan }
+    var lastDecision: RouteDecision? { current?.decision }
+    /// A site this route opened and that is on screen, by the name asked
+    /// for: routing asks Jev whether a follow-up rejects it.
+    var openedSite: OpenedSite? { current?.openedSite }
+    /// What the current page pins to its edges.
+    var chrome: PageChrome { current?.page?.chrome ?? .plain }
+    /// The current page has a navigation in flight: the clay shows the wave.
+    var pageLoading: Bool { current?.page?.loading ?? false }
+    /// The current layer's live page, if it is a page.
+    var page: WebPage? { current?.page?.page }
+    /// The window's size and the safe area above the page, from the screen;
+    /// every live page samples its edges against them.
+    var window = CGSize.zero {
+        didSet { for layer in layers { layer.page?.window = window } }
+    }
+    var topInset: CGFloat = 0 {
+        didSet { for layer in layers { layer.page?.topInset = topInset } }
+    }
 
     private let router: any Router
     private let log: DecisionLog
@@ -98,45 +119,18 @@ final class BrowserSession {
     /// Counts spoken submissions, so a finish or a clean that outlives a
     /// reset never lands.
     private var spokenGeneration = 0
-    private let chromeHandler: PageChromeHandler
-    private var loadTask: Task<Void, Never>?
-    private var navigationWatch: Task<Void, Never>?
     /// How long past a finger lift the microphone waits before looking at
     /// what plays, when it has to look: a video that lift started needs a
     /// beat to register as playing.
     private static let audioSettle: Duration = .milliseconds(300)
-    /// What the watcher last said about the page's own media: whether any
-    /// plays out loud, and how many elements the main document has. None
-    /// means a player, if there is one, sits in a frame the watcher cannot see.
-    private var pageAudible = false
-    private var pageMediaCount = 0
-    private var loadGeneration = 0
-    /// Counts navigations, so a stuck one can stop showing as loading.
-    private var navigationCount = 0
-    /// Counts documents (main-frame commits); a report belongs to the one it
-    /// arrived in.
-    private var documentGeneration = 0
-    /// The current document has finished loading, plus a beat, so reports
-    /// apply at once. Before that they wait: resizing the web view during a
-    /// page's first layout can crash WebKit's content process.
-    private var documentSettled = false
-    private var pendingReport: PageChromeReport?
-    private var reportedGeneration = -1
-    /// Counts applied reports, so a sample taken for one never lands after
-    /// a newer one.
-    private var reportSequence = 0
-    private var previousHost: String?
-    /// A page that has not committed by then is shown anyway.
-    private let commitTimeout: Duration = .seconds(8)
-    /// A navigation that has not finished by then stops showing as loading.
-    private let finishTimeout: Duration = .seconds(20)
+    private var idleSweep: Task<Void, Never>?
+    private var memoryWarningObserver: (any NSObjectProtocol)?
+    private var lastMemoryWarning: Date?
 
     /// Jev judging a recall shortlist; nil shows the shortlist in word order.
     private let recall: RecallResolver?
 
     init(router: any Router, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared) {
-        let handler = PageChromeHandler()
-        chromeHandler = handler
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
@@ -144,40 +138,22 @@ final class BrowserSession {
         self.recall = recall
         self.siteSearch = siteSearch
         self.sites = sites
-        page = WebPage(configuration: PageChrome.configuration(handler: handler))
-        // Never `page.isInspectable = true`, not even in Debug: an inspectable
-        // page under SwiftUI's WebView crashes UIKit's touch delivery on the
-        // first tap (iOS 26.5 and 27.0.1, found 2026-10-22). Debug builds
-        // print each page's chrome verdict instead; see `apply(_:)`.
         self.router = router
         self.log = log
-        self.answer = answerClient.map { AnswerSession(client: $0) }
-        self.answer?.onFirstText = { [weak self] in
-            self?.answerStarted()
-        }
-        self.answer?.onFinish = { [weak self] summary in
-            self?.answerFinished(summary)
-        }
-        images.onReady = { [weak self] in
-            self?.imageReady()
-        }
-        images.onFinish = { [weak self] summary in
-            self?.imageFinished(summary)
-        }
+        self.answerClient = answerClient
         dictation.mayListen = { [weak self] in
             await self?.audioIsQuiet() ?? true
         }
-        handler.onReport = { [weak self] report in
-            self?.received(report)
+        idleSweep = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.sweepInterval)
+                guard let self else { return }
+                sweepIdle()
+            }
         }
-        handler.onAddress = { [weak self] url, title in
-            self?.addressChanged(to: url, title: title)
+        memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.memoryWarning() }
         }
-        handler.onAudio = { [weak self] audible, media in
-            self?.pageAudible = audible
-            self?.pageMediaCount = media
-        }
-        watchNavigations()
     }
 
     func submit(_ query: String) {
@@ -186,8 +162,6 @@ final class BrowserSession {
         let thread = thread   // the narrative under the query, if any, before anything moves
         let opened = openedSite   // and the site opened by name, if one is on screen
         lastQuery = trimmed
-        queryForNextPage = trimmed
-        currentMemory = nil
         stage = .routing
         Task {
             let result = await router.route(trimmed, thread: thread, opened: opened)
@@ -202,9 +176,10 @@ final class BrowserSession {
     /// What a follow-up typed over it may continue. Empty for anything else,
     /// including an answer still streaming.
     var thread: [AnswerTurn] {
-        switch plans.first {
+        guard let layer = current else { return [] }
+        switch layer.plan {
         case let .answer(format, query, history) where format.isAnswered:
-            guard let answer, answer.query == query, !answer.text.isEmpty else { return [] }
+            guard let answer = layer.answer, answer.query == query, !answer.text.isEmpty else { return [] }
             switch answer.phase {
             case .done, .failed: return history + [AnswerTurn(query: query, answer: answer.text, format: format)]
             case .idle, .waiting, .streaming: return []
@@ -228,7 +203,7 @@ final class BrowserSession {
         case .routing, .cleaning:
             return !thread.isEmpty
         case .loading:
-            if case let .answer(_, _, history) = plans.first { return !history.isEmpty }
+            if case let .answer(_, _, history) = plan { return !history.isEmpty }
             return false
         case .idle, .ready:
             return false
@@ -290,23 +265,26 @@ final class BrowserSession {
 
     // MARK: Attention
 
-    /// Whether anything is playing: the page's audible media, a full-screen
-    /// player, or another app's audio. Not a reason to stop listening, since
-    /// the microphone shares the session and never touches what plays; only
-    /// a reason not to take the session back when something else has it.
+    /// Whether anything is playing: the current page's audible media, a
+    /// full-screen player, or another app's audio. Not a reason to stop
+    /// listening, since the microphone shares the session and never touches
+    /// what plays; only a reason not to take the session back when something
+    /// else has it. Pages in background layers are paused, so they do not count.
     private func audioPlaying() async -> Bool {
         let other = AVAudioSession.sharedInstance().isOtherAudioPlaying
-        let fullScreen = page.fullscreenState != .notInFullscreen
+        let host = current?.page
+        let fullScreen = host.map { $0.page.fullscreenState != .notInFullscreen } ?? false
+        let audible = host?.audible ?? false
         var unseen = false
-        if !other, !fullScreen, !pageAudible, pageMediaCount == 0 {
+        if let host, !other, !fullScreen, !audible, host.mediaCount == 0 {
             // A player in a frame the watcher cannot see counts whenever it
             // plays, since nothing says whether it is heard.
-            unseen = await page.mediaPlaybackState() == .playing
+            unseen = await host.page.mediaPlaybackState() == .playing
         }
-        let playing = other || fullScreen || pageAudible || unseen
+        let playing = other || fullScreen || audible || unseen
         #if DEBUG
         if playing {
-            print("audio: \(other ? "another app is playing" : fullScreen ? "page is full screen" : pageAudible ? "page audio is audible" : "a frame's player is playing"); the session stays theirs")
+            print("audio: \(other ? "another app is playing" : fullScreen ? "page is full screen" : audible ? "page audio is audible" : "a frame's player is playing"); the session stays theirs")
         }
         #endif
         return playing
@@ -322,89 +300,275 @@ final class BrowserSession {
         return await !audioPlaying()
     }
 
+    // MARK: From a card to a page
+
     /// The Google results page for the current query, from under an answer;
     /// from the site choices, the results for the name, and the first site
-    /// tapped off them is learned as a choice would have been.
+    /// tapped off them is learned as a choice would have been. A new layer:
+    /// the card stays one swipe back. The layer keeps the decision, so the
+    /// results a recall fell through to are not memorised as a search.
     func showWebResults() {
-        guard !lastQuery.isEmpty else { return }
-        if case let .siteChoices(name, _) = plans.first {
-            learningSite = name
-            load(QueryParser.searchURL(for: name))
+        guard let layer = current, !layer.query.isEmpty else { return }
+        if case let .siteChoices(name, _) = layer.plan {
+            let next = Layer(plan: .web(QueryParser.searchURL(for: name)), query: layer.query, decision: layer.decision)
+            next.learningSite = name
+            open(next)
+            show(QueryParser.searchURL(for: name), in: next)
             return
         }
-        load(QueryParser.searchURL(for: lastQuery))
+        openPage(QueryParser.searchURL(for: layer.query), query: layer.query, decision: layer.decision)
     }
 
-    /// A page the result links to, such as the article or the site behind an image.
+    /// A page the result links to, such as the article or the site behind an
+    /// image: a new layer, the card one swipe back.
     func open(_ url: URL) {
-        load(url)
+        openPage(url, query: current?.query ?? lastQuery, decision: current?.decision)
     }
 
-    /// Back to the idle screen: whatever is in flight stops, the result goes.
+    /// Back to the idle screen: whatever is in flight stops, the result goes
+    /// from the screen. The layers stay, so the next result can still swipe
+    /// back to them.
     func reset() {
-        answer?.cancel()
-        images.cancel()
-        loadTask?.cancel()
-        loadGeneration += 1
+        if let layer = current {
+            layer.answer?.cancel()
+            layer.images?.cancel()
+            layer.page?.stop()
+        }
         spokenGeneration += 1
-        page.stopLoading()
-        plans = []
-        lastDecision = nil
-        openedSite = nil
-        learningSite = nil
-        chrome = .plain
-        pendingReport = nil
-        pageAudible = false
-        pageMediaCount = 0
-        pageLoading = false
         stage = .idle
     }
 
+    // MARK: Layers
+
+    /// Opens `layer` on top: whatever was ahead of the current layer goes,
+    /// like browser history after going back; the layer left behind stops
+    /// playing; then the live pages are brought back under the cap.
+    private func open(_ layer: Layer) {
+        if let leaving = current {
+            leaving.answer?.cancel()
+            leaving.images?.cancel()
+            Task { await leaving.page?.pause() }
+        }
+        if index + 1 < layers.count {
+            for dropped in layers[(index + 1)...] { dropped.page?.close() }
+            layers.removeSubrange((index + 1)...)
+        }
+        layers.append(layer)
+        index = layers.count - 1
+        layer.lastShown = .now
+        // The search that led to the next page memorised, and to that one only.
+        if layer.queryForNextPage == nil { layer.queryForNextPage = layer.query }
+        enforceLive()
+        #if DEBUG
+        print("layer \(index + 1)/\(layers.count) \(layer.plan.cardID) \"\(layer.query)\"; live \(layers.filter(\.isLive).count)")
+        #endif
+    }
+
+    /// A new web layer for `url`.
+    private func openPage(_ url: URL, query: String, decision: RouteDecision?) {
+        let layer = Layer(plan: .web(url), query: query, decision: decision)
+        open(layer)
+        show(url, in: layer)
+    }
+
+    /// `layer` shows the page at `url`, in its live page or a new one; the
+    /// stage is loading while it is the layer on screen. `notes` put a
+    /// reloaded page back where it stood.
+    private func show(_ url: URL, in layer: Layer, restoring notes: PageNotes? = nil) {
+        layer.plan = .web(url)
+        let host = layer.page ?? makeHost(for: layer)
+        layer.page = host
+        layer.notes = nil
+        if layer === current { stage = .loading }
+        host.load(url, restoring: notes)
+    }
+
+    private func makeHost(for layer: Layer) -> PageHost {
+        let host = PageHost()
+        host.window = window
+        host.topInset = topInset
+        host.onCommitted = { [weak self, weak layer] in
+            guard let self, let layer, layer === current, stage == .loading else { return }
+            stage = .ready
+        }
+        host.onDocumentFinished = { [weak self, weak layer] in
+            guard let self, let layer else { return }
+            rememberPage(in: layer)
+        }
+        host.onAddress = { [weak self, weak layer] url, title in
+            guard let self, let layer else { return }
+            addressChanged(to: url, title: title, in: layer)
+        }
+        return host
+    }
+
+    private func makeAnswer(for layer: Layer) -> AnswerSession? {
+        guard let answerClient else { return nil }
+        let answer = AnswerSession(client: answerClient)
+        answer.onFirstText = { [weak self, weak layer] in
+            guard let self, let layer else { return }
+            answerStarted(in: layer)
+        }
+        answer.onFinish = { [weak self, weak layer] summary in
+            guard let self, let layer else { return }
+            answerFinished(summary, in: layer)
+        }
+        return answer
+    }
+
+    private func makeImages(for layer: Layer) -> ImageSession {
+        let images = ImageSession(lookup: imageLookup)
+        images.onReady = { [weak self, weak layer] in
+            guard let self, let layer else { return }
+            imageReady(in: layer)
+        }
+        images.onFinish = { [weak self, weak layer] summary in
+            guard let self, let layer else { return }
+            imageFinished(summary, in: layer)
+        }
+        return images
+    }
+
+    var canSwipeBack: Bool { stage == .ready && index > 0 }
+    var canSwipeForward: Bool { stage == .ready && index + 1 < layers.count }
+
+    /// A swipe back on the clay: the previous layer, as it was left.
+    func swipeBack() {
+        guard canSwipeBack else { return }
+        move(to: index - 1)
+    }
+
+    /// A swipe forward on the clay: the layer swiped away from.
+    func swipeForward() {
+        guard canSwipeForward else { return }
+        move(to: index + 1)
+    }
+
+    /// Shows `layers[target]`: live, it is on screen as it was; unloaded, its
+    /// page reloads to where its notes say it stood.
+    private func move(to target: Int) {
+        let leaving = current
+        Task { await leaving?.page?.pause() }
+        #if DEBUG
+        let direction = target < index ? "back" : "forward"
+        #endif
+        index = target
+        let layer = layers[target]
+        layer.lastShown = .now
+        lastQuery = layer.query
+        #if DEBUG
+        print("layer swipe \(direction) → \(index + 1)/\(layers.count) \(layer.plan.cardID) \"\(layer.query)\"\(layer.isLive || !layer.isWeb ? "" : ", reloading")")
+        #endif
+        if case let .web(url) = layer.plan, layer.page == nil {
+            // The notes may still be on their way from an unload a moment
+            // ago; the layer's first address then stands in.
+            let notes = layer.notes ?? PageNotes(address: url)
+            show(notes.reloadAddress, in: layer, restoring: notes)
+        } else {
+            stage = .ready
+        }
+        enforceLive()
+    }
+
+    /// Live pages back under `maxLive`: the current layer never goes; of the
+    /// rest, pages merely read go before pages in use, oldest shown first.
+    private func enforceLive() {
+        var excess = layers.filter(\.isLive).count - Self.maxLive
+        guard excess > 0 else { return }
+        let background = layers.filter { $0.isLive && $0 !== current }
+            .sorted { ($0.inUse ? 1 : 0, $0.lastShown) < ($1.inUse ? 1 : 0, $1.lastShown) }
+        for layer in background where excess > 0 {
+            unload(layer)
+            excess -= 1
+        }
+    }
+
+    /// The page goes, its notes stay. The notes are read from the page
+    /// first, so the page is let go a moment after the layer stops counting
+    /// as live.
+    private func unload(_ layer: Layer) {
+        guard let host = layer.page else { return }
+        layer.page = nil
+        #if DEBUG
+        print("layer unload \(layer.plan.cardID) \"\(layer.query)\"\(host.inUse ? " (in use)" : "")")
+        #endif
+        Task {
+            let notes = await host.notes()
+            host.close()
+            // Still unloaded: a swipe back meanwhile has given the layer a new page.
+            if layer.page == nil { layer.notes = notes }
+        }
+    }
+
+    /// Background pages idle past `idleWindow` go, unless in use.
+    private func sweepIdle() {
+        let now = Date.now
+        for layer in layers where layer.isLive && layer !== current && !layer.inUse && now.timeIntervalSince(layer.lastShown) > Self.idleWindow {
+            unload(layer)
+        }
+    }
+
+    /// iOS is short of memory: every background page not in use goes; the
+    /// pages in use too on a second warning within a minute.
+    private func memoryWarning() {
+        let now = Date.now
+        let again = lastMemoryWarning.map { now.timeIntervalSince($0) < 60 } ?? false
+        lastMemoryWarning = now
+        for layer in layers where layer.isLive && layer !== current && (again || !layer.inUse) {
+            unload(layer)
+        }
+    }
+
+    // MARK: Plans
+
     private func apply(_ result: RouteResult) {
-        lastDecision = result.decision
-        // Whatever comes next, the site that was on screen no longer is;
-        // a site plan sets it again once it opens.
-        openedSite = nil
-        learningSite = nil
+        let query = lastQuery
+        let decision = result.decision
         switch result.plan {
         case let .web(url):
-            answer?.cancel()
-            plans = [result.plan]
-            load(url)
-            record(result.decision, query: lastQuery)
+            openPage(url, query: query, decision: decision)
+            record(decision, query: query)
         case let .answer(format, query, history):
-            guard let answer else {
+            guard answerClient != nil else {
                 // Should not happen: the router only plans answers when a client exists.
-                plans = [.web(QueryParser.searchURL(for: query))]
-                load(QueryParser.searchURL(for: query))
-                record(result.decision, query: query)
+                openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
+                record(decision, query: query)
                 return
             }
-            plans = [result.plan]
+            // A follow-up that continues the conversation on screen grows
+            // its layer; anything else is a new one.
+            let layer: Layer
+            if decision.continuesThread, let shown = current {
+                layer = shown
+                layer.plan = result.plan
+                layer.query = query
+                layer.decision = decision
+                layer.lastShown = .now
+            } else {
+                layer = Layer(plan: result.plan, query: query, decision: decision)
+                open(layer)
+            }
+            if layer.answer == nil { layer.answer = makeAnswer(for: layer) }
             stage = .loading
-            answer.start(format: format, query: query, history: history)
+            layer.answer?.start(format: format, query: query, history: history)
             // Recorded when the answer finishes, with its summary attached.
         case let .localAnswer(_, query, _):
-            answer?.cancel()
-            images.cancel()
-            plans = [result.plan]
+            open(Layer(plan: result.plan, query: query, decision: decision))
             stage = .ready
-            record(result.decision, query: query)
+            record(decision, query: query)
         case let .image(query):
-            answer?.cancel()
-            plans = [result.plan]
+            let layer = Layer(plan: result.plan, query: query, decision: decision)
+            layer.images = makeImages(for: layer)
+            open(layer)
             stage = .loading
-            images.start(query: query)
+            layer.images?.start(query: query)
             // Recorded when the image loads or fails, with its summary attached.
         case let .recall(query):
-            answer?.cancel()
-            images.cancel()
-            let decision = result.decision
             if query == replayingQuery {
                 // A replayed query is never a recall of itself: web results.
                 replayingQuery = nil
                 record(decision, query: query)
-                load(QueryParser.searchURL(for: query))
+                openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
                 return
             }
             // Jev's reading of the ask came with the routing decision: the
@@ -461,10 +625,6 @@ final class BrowserSession {
                 recalled([], shortlisted: nil, source: "error: timeout", filters: filters, for: query, decision: decision)
             }
         case let .site(name):
-            answer?.cancel()
-            images.cancel()
-            let decision = result.decision
-            let query = lastQuery
             Task { [weak self] in
                 guard let self else { return }
                 // A rejection forgets what the name meant, then asks again.
@@ -472,7 +632,7 @@ final class BrowserSession {
                 if let entry = await sites.lookup(name) {
                     guard query == lastQuery, stage == .routing else { return }
                     await sites.touch(name)
-                    opened(name, url: entry.url)
+                    opened(name, url: entry.url, query: query, decision: decision)
                     record(decision, query: query, site: SiteSummary(name: name, outcome: "opened", host: entry.host))
                     return
                 }
@@ -504,7 +664,7 @@ final class BrowserSession {
             let found = try await siteSearch.find(name)
             let latency = Int((clock.now - start) / .milliseconds(1))
             guard query == lastQuery, stage == .loading else { return }
-            plans = [.siteChoices(name: name, found)]
+            open(Layer(plan: .siteChoices(name: name, found), query: query, decision: decision))
             stage = .ready
             record(decision, query: query, site: SiteSummary(name: name, outcome: outcome, candidates: found.count, latencyMs: latency))
         } catch {
@@ -518,31 +678,38 @@ final class BrowserSession {
         #if DEBUG
         print("sites \"\(name)\": results page, \(reason)")
         #endif
-        learningSite = name
-        load(QueryParser.searchURL(for: name))
+        let layer = Layer(plan: .web(QueryParser.searchURL(for: name)), query: query, decision: decision)
+        layer.learningSite = name
+        open(layer)
+        show(QueryParser.searchURL(for: name), in: layer)
         record(decision, query: query, site: SiteSummary(name: name, outcome: outcome == "rejected" ? outcome : "results", reason: reason, latencyMs: latencyMs))
     }
 
-    /// A choice tapped: `name` now means this site, which opens.
+    /// A choice tapped: `name` now means this site, which opens in a new
+    /// layer, the choices one swipe back.
     func choose(_ candidate: SiteCandidate, for name: String) {
-        learned(name, url: candidate.url)
-        load(candidate.url)
+        let layer = Layer(plan: .web(candidate.url), query: current?.query ?? lastQuery, decision: current?.decision)
+        learned(name, url: candidate.url, in: layer)
+        open(layer)
+        show(candidate.url, in: layer)
     }
 
     /// The book learns `name` as the origin of `url` and the site counts as
-    /// opened by name, so a follow-up can reject it.
-    private func learned(_ name: String, url: URL) {
+    /// opened by name in `layer`, so a follow-up can reject it.
+    private func learned(_ name: String, url: URL, in layer: Layer) {
         #if DEBUG
         print("sites \"\(name)\" learned as \(SiteBook.origin(of: url)?.absoluteString ?? url.absoluteString)")
         #endif
         Task { await sites.learn(name, url: url) }
-        openedSite = OpenedSite(name: SiteQuery.key(name), host: url.host() ?? "")
+        layer.openedSite = OpenedSite(name: SiteQuery.key(name), host: url.host() ?? "")
     }
 
-    /// A site the book knew opens.
-    private func opened(_ name: String, url: URL) {
-        openedSite = OpenedSite(name: SiteQuery.key(name), host: url.host() ?? "")
-        load(url)
+    /// A site the book knew opens, in a new layer.
+    private func opened(_ name: String, url: URL, query: String, decision: RouteDecision) {
+        let layer = Layer(plan: .web(url), query: query, decision: decision)
+        layer.openedSite = OpenedSite(name: SiteQuery.key(name), host: url.host() ?? "")
+        open(layer)
+        show(url, in: layer)
     }
 
     private static func describe(_ error: SiteError) -> String {
@@ -561,7 +728,7 @@ final class BrowserSession {
     /// words go to the web as a plain search ("that thing about gingivitis
     /// again" searches "gingivitis"); anything found, the grid, even one
     /// thing, titled by the topic when everything about it was asked for.
-    /// `source` says which path chose them, for the log.
+    /// Either way a new layer. `source` says which path chose them, for the log.
     private func recalled(_ found: [MemoryRecord], shortlisted: Int?, source: String, latencyMs: Int? = nil, filters: RecallFilters, for query: String, decision: RouteDecision) {
         #if DEBUG
         print("recall \"\(query)\" by \(source): \(found.count) of \(shortlisted.map(String.init) ?? "?") \(found.map { "\($0.kind.rawValue) \"\($0.title)\"" })")
@@ -576,39 +743,37 @@ final class BrowserSession {
         // Never opened straight away: even one memory is shown in the grid,
         // so the user sees what was found before it takes the screen.
         if found.isEmpty {
-            load(QueryParser.searchURL(for: topic.isEmpty ? query : topic))
+            openPage(QueryParser.searchURL(for: topic.isEmpty ? query : topic), query: query, decision: decision)
         } else {
-            plans = [.recallPicker(found, title: title)]
+            open(Layer(plan: .recallPicker(found, title: title), query: query, decision: decision))
             stage = .ready
         }
     }
 
-    /// Shows a memory again. A page loads; a results page loads its query's
-    /// results, no router asked; a narrative shows its saved text, no model
-    /// asked; a one-line answer or a picture asks its query again, since
-    /// those are cheap and may have gone stale. The capsule and the "Web
-    /// results" link follow the memory's own query.
+    /// Shows a memory again, in a new layer, the grid one swipe back. A page
+    /// loads; a results page loads its query's results, no router asked; a
+    /// narrative shows its saved text, no model asked; a one-line answer or
+    /// a picture asks its query again, since those are cheap and may have
+    /// gone stale. The capsule and the "Web results" link follow the
+    /// memory's own query. The layer keeps the recall's decision, so a
+    /// replayed search is not memorised again as a search.
     func replay(_ record: MemoryRecord) {
-        lastQuery = record.query.isEmpty ? record.title : record.query
-        queryForNextPage = lastQuery
-        // What follows (a link tapped on the recalled page) came from it.
-        currentMemory = Task { record.id }
+        let query = record.query.isEmpty ? record.title : record.query
+        lastQuery = query
+        let decision = current?.decision
         switch record.kind {
-        case .page:
-            guard let url = record.url else { load(QueryParser.searchURL(for: record.query)); return }
-            load(url)
-        case .search:
-            load(QueryParser.searchURL(for: record.query))
-        case .narrative:
-            answer?.cancel()
-            images.cancel()
-            plans = [.memory(record)]
-            stage = .ready
-        case .oneLine where record.turns != nil:
+        case .page, .search:
+            let url = record.kind == .search ? QueryParser.searchURL(for: record.query) : record.url ?? QueryParser.searchURL(for: record.query)
+            let layer = Layer(plan: .web(url), query: query, decision: decision)
+            // What follows (a link tapped on the recalled page) came from it.
+            layer.currentMemory = Task { record.id }
+            open(layer)
+            show(url, in: layer)
+        case .narrative, .oneLine where record.turns != nil:
             // A conversation that began with one line replays from its turns, like a narrative.
-            answer?.cancel()
-            images.cancel()
-            plans = [.memory(record)]
+            let layer = Layer(plan: .memory(record), query: query, decision: decision)
+            layer.currentMemory = Task { record.id }
+            open(layer)
             stage = .ready
         case .oneLine, .image:
             replayingQuery = record.query
@@ -616,12 +781,13 @@ final class BrowserSession {
         }
     }
 
-    /// Writes a memory after the one before it, pointing at the memory on
-    /// screen when it was queued; the task's value is the id kept (the
-    /// existing record's on a repeat). The write becomes the current memory.
+    /// Writes a memory after the one before it in `layer`, pointing at the
+    /// memory on screen there when it was queued; the task's value is the id
+    /// kept (the existing record's on a repeat). The write becomes the
+    /// layer's current memory.
     @discardableResult
-    private func remember(_ record: MemoryRecord) -> Task<UUID?, Never> {
-        let from = currentMemory
+    private func remember(_ record: MemoryRecord, in layer: Layer) -> Task<UUID?, Never> {
+        let from = layer.currentMemory
         let task = Task { [memory] () -> UUID? in
             var record = record
             if record.cameFrom == nil { record.cameFrom = await from?.value }
@@ -630,48 +796,49 @@ final class BrowserSession {
             #endif
             return await memory.remember(record)
         }
-        currentMemory = task
+        layer.currentMemory = task
         return task
     }
 
-    /// The document that just finished, when it is a results page: a
-    /// `search` memory by its query. Not the results page a recall fell
-    /// through to: that would memorise the recall phrase itself, and the
-    /// next recall of the same words would find it and loop. Ordinary pages
-    /// are memorised from the watcher's reports, which carry the title as
-    /// it settles; `WebPage.title` can still be empty or stale here.
-    private func rememberPage() {
-        guard let url = page.url, QueryParser.isSearchResults(url) else { return }
-        rememberSearch(url)
+    /// The document that just finished in `layer`, when it is a results
+    /// page: a `search` memory by its query. Not the results page a recall
+    /// fell through to: that would memorise the recall phrase itself, and
+    /// the next recall of the same words would find it and loop. Ordinary
+    /// pages are memorised from the watcher's reports, which carry the title
+    /// as it settles; `WebPage.title` can still be empty or stale here.
+    private func rememberPage(in layer: Layer) {
+        guard let url = layer.page?.page.url, QueryParser.isSearchResults(url) else { return }
+        rememberSearch(url, in: layer)
     }
 
-    /// The watcher's report of the page's address and title: at its first
+    /// The watcher's report of a page's address and title: at its first
     /// look, when the page changes its address without loading (the next
     /// video on YouTube), and when the title settles; the store refreshes
     /// the record each time. Error pages and untitled documents are not
     /// worth remembering. The search that led here is attached only to
     /// the first page after it; later pages answer to their own titles.
-    private func addressChanged(to url: URL, title: String) {
+    private func addressChanged(to url: URL, title: String, in layer: Layer) {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
         if QueryParser.isSearchResults(url) {
-            rememberSearch(url)
+            rememberSearch(url, in: layer)
         } else {
             // The first site reached from the results page that stood in for
             // the site choices is what the name meant. Google's own pages on
             // the way (a click redirect, an AMP viewer) are not it.
-            if let name = learningSite, let host = url.host()?.lowercased(), !host.hasSuffix("google.com") {
-                learningSite = nil
-                learned(name, url: url)
+            if let name = layer.learningSite, let host = url.host()?.lowercased(), !host.hasSuffix("google.com") {
+                layer.learningSite = nil
+                learned(name, url: url, in: layer)
             }
             let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { return }
             let url = MemoryRecord.canonical(url)
-            let record = MemoryRecord(kind: .page, query: queryForNextPage ?? "", title: title, url: url)
-            queryForNextPage = nil
-            let write = remember(record)
+            let record = MemoryRecord(kind: .page, query: layer.queryForNextPage ?? "", title: title, url: url)
+            layer.queryForNextPage = nil
+            let write = remember(record, in: layer)
+            guard let host = layer.page else { return }
             Task { [weak self] in
                 guard let self, let id = await write.value else { return }
-                await takePicture(of: url, for: id)
+                await takePicture(of: url, for: id, from: host)
             }
         }
     }
@@ -690,18 +857,18 @@ final class BrowserSession {
     /// steve jobs" searched "steve jobs", and a replay searches that again.
     /// A search typed into Google's box on the page remembers its own words
     /// the same way.
-    private func rememberSearch(_ url: URL) {
+    private func rememberSearch(_ url: URL, in layer: Layer) {
         // Nor the results page a site request fell through to: "go to lobsters" is not a search.
-        guard !lastQuery.isEmpty, lastDecision?.format != .recall, lastDecision?.format != .site else { return }
+        guard !layer.query.isEmpty, layer.decision?.format != .recall, layer.decision?.format != .site else { return }
         let term = QueryParser.searchTerm(in: url)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        remember(MemoryRecord(kind: .search, query: term?.isEmpty == false ? term! : lastQuery))
+        remember(MemoryRecord(kind: .search, query: term?.isEmpty == false ? term! : layer.query), in: layer)
     }
 
     /// A picture of the page as it stands, for the recall grid, unless the
     /// page has moved on by the time the export returns.
-    private func takePicture(of url: URL, for id: UUID) async {
-        guard let data = await WebPageExport.image(of: page, region: .contents, width: pictureWidth, timeout: pictureTimeout),
-              Self.samePage(page.url, url),
+    private func takePicture(of url: URL, for id: UUID, from host: PageHost) async {
+        guard let data = await WebPageExport.image(of: host.page, region: .contents, width: pictureWidth, timeout: pictureTimeout),
+              Self.samePage(host.page.url, url),
               let image = UIImage(data: data), let jpeg = image.jpegData(compressionQuality: pictureQuality) else { return }
         await memory.savePicture(jpeg, for: id)
     }
@@ -712,33 +879,34 @@ final class BrowserSession {
     }
 
     /// The first picture is decoded: fade the line out, the card in.
-    private func imageReady() {
-        guard images.query == lastQuery, case .image = plans.first else { return }
-        stage = .ready
-        remember(MemoryRecord(kind: .image, query: images.query))
+    private func imageReady(in layer: Layer) {
+        guard let images = layer.images, case .image = layer.plan else { return }
+        if layer === current { stage = .ready }
+        remember(MemoryRecord(kind: .image, query: images.query), in: layer)
     }
 
-    private func imageFinished(_ summary: ImageSummary) {
-        guard images.query == lastQuery, case .image = plans.first else { return }
-        if let decision = lastDecision {
+    private func imageFinished(_ summary: ImageSummary, in layer: Layer) {
+        guard let images = layer.images, case .image = layer.plan else { return }
+        if let decision = layer.decision {
             record(decision, query: images.query, image: summary)
         }
         if case .fellBackToWeb = summary.outcome {
             // Neither Wikipedia nor Brave had a picture: Google Images for the
-            // subject alone, not web results for the whole sentence.
-            load(QueryParser.imageSearchURL(for: ImageQuery.subject(for: images.query)))
+            // subject alone, not web results for the whole sentence. The
+            // layer becomes that page.
+            show(QueryParser.imageSearchURL(for: ImageQuery.subject(for: images.query)), in: layer)
         }
     }
 
     /// First answer text arrived: fade the line out, the text in.
-    private func answerStarted() {
-        guard let answer, answer.query == lastQuery, case .answer = plans.first else { return }
+    private func answerStarted(in layer: Layer) {
+        guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query, layer === current else { return }
         stage = .ready
     }
 
-    private func answerFinished(_ summary: AnswerSummary) {
-        guard let answer, answer.query == lastQuery, case .answer = plans.first else { return }
-        if let decision = lastDecision {
+    private func answerFinished(_ summary: AnswerSummary, in layer: Layer) {
+        guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
+        if let decision = layer.decision {
             record(decision, query: answer.query, answer: summary)
         }
         switch summary.outcome {
@@ -749,206 +917,22 @@ final class BrowserSession {
             // is the context the user is in.
             break
         case .fellBackToWeb, .needsLiveData:
-            let url = QueryParser.searchURL(for: answer.query)
-            plans = [.web(url)]
-            load(url)
+            // The layer becomes the results page.
+            show(QueryParser.searchURL(for: answer.query), in: layer)
         case .completed:
             let turns = answer.history + [AnswerTurn(query: answer.query, answer: answer.text, format: answer.format)]
             if turns.count > 1, let first = turns.first {
                 // One memory per conversation, under its first query and of
                 // its first turn's kind: the store's repeat rule updates it in
                 // place as the thread grows.
-                remember(MemoryRecord(kind: first.format == .oneLine ? .oneLine : .narrative, query: first.query, text: first.answer, turns: turns))
+                remember(MemoryRecord(kind: first.format == .oneLine ? .oneLine : .narrative, query: first.query, text: first.answer, turns: turns), in: layer)
             } else if answer.format == .narrative {
-                remember(MemoryRecord(kind: .narrative, query: answer.query, text: answer.text))
+                remember(MemoryRecord(kind: .narrative, query: answer.query, text: answer.text), in: layer)
             } else {
-                remember(MemoryRecord(kind: .oneLine, query: answer.query))
+                remember(MemoryRecord(kind: .oneLine, query: answer.query), in: layer)
             }
         case .partial:
             break
-        }
-    }
-
-    // MARK: The page
-
-    /// Loads `url` into the page and marks the stage ready when the page
-    /// commits its first content, fails, or `commitTimeout` passes.
-    private func load(_ url: URL) {
-        answer?.cancel()
-        images.cancel()
-        plans = [.web(url)]
-        stage = .loading
-        loadGeneration += 1
-        let generation = loadGeneration
-        loadTask?.cancel()
-        loadTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                for try await event in page.load(URLRequest(url: url)) {
-                    guard generation == loadGeneration else { return }
-                    if event == .committed || event == .finished { stage = .ready }
-                }
-            } catch {
-                // Offline, bad host: show whatever WebKit shows rather than wave forever.
-                if generation == loadGeneration { stage = .ready }
-            }
-        }
-        Task { [weak self, timeout = commitTimeout] in
-            try? await Task.sleep(for: timeout)
-            guard let self, generation == loadGeneration, stage == .loading else { return }
-            stage = .ready
-        }
-    }
-
-    /// Every main-frame navigation for the life of the session, ours or a
-    /// link tapped in the page: `pageLoading` for the clay, and the document
-    /// bookkeeping behind `chrome`. The sequence ends by throwing when a
-    /// navigation fails, so it is picked up again.
-    private func watchNavigations() {
-        navigationWatch = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                do {
-                    for try await event in page.navigations {
-                        switch event {
-                        case .startedProvisionalNavigation:
-                            navigationStarted()
-                        case .committed:
-                            documentCommitted()
-                        case .finished:
-                            pageLoading = false
-                            documentFinished()
-                        case .receivedServerRedirect:
-                            break
-                        @unknown default:
-                            break
-                        }
-                    }
-                } catch {
-                    // Offline, bad host, or a load we stopped: not loading any more.
-                    pageLoading = false
-                }
-                // A sequence that ends at once would spin this loop; let the run loop turn.
-                await Task.yield()
-            }
-        }
-    }
-
-    private func navigationStarted() {
-        pageLoading = true
-        navigationCount += 1
-        let count = navigationCount
-        Task { [weak self, timeout = finishTimeout] in
-            try? await Task.sleep(for: timeout)
-            guard let self, count == navigationCount else { return }
-            // Still the same navigation after all that: the page is usable
-            // whatever is still streaming in, so the clay stops waving and
-            // whatever the page reported applies.
-            pageLoading = false
-            await settleDocument()
-        }
-    }
-
-    /// A new document. A new site starts plain; a page of the same site keeps
-    /// its chrome until the new document reports, so a link to a sibling page
-    /// never flickers. Same-document navigations (hashes, `pushState`) raise
-    /// no event and need none: the watcher in the page follows them.
-    private func documentCommitted() {
-        documentGeneration += 1
-        documentSettled = false
-        pendingReport = nil
-        // A new page starts with no report; its watcher sends one on its first look.
-        pageAudible = false
-        pageMediaCount = 0
-        let host = page.url?.host()
-        if host != previousHost { chrome = .plain }
-        previousHost = host
-    }
-
-    private func documentFinished() {
-        let generation = documentGeneration
-        Task { [weak self] in
-            // Headers often arrive a beat after the load event.
-            try? await Task.sleep(for: .milliseconds(250))
-            guard let self, generation == documentGeneration else { return }
-            rememberPage()
-            await settleDocument()
-        }
-    }
-
-    /// From now on reports apply at once, and the one that waited applies.
-    /// A document that never reported (not HTML, or its scripts never ran)
-    /// gets one direct look, else stays plain.
-    private func settleDocument() async {
-        guard !documentSettled else { return }
-        documentSettled = true
-        if let report = pendingReport {
-            pendingReport = nil
-            apply(report)
-        } else if reportedGeneration != documentGeneration {
-            let generation = documentGeneration
-            let result = try? await page.callJavaScript(PageChrome.probe, contentWorld: PageChrome.world)
-            guard generation == documentGeneration else { return }
-            if let result, let report = PageChromeReport(result) {
-                apply(report)
-            } else {
-                chrome = .plain
-            }
-        }
-    }
-
-    private func received(_ report: PageChromeReport) {
-        reportedGeneration = documentGeneration
-        if documentSettled {
-            apply(report)
-        } else {
-            pendingReport = report
-        }
-    }
-
-    /// Results pages keep the frost at the top whatever they pin there, so
-    /// the plain results page stays exactly as it is (it pins nothing at
-    /// either edge). Their bottom follows the report: the expanded AI
-    /// overview pins its "Ask anything" field there.
-    ///
-    /// A bar whose colour the watcher could only guess is held until the
-    /// app has sampled the rendered edge, so the zone never shows the guess
-    /// and then flips; a sample that fails leaves the guess, which is what
-    /// the zone showed before sampling existed.
-    private func apply(_ report: PageChromeReport) {
-        var next = report.chrome
-        if let url = page.url, QueryParser.isSearchResults(url) {
-            next.top = .frost
-        }
-        reportSequence += 1
-        let sampleTop = report.topGuessed && { if case .solid = next.top { true } else { false } }()
-        let sampleBottom = report.bottomGuessed && { if case .bar = next.bottom { true } else { false } }()
-        guard sampleTop || sampleBottom else {
-            #if DEBUG
-            // What the watcher decided for this page, in Xcode's console.
-            print("page chrome \(page.url?.host() ?? "-"): top \(report.chrome.top) bottom \(report.chrome.bottom) overlay \(report.overlay) atTop \(report.atTop) -> \(next)")
-            #endif
-            if next != chrome { chrome = next }
-            return
-        }
-        let sequence = reportSequence
-        let generation = documentGeneration
-        Task { [weak self] in
-            guard let self else { return }
-            async let top: ChromeColor? = sampleTop
-                ? EdgeSampler.sample(page, edge: .top, window: window, topInset: topInset, viewportHeight: report.viewportHeight)
-                : nil
-            async let bottom: ChromeColor? = sampleBottom
-                ? EdgeSampler.sample(page, edge: .bottom, window: window, topInset: topInset, viewportHeight: report.viewportHeight)
-                : nil
-            let sampled = await (top, bottom)
-            guard sequence == reportSequence, generation == documentGeneration else { return }
-            if let color = sampled.0 { next.top = .solid(color) }
-            if let color = sampled.1 { next.bottom = .bar(color) }
-            #if DEBUG
-            print("page chrome \(page.url?.host() ?? "-"): top \(report.chrome.top) bottom \(report.chrome.bottom) overlay \(report.overlay) atTop \(report.atTop) sampled top \(sampled.0.map { "\($0)" } ?? (sampleTop ? "no uniform strip" : "-")) bottom \(sampled.1.map { "\($0)" } ?? (sampleBottom ? "no uniform strip" : "-")) -> \(next)")
-            #endif
-            if next != chrome { chrome = next }
         }
     }
 
@@ -957,44 +941,24 @@ final class BrowserSession {
         Task { await log.append(record) }
     }
 
-    // MARK: Navigation
+    // MARK: The current page's navigation
 
-    var canGoBack: Bool { !page.backForwardList.backList.isEmpty }
-    var canGoForward: Bool { !page.backForwardList.forwardList.isEmpty }
+    var canGoBack: Bool { current?.page?.canGoBack ?? false }
+    var canGoForward: Bool { current?.page?.canGoForward ?? false }
 
     func goBack() {
-        guard let item = page.backForwardList.backList.last else { return }
-        _ = page.load(item)
+        current?.page?.goBack()
     }
 
     func goForward() {
-        guard let item = page.backForwardList.forwardList.first else { return }
-        _ = page.load(item)
+        current?.page?.goForward()
     }
 
     func reload() {
-        _ = page.reload()
-    }
-
-    /// Pull to refresh: reloads and returns when the page has finished (or
-    /// failed, or `finishTimeout` has passed), so the spinner knows when to
-    /// stop. The navigation watcher handles the clay and the chrome as for
-    /// any other load.
-    func reloadAndWait() async {
-        let reload = Task { [page] in
-            do {
-                for try await event in page.reload() where event == .finished { break }
-            } catch {}
-        }
-        _ = await withTaskGroup(of: Void.self) { group in
-            group.addTask { await reload.value }
-            group.addTask { [timeout = finishTimeout] in try? await Task.sleep(for: timeout) }
-            await group.next()
-            group.cancelAll()
-        }
+        current?.page?.reload()
     }
 
     func stop() {
-        page.stopLoading()
+        current?.page?.stop()
     }
 }

@@ -307,6 +307,70 @@
     document.addEventListener(name, reportAudio, { capture: true, passive: true });
   }
 
+  // --- In use ---------------------------------------------------------------
+
+  // Whether leaving this page would lose something: a video or audio part
+  // way through, or a form the user has typed into. The app keeps such a
+  // page live longer than a page merely read. Posted only when it changes;
+  // `form` stays set for the life of the document.
+  let formTouched = false;
+  let reportedUse = null;
+  function partWay(el) { return el.currentTime > 0 && !el.ended; }
+  function reportUse() {
+    const media = Array.prototype.some.call(document.querySelectorAll('video, audio'), partWay);
+    const key = (media ? 'm' : '-') + (formTouched ? 'f' : '-');
+    if (key === reportedUse) return;
+    reportedUse = key;
+    try { window.webkit.messageHandlers.pageUse.postMessage({ media, form: formTouched }); } catch (e) {}
+  }
+  for (const name of ['playing', 'pause', 'seeked', 'timeupdate', 'ended', 'emptied']) {
+    document.addEventListener(name, reportUse, { capture: true, passive: true });
+  }
+  document.addEventListener('input', (event) => {
+    const el = event.target;
+    if (!el || formTouched) return;
+    const tag = (el.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable) {
+      formTouched = true;
+      reportUse();
+    }
+  }, { capture: true, passive: true });
+
+  // Where the page stands, for the app to bring it back after it has been
+  // unloaded: the scroll, and how far into its first video the user was.
+  function firstVideo() {
+    return Array.prototype.find.call(document.querySelectorAll('video'), (v) => v.currentTime > 0) || document.querySelector('video');
+  }
+  function notes() {
+    const scroller = document.scrollingElement;
+    const video = firstVideo();
+    return {
+      scrollY: scroller ? scroller.scrollTop : window.scrollY,
+      videoTime: video && video.currentTime > 0 ? video.currentTime : null,
+    };
+  }
+  // The scroll goes back at once; the video seeks once one is on the page
+  // and knows its length, giving up after a while if none appears.
+  function restore(saved) {
+    if (!saved) return;
+    if (saved.scrollY > 0) {
+      const scroller = document.scrollingElement;
+      if (scroller) scroller.scrollTop = saved.scrollY; else window.scrollTo(0, saved.scrollY);
+    }
+    const time = saved.videoTime;
+    if (!(time > 0)) return;
+    const started = performance.now();
+    const seek = () => {
+      const video = document.querySelector('video');
+      if (video && video.readyState >= 1) {
+        if (Math.abs(video.currentTime - time) > 1) video.currentTime = time;
+        return;
+      }
+      if (performance.now() - started < 15000) setTimeout(seek, 250);
+    };
+    seek();
+  }
+
   function evaluate(force) {
     reportAddress();
     reportAudio();
@@ -374,9 +438,9 @@
   window.addEventListener('popstate', schedule);
   window.addEventListener('hashchange', schedule);
   window.addEventListener('pageshow', (event) => {
-    if (event.persisted) { lastKey = null; reportedAudible = null; reportedMedia = null; schedule(); }
+    if (event.persisted) { lastKey = null; reportedAudible = null; reportedMedia = null; reportedUse = null; schedule(); reportUse(); }
   });
 
-  window.__pageChrome = { evaluate };
+  window.__pageChrome = { evaluate, notes, restore };
   schedule();
 })();

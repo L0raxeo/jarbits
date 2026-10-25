@@ -508,6 +508,41 @@ what `SiteQuery` makes of a query, what the seeded book says, and with
 `BRAVE_API_KEY` the candidates; `report route "<query>" --opened <name>
 <host>` shows the rejection judgement.
 
+## Layers
+
+Results are kept the way Safari keeps tabs. Every query opens a layer; a
+follow-up that continues the conversation on screen grows the current
+layer instead. A layer that shows a page keeps that page live when the
+user moves on, so coming back finds a video where it was and a form as
+filled; its "last page" is whatever was on screen when it was left (web
+results, then three sites ending on YouTube, is one layer, ending on
+YouTube). A tap that turns a card into a page (an answer's "Web results",
+a picture's site, a site choice, a tile in the recall grid) opens a new
+layer, so the card stays one swipe back. Asking for a page again is a
+fresh load, never the old layer.
+
+A swipe across the clay capsule at the foot of a result goes back a layer
+(left to right) and forward again (right to left); the result cross-fades,
+the capsule contracts from the side the swipe started on and its text
+fades, and the microphone is off while the finger moves. Swiping
+inside a page stays the page's own back and forward. A new query from the
+middle of the stack drops the layers ahead, like browser history. Recall,
+the grid and tile taps are unchanged; there is no spoken "back".
+
+The current layer and the newest three others stay live
+(`BrowserSession.maxLive`); past that the oldest shown go, pages in use
+last (a video part way through, a form typed into, which the watcher
+reports as `pageUse`). A background page idle for thirty minutes goes
+too, and a memory warning takes every background page not in use, the
+rest on a second warning within a minute. Leaving a layer pauses its
+media. An unloaded layer keeps notes (`PageNotes`: address, scroll, how
+far into its video) read from the watcher as the page goes, and a swipe
+back to it reloads to that spot (a YouTube watch page takes the time in
+its address). Each layer keeps its own answer stream, pictures, opened
+site and memory chain, so a follow-up over a layer swiped back to
+continues that conversation and a page opened from it is memorised as
+coming from it. Nothing of this outlives the app.
+
 ## Where things live
 
 | Path | Role |
@@ -524,9 +559,11 @@ what `SiteQuery` makes of a query, what the seeded book says, and with
 | `Browser/Router/DecisionLog.swift` | JSON Lines log of every decision and answer. |
 | `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`, `BraveAPIKey`). |
 | `Browser/Router/CardPlan.swift` | The renderable plans. One enum case per card type. |
-| `Browser/Session/BrowserSession.swift` | Owns the single `WebPage`, the `AnswerSession` and the `ImageSession`, runs queries through the router, applies the plan (a recall through the memories, a site through the book or the search), watches the page's navigations (ours and tapped links) for the clay's wave line, the page-chrome bookkeeping and the site a name is learned from, writes the log. |
-| `Browser/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, and address changes for the memories), the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
-| `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `Clay` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar; the page bounces sideways only when it is wider than the screen, since the web view's default rubber-bands sideways on every page and a vertical drag with a little drift wobbles it) `ClayCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard) and `QueryField` (the text field the clay and the capsule share). No system toolbars, so no Liquid Glass. |
+| `Browser/Session/BrowserSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the router, applies the plan (a recall through the memories, a site through the book or the search), opens, swipes between, unloads and reloads layers under the live cap, memorises what each layer shows, writes the log. |
+| `Browser/Session/Layer.swift` | One query's result: its plan, its live page (`PageHost`) or the notes left by an unload, its own answer stream and pictures, its opened site and memory chain, when it was last shown. |
+| `Browser/Web/PageHost.swift` | One live web page: the `WebPage` with its watcher, what it pins to its edges, whether it loads or plays or is in use, the navigation watch and the document bookkeeping behind the chrome, the notes read as it goes and the restore when it comes back. |
+| `Browser/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, address changes for the memories, audio, and whether the page is in use), the page's notes for an unload, the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
+| `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `Clay` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar; the page bounces sideways only when it is wider than the screen, since the web view's default rubber-bands sideways on every page and a vertical drag with a little drift wobbles it) `ClayCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard, and swipes between layers) and `QueryField` (the text field the clay and the capsule share). No system toolbars, so no Liquid Glass. |
 | `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the three API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
 

@@ -28,6 +28,10 @@ struct HomeView: View {
     @State private var followSelection: TextSelection?
     /// The query capsule shrinks while the result scrolls down, grows on the way up.
     @State private var barCompact = false
+    /// A finger is swiping the capsule between layers: no listening meanwhile.
+    @State private var swiping = false
+    /// The iOS keyboard is on screen, whoever raised it.
+    @State private var keyboardUp = false
     /// A follow-up was sent from the capsule: it stays on screen, as the wave
     /// line, while the old result fades out, and the clay stays out of it.
     /// Only visibility hangs on this flag; whether the capsule waves follows
@@ -64,7 +68,7 @@ struct HomeView: View {
     private var listening: Bool {
         guard scenePhase != .background, !session.microphone.exclusive else { return false }
         if mode == .circle { return true }
-        return session.stage == .ready && !followingUp && !capsuleLoading && session.attention.idle
+        return session.stage == .ready && !followingUp && !capsuleLoading && !swiping && session.attention.idle
     }
     /// The microphone is open, or about to be: the clay is purple. Red
     /// otherwise, so it is always plain whether the app can hear; and red a
@@ -79,14 +83,17 @@ struct HomeView: View {
     /// A word has been heard over the result: the capsule is the small circle.
     private var hearing: Bool { session.stage == .ready && session.dictation.heardSpeech && !followingUp }
     /// Over a result, or standing in for the clay while a follow-up loads.
-    private var showsCapsule: Bool { showsResult || capsuleSubmitted }
+    private var showsCapsule: Bool { (showsResult || capsuleSubmitted) && !keyboardForPage }
+    /// The keyboard is up for something other than our fields: a form in the
+    /// page. The capsule stays out of its way until it goes.
+    private var keyboardForPage: Bool { keyboardUp && !followingUp && !typing }
     /// The wave while a query is in flight, or while the page behind a web
     /// result is still loading (a tapped link). An answer or image card has
     /// no page to wait for.
     private var capsuleLoading: Bool {
         switch session.stage {
         case .routing, .loading, .cleaning: true
-        case .ready: if case .web = session.plans.first { session.pageLoading } else { false }
+        case .ready: session.pageLoading
         case .idle: false
         }
     }
@@ -94,11 +101,11 @@ struct HomeView: View {
     /// What the capsule reads: the page's query or host for a web plan, the
     /// query otherwise. Also what a web follow-up starts with.
     private var capsuleText: String {
-        if case .web = session.plans.first, let url = session.page.url {
+        if case .web = session.plan, let url = session.page?.url {
             let text = QueryParser.displayText(for: url)
             if !text.isEmpty { return text }
         }
-        return session.lastQuery
+        return session.current?.query ?? session.lastQuery
     }
 
     var body: some View {
@@ -133,13 +140,13 @@ struct HomeView: View {
                     // Mounted as soon as there is a plan and hidden until ready,
                     // rather than removed and re-added: WebKit's content process
                     // can assert when its view is torn down and re-attached while
-                    // a page is still laying out. Identity follows the card
-                    // (`cardID`): web pages share one, a conversation keeps its
-                    // own as it grows, and a held conversation replaced by a
-                    // fresh card leaves through the transition below.
-                    if let plan = session.plans.first, session.stage != .idle {
-                        ResultView(plan: plan, clayY: clayY, topInset: insets.top, bottomInset: insets.bottom, barCompact: $barCompact)
-                            .id(plan.cardID)
+                    // a page is still laying out. Identity follows the layer:
+                    // a conversation keeps its card as it grows, and a new
+                    // layer, or a swipe to another, cross-fades through the
+                    // transition below.
+                    if let layer = session.current, session.stage != .idle {
+                        ResultView(layer: layer, clayY: clayY, topInset: insets.top, bottomInset: insets.bottom, barCompact: $barCompact)
+                            .id(layer.id)
                             .opacity(showsResult ? 1 : 0)
                             .allowsHitTesting(showsResult)
                             .animation(.easeIn(duration: 0.4), value: showsResult)
@@ -247,7 +254,10 @@ struct HomeView: View {
                             focus: $followingUp,
                             selection: $followSelection,
                             onTap: openFollowUp,
-                            onSubmit: submitFollowUp
+                            onSubmit: submitFollowUp,
+                            onSwipeBack: session.swipeBack,
+                            onSwipeForward: session.swipeForward,
+                            swiping: $swiping
                         )
                         if hearing {
                             // The circle at the left corner, the buttons as a pair at the right.
@@ -298,6 +308,13 @@ struct HomeView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { session.attention.touched() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
+        .onChange(of: swiping) { _, swiping in
+            // The foot row is outside the touch observer; a swipe there
+            // counts as a touch all the same, so listening waits after it.
+            if !swiping { session.attention.touched() }
+        }
         .onChange(of: session.stage) { _, stage in
             // A result arriving counts as something happening: no listening
             // the instant a page appears.
@@ -345,7 +362,7 @@ struct HomeView: View {
     /// From the capsule. On a web result the field opens holding the page's
     /// query, selected, as Safari's address bar does; elsewhere it opens empty.
     private func openFollowUp() {
-        if case .web = session.plans.first {
+        if case .web = session.plan {
             followDraft = capsuleText
         } else {
             followDraft = ""

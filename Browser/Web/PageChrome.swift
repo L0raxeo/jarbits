@@ -48,6 +48,46 @@ struct PageChrome: Equatable {
     static let plain = PageChrome()
 }
 
+/// What an unloaded page left behind, enough to bring it back to the same
+/// spot: its address, how far it was scrolled, and how far into its video
+/// the user was. From the watcher's `notes()`.
+struct PageNotes: Hashable, Sendable {
+    var address: URL
+    var scrollY: Double = 0
+    var videoTime: Double?
+
+    init(address: URL, scrollY: Double = 0, videoTime: Double? = nil) {
+        self.address = address
+        self.scrollY = scrollY
+        self.videoTime = videoTime
+    }
+
+    /// From the watcher's `{scrollY, videoTime}`, for `address`.
+    init(address: URL, _ value: Any?) {
+        self.address = address
+        guard let dictionary = value as? [String: Any] else { return }
+        scrollY = (dictionary["scrollY"] as? NSNumber)?.doubleValue ?? 0
+        if let time = (dictionary["videoTime"] as? NSNumber)?.doubleValue, time > 0 { videoTime = time }
+    }
+
+    /// The address to reload. YouTube's watch page takes its start time in
+    /// the address (`t=`), the one way that reliably works on that site; the
+    /// watcher's seek covers everything else.
+    var reloadAddress: URL {
+        guard let videoTime, let host = address.host()?.lowercased(), host.hasSuffix("youtube.com"), address.path() == "/watch",
+              var components = URLComponents(url: address, resolvingAgainstBaseURL: false) else { return address }
+        var items = (components.queryItems ?? []).filter { $0.name != "t" }
+        items.append(URLQueryItem(name: "t", value: "\(Int(videoTime))s"))
+        components.queryItems = items
+        return components.url ?? address
+    }
+
+    /// For `PageChrome.restoreScript`'s `saved` argument.
+    var arguments: [String: Any] {
+        ["saved": ["scrollY": scrollY, "videoTime": videoTime as Any? ?? NSNull()] as [String: Any]]
+    }
+}
+
 /// One message from the watcher.
 struct PageChromeReport {
     var chrome: PageChrome
@@ -194,6 +234,9 @@ final class PageChromeHandler: NSObject, WKScriptMessageHandler {
     /// elements the main document has (none means a player, if any, is in a
     /// frame the watcher cannot see).
     var onAudio: ((_ audible: Bool, _ media: Int) -> Void)?
+    /// Whether leaving the page would lose something: a video part way
+    /// through, or a form typed into.
+    var onUse: ((_ inUse: Bool) -> Void)?
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame else { return }
@@ -205,6 +248,9 @@ final class PageChromeHandler: NSObject, WKScriptMessageHandler {
         case PageChrome.audioHandlerName:
             guard let body = message.body as? [String: Any], let audible = body["audible"] as? Bool else { return }
             onAudio?(audible, body["media"] as? Int ?? 0)
+        case PageChrome.useHandlerName:
+            guard let body = message.body as? [String: Any] else { return }
+            onUse?((body["media"] as? Bool ?? false) || (body["form"] as? Bool ?? false))
         default:
             guard let report = PageChromeReport(message.body) else { return }
             onReport?(report)
@@ -216,12 +262,17 @@ extension PageChrome {
     static let handlerName = "pageChrome"
     static let addressHandlerName = "pageAddress"
     static let audioHandlerName = "pageAudio"
+    static let useHandlerName = "pageUse"
     /// The watcher's content world: the page's own scripts cannot see the
     /// handler or the watcher, and a direct call from the app can.
     static let world = WKContentWorld.defaultClient
     /// What the app runs when a document never reported (not HTML, or its
     /// scripts never ran): the same evaluation, or nil.
     static let probe = "return window.__pageChrome ? window.__pageChrome.evaluate(true) : null"
+    /// Where the page stands, before it is unloaded: `{scrollY, videoTime}`.
+    static let notesProbe = "return window.__pageChrome ? window.__pageChrome.notes() : null"
+    /// Puts a reloaded page back where it stood; `saved` is the notes object.
+    static let restoreScript = "if (window.__pageChrome) window.__pageChrome.restore(saved)"
 
     /// A page configuration with the watcher installed and `handler` listening.
     /// Video plays inline, as in Safari: the iPhone default (`.automatic`)
@@ -240,6 +291,7 @@ extension PageChrome {
         content.add(handler, contentWorld: world, name: handlerName)
         content.add(handler, contentWorld: world, name: addressHandlerName)
         content.add(handler, contentWorld: world, name: audioHandlerName)
+        content.add(handler, contentWorld: world, name: useHandlerName)
         configuration.userContentController = content
         return configuration
     }
