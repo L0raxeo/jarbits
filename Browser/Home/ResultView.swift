@@ -421,9 +421,11 @@ private struct RecallGridView: View {
 
 /// One memory in the grid: a portrait tile and, under it, the kind's
 /// symbol, the title on one line, and when.
-private struct MemoryTile: View {
+struct MemoryTile: View {
     @Environment(BrowserSession.self) private var session
     let record: MemoryRecord
+    /// The page area's proportions on the phone, as the pictures are.
+    static let aspect: CGFloat = 0.56
     @State private var picture: UIImage?
 
     private let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -431,7 +433,7 @@ private struct MemoryTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             tile
-                .aspectRatio(0.72, contentMode: .fit)
+                .aspectRatio(Self.aspect, contentMode: .fit)
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(Color.black.opacity(0.06)))
                 .overlay(alignment: .topTrailing) {

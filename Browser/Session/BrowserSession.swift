@@ -79,10 +79,8 @@ final class BrowserSession {
     private let siteSearch: SiteSearch?
     /// A page's picture for the recall grid: this wide in points (three
     /// times that in pixels), as a JPEG at this quality, a few tens of KB.
-    /// An export slower than the timeout is skipped.
     private let pictureWidth: CGFloat = 120
     private let pictureQuality: CGFloat = 0.6
-    private let pictureTimeout: Duration = .seconds(2)
 
     /// The layers, oldest first, and which one is on screen.
     private(set) var layers: [Layer] = []
@@ -112,6 +110,8 @@ final class BrowserSession {
     var topInset: CGFloat = 0 {
         didSet { for layer in layers { layer.page?.topInset = topInset } }
     }
+    /// The safe area below the page, where the capsule sits: left out of pictures.
+    var bottomInset: CGFloat = 0
 
     private let router: any Router
     private let log: DecisionLog
@@ -125,6 +125,10 @@ final class BrowserSession {
     private static let audioSettle: Duration = .milliseconds(300)
     private var idleSweep: Task<Void, Never>?
     private var memoryWarningObserver: (any NSObjectProtocol)?
+    private var resignObserver: (any NSObjectProtocol)?
+    /// Backup pictures of one page come no closer together than this; a
+    /// leave shot always goes.
+    private static let pictureGap: TimeInterval = 3
     private var lastMemoryWarning: Date?
 
     /// Jev judging a recall shortlist; nil shows the shortlist in word order.
@@ -154,11 +158,16 @@ final class BrowserSession {
         memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.memoryWarning() }
         }
+        // Leaving the app: the page as last seen, before iOS takes its own snapshot.
+        resignObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.takePicture(reason: "leave") }
+        }
     }
 
     func submit(_ query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        takePicture(reason: "leave")   // before anything moves: the page as last seen
         let thread = thread   // the narrative under the query, if any, before anything moves
         let opened = openedSite   // and the site opened by name, if one is on screen
         lastQuery = trimmed
@@ -238,6 +247,7 @@ final class BrowserSession {
     /// where it was.
     func submitSpoken() {
         guard stage == .idle || stage == .ready, dictation.phase == .listening else { return }
+        takePicture(reason: "leave")   // the page as last seen, before the stage moves on
         let before = stage
         stage = .cleaning
         spokenGeneration += 1
@@ -329,6 +339,7 @@ final class BrowserSession {
     /// from the screen. The layers stay, so the next result can still swipe
     /// back to them.
     func reset() {
+        takePicture(reason: "leave")
         if let layer = current {
             layer.answer?.cancel()
             layer.images?.cancel()
@@ -394,6 +405,21 @@ final class BrowserSession {
         host.onDocumentFinished = { [weak self, weak layer] in
             guard let self, let layer else { return }
             rememberPage(in: layer)
+            // A backup picture once the page has had a moment to draw.
+            Task { [weak self, weak layer] in
+                try? await Task.sleep(for: .seconds(2))
+                guard let self, let layer else { return }
+                takePicture(of: layer, reason: "settled")
+            }
+        }
+        host.onNavigationStarted = { [weak self, weak layer] in
+            guard let self, let layer else { return }
+            // A tapped link: the old page is still on screen.
+            takePicture(of: layer, reason: "leave")
+        }
+        host.onRest = { [weak self, weak layer] in
+            guard let self, let layer else { return }
+            takePicture(of: layer, reason: "rest")
         }
         host.onAddress = { [weak self, weak layer] url, title in
             guard let self, let layer else { return }
@@ -447,6 +473,7 @@ final class BrowserSession {
     /// Shows `layers[target]`: live, it is on screen as it was; unloaded, its
     /// page reloads to where its notes say it stood.
     private func move(to target: Int) {
+        takePicture(reason: "leave")
         let leaving = current
         Task { await leaving?.page?.pause() }
         #if DEBUG
@@ -835,11 +862,60 @@ final class BrowserSession {
             let record = MemoryRecord(kind: .page, query: layer.queryForNextPage ?? "", title: title, url: url)
             layer.queryForNextPage = nil
             let write = remember(record, in: layer)
-            guard let host = layer.page else { return }
-            Task { [weak self] in
-                guard let self, let id = await write.value else { return }
-                await takePicture(of: url, for: id, from: host)
+            // Pictures taken from now on go to this memory; a different
+            // address meanwhile means they go to no one until its own write lands.
+            layer.pictureID = nil
+            layer.lastPicture = nil
+            let thumbnail = PageShot.youTubeThumbnail(for: url)
+            layer.pictureFixed = thumbnail != nil
+            Task { [weak self, weak layer] in
+                guard let layer, let id = await write.value, layer.currentMemory == write else { return }
+                layer.pictureID = id
+                if let thumbnail { await self?.saveThumbnail(thumbnail, for: id) }
             }
+        }
+    }
+
+    /// YouTube's still for the video, framed as a tile, in place of a
+    /// screenshot that could only show the player black. A failed download
+    /// leaves whatever picture the memory had.
+    private func saveThumbnail(_ thumbnail: URL, for id: UUID) async {
+        let width = pictureWidth
+        let quality = pictureQuality
+        let aspect = MemoryTile.aspect
+        let still = await Task.detached(priority: .utility) { () -> UIImage? in
+            guard let (data, response) = try? await URLSession.shared.data(from: thumbnail),
+                  (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            return UIImage(data: data)
+        }.value
+        // Framing is a tile-sized draw, a moment on the main thread.
+        guard let still, let jpeg = PageShot.framed(still, width: width, aspect: aspect).jpegData(compressionQuality: quality) else { return }
+        await memory.savePicture(jpeg, for: id)
+    }
+
+    /// The page as the user sees it, for the recall grid: the current
+    /// layer's page, when it shows a memorised page. `reason` is "leave"
+    /// (taken as the first thing, before the screen changes, and never
+    /// skipped), "rest" or "settled" (backups, spaced by `pictureGap`).
+    private func takePicture(reason: String) {
+        guard let layer = current else { return }
+        takePicture(of: layer, reason: reason)
+    }
+
+    private func takePicture(of layer: Layer, reason: String) {
+        guard layer === current, stage == .ready, layer.isWeb, layer.page != nil, !layer.pictureFixed, let id = layer.pictureID else { return }
+        let now = Date.now
+        if reason != "leave", let last = layer.lastPicture, now.timeIntervalSince(last) < Self.pictureGap { return }
+        let reserve = ClayCapsule.footprint(compact: false) + bottomInset
+        guard let image = PageShot.capture(width: pictureWidth, topInset: topInset, bottomReserve: reserve) else { return }
+        layer.lastPicture = now
+        #if DEBUG
+        print("picture \(reason) → \(id.uuidString.prefix(8))")
+        #endif
+        let quality = pictureQuality
+        Task.detached(priority: .utility) { [memory] in
+            guard let jpeg = image.jpegData(compressionQuality: quality) else { return }
+            await memory.savePicture(jpeg, for: id)
         }
     }
 
@@ -862,20 +938,6 @@ final class BrowserSession {
         guard !layer.query.isEmpty, layer.decision?.format != .recall, layer.decision?.format != .site else { return }
         let term = QueryParser.searchTerm(in: url)?.trimmingCharacters(in: .whitespacesAndNewlines)
         remember(MemoryRecord(kind: .search, query: term?.isEmpty == false ? term! : layer.query), in: layer)
-    }
-
-    /// A picture of the page as it stands, for the recall grid, unless the
-    /// page has moved on by the time the export returns.
-    private func takePicture(of url: URL, for id: UUID, from host: PageHost) async {
-        guard let data = await WebPageExport.image(of: host.page, region: .contents, width: pictureWidth, timeout: pictureTimeout),
-              Self.samePage(host.page.url, url),
-              let image = UIImage(data: data), let jpeg = image.jpegData(compressionQuality: pictureQuality) else { return }
-        await memory.savePicture(jpeg, for: id)
-    }
-
-    private static func samePage(_ a: URL?, _ b: URL) -> Bool {
-        guard let a else { return false }
-        return MemoryRecord.canonical(a) == MemoryRecord.canonical(b)
     }
 
     /// The first picture is decoded: fade the line out, the card in.

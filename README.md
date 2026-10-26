@@ -440,10 +440,16 @@ yesterday") is listed the same way, titled "All videos", with the path
 Jev's verdict per memory.
 A page's address is kept without Google's click code or `utm_` tags, so
 the same page tapped twice from results is one memory. The picker is a
-two-wide grid of tiles, like Safari's tab overview: a page shows the
-picture taken when it was memorised (a 360-px JPEG of about 30 KB in
-`Application Support/Browser/memories/`, kept for the newest 1 000 pages
-and deleted with its record), a narrative its opening lines, the rest a
+two-wide grid of tiles, like Safari's tab overview: a page shows its
+picture, a screenshot of the page area as the user last saw it (taken
+when the page is left, by a new query, a swipe, a tapped link, the idle
+screen or the app going to the background, and as a backup once the page
+has settled and whenever a scroll rests, a few seconds apart; a 360-px
+JPEG of about 30 KB in `Application Support/Browser/memories/`; a YouTube
+watch or Shorts page gets the video's own thumbnail from `i.ytimg.com`
+instead, framed in black, since no capture can see the video layer; kept for
+the newest 1 000 pages and deleted with its record), a narrative its
+opening lines, the rest a
 symbol; the kind, the title and when sit under each tile. Opening a memory
 reuses the ordinary plans: a page loads its address; a results page loads
 its query's results, no router asked; a narrative shows its saved text

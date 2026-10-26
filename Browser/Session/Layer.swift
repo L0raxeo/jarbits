@@ -44,6 +44,14 @@ final class Layer: Identifiable {
     var currentMemory: Task<UUID?, Never>?
     /// When the layer was last on screen; the live policy keeps the newest.
     var lastShown = Date.now
+    /// The page memory on screen in this layer, whose picture a screenshot
+    /// goes to; nil on a results page or an untitled one.
+    var pictureID: UUID?
+    /// When that memory's picture was last taken.
+    var lastPicture: Date?
+    /// The picture is the video's own thumbnail (a YouTube page): no
+    /// screenshots, which would only show the player's black box.
+    var pictureFixed = false
 
     init(plan: CardPlan, query: String, decision: RouteDecision? = nil) {
         self.plan = plan

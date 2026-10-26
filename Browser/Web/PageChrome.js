@@ -425,13 +425,24 @@
   window.addEventListener('resize', schedule);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', schedule);
   document.addEventListener('scroll', () => { lastScroll = performance.now(); }, { capture: true, passive: true });
+  // A scroll has come to rest: the app may take the page's picture then.
+  // At most one a few seconds, so a long read posts a handful, not hundreds.
+  const REST_GAP = 3000;
+  let lastRest = -Infinity;
+  function rested() {
+    schedule();
+    const now = performance.now();
+    if (now - lastRest < REST_GAP) return;
+    lastRest = now;
+    try { window.webkit.messageHandlers.pageRest.postMessage({}); } catch (e) {}
+  }
   if ('onscrollend' in window) {
-    document.addEventListener('scrollend', schedule, { capture: true, passive: true });
+    document.addEventListener('scrollend', rested, { capture: true, passive: true });
   } else {
     let settling = null;
     document.addEventListener('scroll', () => {
       clearTimeout(settling);
-      settling = setTimeout(schedule, REST);
+      settling = setTimeout(rested, REST);
     }, { capture: true, passive: true });
   }
   window.addEventListener('load', () => setTimeout(schedule, 250));

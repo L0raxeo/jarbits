@@ -237,10 +237,14 @@ final class PageChromeHandler: NSObject, WKScriptMessageHandler {
     /// Whether leaving the page would lose something: a video part way
     /// through, or a form typed into.
     var onUse: ((_ inUse: Bool) -> Void)?
+    /// A scroll in the page has come to rest.
+    var onRest: (() -> Void)?
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame else { return }
         switch message.name {
+        case PageChrome.restHandlerName:
+            onRest?()
         case PageChrome.addressHandlerName:
             guard let body = message.body as? [String: Any],
                   let string = body["url"] as? String, let url = URL(string: string) else { return }
@@ -263,6 +267,7 @@ extension PageChrome {
     static let addressHandlerName = "pageAddress"
     static let audioHandlerName = "pageAudio"
     static let useHandlerName = "pageUse"
+    static let restHandlerName = "pageRest"
     /// The watcher's content world: the page's own scripts cannot see the
     /// handler or the watcher, and a direct call from the app can.
     static let world = WKContentWorld.defaultClient
@@ -292,6 +297,7 @@ extension PageChrome {
         content.add(handler, contentWorld: world, name: addressHandlerName)
         content.add(handler, contentWorld: world, name: audioHandlerName)
         content.add(handler, contentWorld: world, name: useHandlerName)
+        content.add(handler, contentWorld: world, name: restHandlerName)
         configuration.userContentController = content
         return configuration
     }

@@ -231,6 +231,7 @@ struct HomeView: View {
                 .onChange(of: window, initial: true) { _, window in
                     session.window = window
                     session.topInset = insets.top
+                    session.bottomInset = insets.bottom
                 }
             }
             .ignoresSafeArea(.keyboard)

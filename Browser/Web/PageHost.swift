@@ -39,6 +39,11 @@ final class PageHost {
     /// The watcher's report of the page's address and title: at its first
     /// look and whenever either changes.
     var onAddress: ((URL, String) -> Void)?
+    /// A navigation has begun, ours or a tapped link; the old page is still
+    /// on screen, so its picture can be taken.
+    var onNavigationStarted: (() -> Void)?
+    /// A scroll in the page has come to rest.
+    var onRest: (() -> Void)?
 
     private let handler: PageChromeHandler
     private var loadTask: Task<Void, Never>?
@@ -86,6 +91,9 @@ final class PageHost {
         }
         handler.onUse = { [weak self] inUse in
             self?.inUse = inUse
+        }
+        handler.onRest = { [weak self] in
+            self?.onRest?()
         }
         watchNavigations()
     }
@@ -171,6 +179,7 @@ final class PageHost {
     }
 
     private func navigationStarted() {
+        onNavigationStarted?()
         loading = true
         navigationCount += 1
         let count = navigationCount
