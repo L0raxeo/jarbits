@@ -32,6 +32,10 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         case jev
         /// Jev answered below the confidence floor; `format` is the fallback.
         case confidenceFallback
+        /// Jev picked `one_line` or `narrative` below the confidence floor,
+        /// but the two together reached `JevRouting.answerMassFloor`: it was
+        /// torn between a short and a long answer, so the pick is shown.
+        case answerSplit
         /// Jev picked a model-answered format with confidence, but `recency`
         /// reached the threshold, so web results are shown instead.
         case recencyFallback

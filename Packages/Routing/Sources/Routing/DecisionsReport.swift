@@ -79,7 +79,7 @@ public enum DecisionsReport {
         for format in ResponseFormat.allCases {
             let picks = asked.filter { $0.decision.suggested == format }
             guard !picks.isEmpty else { continue }
-            let acted = picks.filter { $0.decision.source == .jev || $0.decision.source == .continuation }.count
+            let acted = picks.filter { $0.decision.source == .jev || $0.decision.source == .continuation || $0.decision.source == .answerSplit }.count
             let unsure = picks.filter { $0.decision.source == .confidenceFallback }.count
             let stale = picks.filter { $0.decision.source == .recencyFallback }.count
             let confidences = picks.compactMap(\.decision.confidence)

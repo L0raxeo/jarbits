@@ -41,6 +41,27 @@ import Testing
         #expect(decision.source == .confidenceFallback)
     }
 
+    /// "can I use mr clean with clorox": torn between a short and a long
+    /// answer, never really considering a page.
+    @Test func anUnsurePickBetweenTheTwoAnswersIsStillAnAnswer() throws {
+        let split = try response(choice: "one_line", confidence: 0.44, probabilities: ["one_line": 0.5, "narrative": 0.29, "web_results": 0.21])
+        let decision = JevRouting.decision(from: split, latencyMs: 1)
+        #expect(decision.format == .oneLine)
+        #expect(decision.source == .answerSplit)
+        let leanLong = try response(choice: "narrative", confidence: 0.38, probabilities: ["narrative": 0.45, "one_line": 0.44, "web_results": 0.11])
+        #expect(JevRouting.decision(from: leanLong, latencyMs: 1).format == .narrative)
+    }
+
+    @Test func anAnswerSplitStillNeedsTheMassAndYieldsToRecency() throws {
+        let thin = try response(choice: "one_line", confidence: 0.3, probabilities: ["one_line": 0.35, "narrative": 0.2, "web_results": 0.3, "image": 0.15])
+        #expect(JevRouting.decision(from: thin, latencyMs: 1).source == .confidenceFallback, "an answer and a page were both in play")
+        let notAnAnswer = try response(choice: "map", confidence: 0.3, probabilities: ["map": 0.36, "narrative": 0.32, "one_line": 0.32])
+        #expect(JevRouting.decision(from: notAnAnswer, latencyMs: 1).source == .confidenceFallback, "only an answered pick is rescued")
+        let stale = try JSONDecoder().decode(SystemOneResponse.self, from: Data(jevResponse(
+            choice: "one_line", confidence: 0.4, probabilities: ["one_line": 0.5, "narrative": 0.4, "web_results": 0.1], recency: 0.9).utf8))
+        #expect(JevRouting.decision(from: stale, latencyMs: 1).source == .recencyFallback)
+    }
+
     @Test func recentAnswerFormatIsSentToWeb() throws {
         let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(jevResponse(
             choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.92, "web_results": 0.08], recency: 0.8).utf8))

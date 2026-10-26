@@ -133,7 +133,12 @@ first text arrives.
   `ResponseFormat.allCases`. Options reach Jev in declaration order, with
   `web_results` first, because Jev leans toward the first option when unsure.
 - Confidence below `JevRouting.confidenceFloor` (0.5) falls back to
-  `web_results`. Any error or a 2.5 s timeout does the same.
+  `web_results`. Any error or a 2.5 s timeout does the same. One
+  exception: an unsure `one_line` or `narrative` pick whose two answer
+  options together reach `JevRouting.answerMassFloor` (0.6) is shown as
+  picked, logged as `answerSplit`, since Jev was torn between a short and
+  a long answer rather than between an answer and a page ("can I use mr
+  clean with clorox"). The recency gate still applies.
 - The same request carries a second, yes/no question (`recent`): would the
   right answer depend on something that may have changed in the last two
   years, such as whether a person is alive, who holds an office, or a new

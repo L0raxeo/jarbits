@@ -90,6 +90,7 @@ public enum RoutingReport {
         out.append("| No API key configured | Web results | `noKey` |")
         out.append("| Request failed or timed out | Web results | `error(reason)` |")
         out.append("| `confidence` below \(JevRouting.confidenceFloor.formatted()) | Web results | `confidenceFallback` (the pick is kept as `suggested`) |")
+        out.append("| `one_line` or `narrative` picked below \(JevRouting.confidenceFloor.formatted()), but the two together at or above \(JevRouting.answerMassFloor.formatted()), and `recent` below \(JevRouting.recencyThreshold.formatted()) | The picked answer: Jev was torn between a short and a long answer, not between an answer and a page | `answerSplit` |")
         out.append("| `confidence` at or above \(JevRouting.confidenceFloor.formatted()) and `recent` below \(JevRouting.recencyThreshold.formatted()) | The chosen format's card; web results while that module is only `routed` (today: \(routedList)) | `jev` |")
         out.append("| `narrative` or `one_line` picked with confidence, but `recent` at or above \(JevRouting.recencyThreshold.formatted()) | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |")
         out.append("| Over an answer on screen, `continues` at or above \(JevRouting.continuationThreshold.formatted()) and a card format (\(cardList)) picked with confidence | That card | `jev` |")

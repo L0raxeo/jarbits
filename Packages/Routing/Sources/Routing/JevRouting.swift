@@ -17,6 +17,13 @@ public enum JevRouting {
     /// permissive. Revisit once the decision log has a few hundred rows.
     public static let confidenceFloor = 0.5
 
+    /// An unsure pick of `one_line` or `narrative` is still an answer when
+    /// the two together reach this: Jev is torn between a short and a long
+    /// answer, not between an answer and a page ("can I use mr clean with
+    /// clorox": one_line .50, narrative .29, web .21). The higher of the
+    /// two is shown, logged as `answerSplit`; the recency gate still applies.
+    public static let answerMassFloor = 0.6
+
     public static let continuesQuestionID = "continues"
 
     /// At or above this, a follow-up carries on the answer on screen as a
@@ -249,7 +256,15 @@ public enum JevRouting {
                 if passes, suggested == .oneLine { return (.oneLine, .continuation) }
                 return (.narrative, .continuation)
             }
-            if !passes { return (.fallback, .confidenceFallback) }
+            if !passes {
+                // Torn between the two answers, not between an answer and a
+                // page: the answer it leaned to, unless it needs live data.
+                let answerMass = (answer.probabilities[ResponseFormat.oneLine.rawValue] ?? 0)
+                    + (answer.probabilities[ResponseFormat.narrative.rawValue] ?? 0)
+                guard suggested.isAnswered, answerMass >= answerMassFloor else { return (.fallback, .confidenceFallback) }
+                if stale { return (.fallback, .recencyFallback) }
+                return (suggested, .answerSplit)
+            }
             // Only formats a model answers are gated; web, map and stock show a page anyway.
             if suggested.isAnswered, stale { return (.fallback, .recencyFallback) }
             return (suggested, .jev)

@@ -60,6 +60,9 @@ public enum EvalReport {
         case .continuation: return [compare("continues", decision.continuation, JevRouting.continuationThreshold), confidence].compactMap { $0 }.joined(separator: ", ")
         case .recencyFallback: return [compare("recency", decision.recency, recencyThreshold), confidence].compactMap { $0 }.joined(separator: ", ")
         case .confidenceFallback: return confidence ?? "confidence below the floor"
+        case .answerSplit:
+            let mass = (decision.probabilities[ResponseFormat.oneLine.rawValue] ?? 0) + (decision.probabilities[ResponseFormat.narrative.rawValue] ?? 0)
+            return [confidence, compare("answers together", mass, JevRouting.answerMassFloor)].compactMap { $0 }.joined(separator: ", ")
         case .jev:
             var parts = [confidence]
             if let continuation = decision.continuation, continuation >= JevRouting.continuationThreshold {

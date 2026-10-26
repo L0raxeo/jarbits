@@ -243,6 +243,7 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 | No API key configured | Web results | `noKey` |
 | Request failed or timed out | Web results | `error(reason)` |
 | `confidence` below 0.5 | Web results | `confidenceFallback` (the pick is kept as `suggested`) |
+| `one_line` or `narrative` picked below 0.5, but the two together at or above 0.6, and `recent` below 0.5 | The picked answer: Jev was torn between a short and a long answer, not between an answer and a page | `answerSplit` |
 | `confidence` at or above 0.5 and `recent` below 0.5 | The chosen format's card; web results while that module is only `routed` (today: `map`, `stock`) | `jev` |
 | `narrative` or `one_line` picked with confidence, but `recent` at or above 0.5 | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |
 | Over an answer on screen, `continues` at or above 0.5 and a card format (`map`, `stock`, `recall`, `image`, `site`, `video`) picked with confidence | That card | `jev` |

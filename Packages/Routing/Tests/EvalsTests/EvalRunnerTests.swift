@@ -34,7 +34,9 @@ import Testing
     @Test func aSweepReDecidesTheCacheWithoutAClient() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let client = MockJevTransport.client(status: 200, body: jevResponse(choice: "one_line", confidence: 0.9, probabilities: ["one_line": 0.92, "web_results": 0.08]))
+        // A page in the running, so a raised floor falls back to web rather
+        // than being read as a split between the two answers.
+        let client = MockJevTransport.client(status: 200, body: jevResponse(choice: "one_line", confidence: 0.9, probabilities: ["one_line": 0.55, "web_results": 0.45]))
         _ = await runner(client: client, directory: directory).run(peru)
         MockJevTransport.requests = []
 

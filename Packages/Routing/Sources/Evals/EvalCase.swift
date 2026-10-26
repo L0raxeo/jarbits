@@ -139,6 +139,7 @@ extension RouteDecision.Source {
         switch self {
         case .jev: "jev"
         case .confidenceFallback: "confidenceFallback"
+        case .answerSplit: "answerSplit"
         case .recencyFallback: "recencyFallback"
         case .directURL: "directURL"
         case .noKey: "noKey"
@@ -150,7 +151,7 @@ extension RouteDecision.Source {
     }
 
     /// Every kind without a payload; a local rule is `local:<rule>`.
-    public static let kinds = ["jev", "confidenceFallback", "recencyFallback", "directURL", "noKey", "continuation", "rejection", "error"]
+    public static let kinds = ["jev", "confidenceFallback", "answerSplit", "recencyFallback", "directURL", "noKey", "continuation", "rejection", "error"]
 
     public static func isKind(_ text: String) -> Bool {
         kinds.contains(text) || (text.hasPrefix("local:") && text.count > "local:".count)

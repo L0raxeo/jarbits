@@ -92,3 +92,5 @@
 {"query": "that article on reddit", "format": "recall", "recall": {"kinds": ["pages"], "named": true, "all": false}}
 {"query": "pull up what I was looking at", "format": "recall", "recall": {"kinds": [], "named": false}, "note": "nothing named: the newest memories go to the judge"}
 {"query": "Flag of North Korea.", "format": "image", "subject": "Flag of North Korea", "note": "screenshot 2026-10-23: spoken as 'there you go. Flag of North Korea.', which dictation now strips before routing; Wikipedia had been asked for the whole sentence"}
+{"query": "Can I use Mr. Cleaner with Clorox", "format": "one_line", "source": "answerSplit", "note": "screenshot 2026-10-24: one_line .50, narrative .29, web .21 fell under the floor and showed web; torn between two answers is still an answer"}
+{"query": "is it safe to mix mr clean and bleach", "format": "narrative", "source": "answerSplit", "note": "narrative .45, one_line .44: either answer is right, a page is not"}
