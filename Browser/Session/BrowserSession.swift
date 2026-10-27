@@ -83,6 +83,9 @@ final class BrowserSession {
     private let pictureWidth: CGFloat = 120
     private let pictureQuality: CGFloat = 0.6
 
+    /// The question the small sheet is showing, if any; see `ask`.
+    private(set) var question: PendingQuestion?
+
     /// The layers, oldest first, and which one is on screen.
     private(set) var layers: [Layer] = []
     private(set) var index = 0
@@ -173,6 +176,20 @@ final class BrowserSession {
     func submit(_ query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        question?.cancel()
+        #if DEBUG
+        // Raises the sheet with no instinct behind it, until one asks.
+        if trimmed.lowercased() == "ask me something" || trimmed.lowercased() == "ask me for text" {
+            let token = UUID()
+            requestToken = token
+            let input: PendingQuestion.Input = trimmed.lowercased().hasSuffix("text") ? .text(placeholder: "Type a word") : .options(["Tea", "Coffee", "Water"])
+            Task {
+                let answer = await ask("Which one?", input, token: token)
+                print("ask: \(answer.map { "\($0)" } ?? "dismissed")")
+            }
+            return
+        }
+        #endif
         takePicture(reason: "leave")   // before anything moves: the page as last seen
         let exchanges = exchanges   // the session so far, before anything moves
         let opened = openedSite   // and the site opened by name, if one is on screen
@@ -198,6 +215,28 @@ final class BrowserSession {
     /// shows one; see `Layer.thread`.
     var thread: [AnswerTurn] {
         current?.thread ?? []
+    }
+
+    // MARK: Asking
+
+    /// Puts `title` to the user on the small sheet and waits for the
+    /// answer: nil when they swiped it away, when a newer query took the
+    /// screen, or when the app went back to idle. One question at a time:
+    /// a new one cancels the old. `token` is the request asking; a stale
+    /// one is answered nil at once.
+    func ask(_ title: String, _ input: PendingQuestion.Input, token: UUID) async -> AskAnswer? {
+        guard token == requestToken else { return nil }
+        question?.cancel()
+        let pending = PendingQuestion(title: title, input: input)
+        question = pending
+        let answer = await pending.wait()
+        if question === pending { question = nil }
+        return answer
+    }
+
+    /// The sheet was swiped away.
+    func dismissQuestion() {
+        question?.cancel()
     }
 
     /// This session's exchanges up to the layer on screen, oldest first,
@@ -345,6 +384,7 @@ final class BrowserSession {
     /// back to them.
     func reset() {
         takePicture(reason: "leave")
+        question?.cancel()
         if let layer = current {
             layer.answer?.cancel()
             layer.images?.cancel()
@@ -480,6 +520,7 @@ final class BrowserSession {
     /// page reloads to where its notes say it stood.
     private func move(to target: Int) {
         takePicture(reason: "leave")
+        question?.cancel()
         requestToken = UUID()
         let leaving = current
         Task { await leaving?.page?.pause() }

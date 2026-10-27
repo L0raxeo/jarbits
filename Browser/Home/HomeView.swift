@@ -66,7 +66,8 @@ struct HomeView: View {
     /// recording on purpose stands it aside. The inactive phase is ignored:
     /// the permission alert itself causes it.
     private var listening: Bool {
-        guard scenePhase != .background, !session.microphone.exclusive else { return false }
+        // A question on the sheet is the user's to answer; nothing listens under it.
+        guard scenePhase != .background, !session.microphone.exclusive, session.question == nil else { return false }
         if mode == .circle { return true }
         return session.stage == .ready && !followingUp && !capsuleLoading && !swiping && session.attention.idle
     }
@@ -291,6 +292,8 @@ struct HomeView: View {
             )
             .frame(width: 0, height: 0)
         }
+        // The small sheet the app asks with: a question and a tap or a line to answer it.
+        .modifier(AskSheetPresenter())
         .onChange(of: listening, initial: true) { _, listening in
             #if DEBUG
             if !listening {

@@ -56,10 +56,10 @@ enum ListeningCapsule {
     static let shadowY: CGFloat = 5
 }
 
-private extension View {
+extension View {
     /// Over a result, a white capsule with a black border and a soft shadow
     /// behind the label, and a capsule to tap; on the idle screen, plain
-    /// text with a rectangular tap area.
+    /// text with a rectangular tap area. The ask sheet's buttons share it.
     @ViewBuilder
     func listeningCapsule(_ on: Bool) -> some View {
         if on {
