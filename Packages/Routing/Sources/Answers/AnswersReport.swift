@@ -21,9 +21,20 @@ public enum AnswersReport {
         out.append(AnswerPrompt.input(query: "<query>", context: .example))
         out.append("```")
         out.append("")
+        out.append("### Input with earlier exchanges")
+        out.append("")
+        out.append("When the relevance chain says the query depends on earlier exchanges of this session from other layers than the answer's own thread (a search, a page read, a picture looked at; `chain` in the decision), they follow the context block, oldest first, one line each:")
+        out.append("")
+        out.append("```")
+        out.append(AnswerPrompt.input(query: "<query>", context: .example, earlier: [
+            .search(query: "<earlier query>", term: "<term searched>"),
+            Exchange(query: "<earlier query>", kind: .page, title: "<page title>", host: "<host>", address: "https://<host>/<path>"),
+        ]))
+        out.append("```")
+        out.append("")
         out.append("### Input for a narrative that continues")
         out.append("")
-        out.append("When Jev judged the query a continuation of the narrative on screen (`continuation` in the decision), `input` is a list of `user_input` and `model_output` steps instead of a string, Google's stateless shape; `store` stays false. Oldest first: `{\"type\": \"user_input\", \"content\": [{\"type\": \"text\", \"text\": \"<earlier query>\"}]}`, `{\"type\": \"model_output\", \"content\": [{\"type\": \"text\", \"text\": \"<earlier answer, markup included>\"}]}`, and so on, then one last `user_input` step holding the block above. Every earlier turn is sent, however long the conversation.")
+        out.append("When the relevance chain ends on the answer on screen (`continuation` in the decision), `input` is a list of `user_input` and `model_output` steps instead of a string, Google's stateless shape; `store` stays false. Oldest first: `{\"type\": \"user_input\", \"content\": [{\"type\": \"text\", \"text\": \"<earlier query>\"}]}`, `{\"type\": \"model_output\", \"content\": [{\"type\": \"text\", \"text\": \"<earlier answer, markup included>\"}]}`, and so on, then one last `user_input` step holding the block above. Every earlier turn is sent, however long the conversation.")
         out.append("")
         for format in built {
             out.append("### `\(format.rawValue)` — system instruction, max \(AnswerPrompt.maxOutputTokens(for: format)) output tokens")

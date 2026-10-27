@@ -1,6 +1,6 @@
 # Routing contract
 
-Generated from `JevRouting` in `Packages/Routing`. Do not edit by hand; run:
+Generated from `EngineRouting` and the instinct registry (`InstinctSpec`) in `Packages/Routing`. Do not edit by hand; run:
 
 ```
 swift run --package-path Packages/Routing report routing > ROUTING.md
@@ -8,7 +8,7 @@ swift run --package-path Packages/Routing report routing > ROUTING.md
 
 ## The request
 
-One `POST https://api.typesafe.ai/v1/systemone` per search, model `jev-1.13.0`, timeout 2500 ms.
+One `POST https://api.typesafe.ai/v1/systemone` per query, model `jev-1.13.0`, timeout 2500 ms. Every question below goes in that one request and is answered in parallel: which instinct fits, whether the answer may have gone stale, how a recall ask reads, which earlier exchanges the query depends on, and how much working out it needs.
 
 State (what Jev reads):
 
@@ -16,12 +16,14 @@ State (what Jev reads):
 |---|---|
 | `query` | The text as typed, trimmed. |
 | `locale` | The device locale identifier, e.g. `en_US`. |
-| `conversation` | Only while a narrative or one-line answer is on screen and the query was typed over it: every exchange of that conversation, oldest first, each `{"query": …, "answer": …}` with the answer whole. The format question then reads differently and one more question is asked; see "When an answer is on screen". |
+| `exchanges` | Only after the first query of a session: the newest 20 earlier exchanges, oldest first, each the query and what it got. Every exchange has `query` and `kind` (`answer`, `page`, `search`, `picture`, `recall`, `site`); an answer carries its `text` whole, a page its `title`, `host` and `address`, a search the `text` in its box, a picture the `text` of its subject. The format question then reads differently and one more question is asked per exchange; see "When earlier exchanges are in the state". |
 | `opened_site_name`, `opened_site_host` | Only while a site this app opened by name is on screen: the name asked for and the host opened. One more question is asked; see "When a site is on screen". |
 
 Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can decide itself becomes a card at once, opens a site the device already knows, or searches the term after a search verb; Jev is not asked in any of these cases.
 
 ## Decided on the device
+
+Each rule is the grammar of the instinct it decides for (`InstinctSpec.recognise`), tried in this order before any model: the time, a question handed to the model, a known site, a search verb.
 
 The time in a named place needs no model. A query that is exactly one opener, a place and at most one trailer (case, accents and punctuation aside) is answered from the device clock when the place is a country, a US state or a city in the device's zone database; otherwise it goes on to Jev like any other query. English only.
 
@@ -56,6 +58,8 @@ A query led by a verb that only ever means "search" is web results for what foll
 The term is what is left with the punctuation that closed or opened the stripped phrases gone: "Dominican flag, I said." leaves "Dominican flag".
 
 ## The questions
+
+The pick (`format`), then the questions the instincts add (`recent` from the two answered ones, the `recall_*` questions from recall), then the reasoning score. With earlier exchanges in the state the relevance questions come between.
 
 ### `format` — type `choice`
 
@@ -183,30 +187,48 @@ A yes/no question answered with the probability of yes. Instructions sent with t
 
 Answer: `noul`, the probability of yes (0–1). No confidence field.
 
-## When an answer is on screen
+### `reasoning` — type `score`
 
-A follow-up typed over a narrative or one-line answer, Gemini's or the device's, is read as the conversation makes it. The `format` question's instructions become:
+A position on an ordered scale. Instructions sent with the question:
 
-> Which response format best answers this web search query? The state carries the whole conversation so far: every earlier query and every answer, oldest first. Judge the query as that conversation makes it, not as typed on its own. A reply, a reaction or a question that leans on the answer, however short, wants narrative; or one_line when the reply is itself a single short fact, a number, a name, a date, a yes/no, as "and chile?" after a capital is. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, video, each described below; or web_results for a page to browse.
+> How much working out does this query need before the chosen format can act on it? Judge the query as the earlier exchanges it depends on make it.
 
-and one more question is asked:
+Levels, low to high:
 
-### `continues` — type `noul`
+| Level | Description |
+|---|---|
+| 0 | Direct: the format acts on the words alone: a search, a question to answer, a picture, a site by name, videos, something seen before. "capital of peru", "go to youtube", "pictures of it", "wait no I meant brazil". |
+| 1 | A value must be read out of the words first and passed along: a number, a name, a setting, a place, a time. "set the thermostat to 68", "remind me at 7", "translate this to spanish". |
+| 2 | Several steps, a condition or a schedule: an "and then", an "if", a "when", an "every", or a comparison across several things. "find the cheapest flight and book it", "if it rains tomorrow move my run to the evening". |
+
+Answer: `score` (the levels weighted by their probabilities, so 0 to 2, possibly between two), `probabilities` (one per level, keyed by its number), `confidence` (0–1).
+
+## When earlier exchanges are in the state
+
+From the second query of a session on, the state carries the earlier exchanges and the `format` question's instructions become:
+
+> Which response format best answers this web search query? The state carries the earlier exchanges of this session under `exchanges`, oldest first: each query and what it got (an answer's text, a page's title and address, a search's term, a picture's subject). Judge the query as the exchanges it depends on make it, not as typed on its own; a query that stands on its own is judged as typed. A reply, a reaction or a question that leans on an earlier answer, however short, wants narrative; or one_line when the reply is itself a single short fact, a number, a name, a date, a yes/no, as "and chile?" after a capital is. A correction or narrowing of an earlier search ("wait no I meant brazil") wants web_results, read with the correction applied. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, video, each described below; or web_results for a page to browse.
+
+and one question is asked per exchange, `x0` for the oldest sent, `x1` for the next, and so on. For the first of two exchanges:
+
+### `x0` — type `noul`
 
 A yes/no question answered with the probability of yes. Instructions sent with the question:
 
-> The state carries the whole conversation so far, every earlier query and every answer, oldest first; the last answer is the one the user is looking at. Is this query a continuation of that conversation: a reply, a reaction, a request to go on or to clarify, or a question that only makes sense given what was said in it?
+> The state lists the earlier exchanges of this session under `exchanges`, oldest first: each query and what it got. Does the current query depend on exchange 1 of 2, the query "<earlier query>", which got a written answer, to be understood or acted on?
 
 | Means | Description |
 |---|---|
-| yes | The query answers, reacts to, questions or builds on the previous answer, or would be incomplete without it, however short: "why?", "can I use water", "and with oat milk", "tell me more", "is that true for cats too". |
-| no | A new question that stands on its own, even about a nearby topic: it would mean the same thing with no previous answer. |
+| yes | The query replies to, corrects, narrows or builds on that exchange, or names something only it makes clear, however short: "why?", "wait no I meant brazil", "the second one", "pictures of it", "and chile?", "is that open on sundays". |
+| no | The query stands on its own, or depends only on a different exchange: it would mean the same thing with that exchange gone. |
 
 Answer: `noul`, the probability of yes (0–1). No confidence field.
 
+The app walks back from the newest exchange and stops at the first one below 0.5: that is the chain, the exchanges the query depends on. Every answer is logged (`relevance`, oldest first) with the chain's length (`chain`), so a yes behind a no stays visible. A chain that ends on an answer exchange means the query continues that answer; a chain that ends on a page, a search or a picture means the pick stands and the chosen instinct gets those exchanges as context (a narrative lists them under its context block; see "After routing: Gemini answers").
+
 ## When a site is on screen
 
-A query typed over a site this app opened by name (from the book, or learned from a tap) carries the name and host in the state and asks one more question:
+A query typed over a site this app opened by name (from the book, or learned from a tap) carries the name and host in the state and the site instinct asks one more question:
 
 ### `rejects` — type `noul`
 
@@ -224,12 +246,14 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 ## What comes back
 
 ```json
-{ "model": "jev-1.13.0", "answers": { "format": { "type": "choice", "choice": "stock", "confidence": 0.91, "probabilities": { "web_results": 0.05, "stock": 0.92, … } } }, "usage": { "input_tokens": 512, "output_tokens": 9 } }
+{ "model": "jev-1.13.0", "answers": { "format": { "type": "choice", "choice": "stock", "confidence": 0.91, "probabilities": { "web_results": 0.05, "stock": 0.92, … } }, "recent": { "type": "noul", "noul": 0.08 }, "x0": { "type": "noul", "noul": 0.83 }, "reasoning": { "type": "score", "score": 0.21, "confidence": 0.79, "probabilities": { "0": 0.82, "1": 0.15, "2": 0.03 } } }, "usage": { "input_tokens": 512, "output_tokens": 9 } }
 ```
 
 - `choice`: the option with the highest probability.
 - `probabilities`: one per option, summing to 1.
 - `confidence`: `(p_max − 1/n) / (1 − 1/n)`; 0 for a flat spread, 1 for a single peak. Only the top probability matters.
+- `noul`: the probability of yes, 0 to 1.
+- `score`: the level numbers weighted by their probabilities, so 0 to 2 here, with a probability per level and a confidence of its own.
 
 ## What the app does with it
 
@@ -242,18 +266,19 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 | Address typed | That page | `directURL` |
 | No API key configured | Web results | `noKey` |
 | Request failed or timed out | Web results | `error(reason)` |
-| `confidence` below 0.5 | Web results | `confidenceFallback` (the pick is kept as `suggested`) |
+| `confidence` below 0.5 | Web results | `confidenceFallback` (the pick is kept as `suggested`; with `reasoning` at or above 1.5 the line also reads as `reasoningWanted`, for the day advanced reasoning takes these) |
 | `one_line` or `narrative` picked below 0.5, but the two together at or above 0.6, and `recent` below 0.5 | The picked answer: Jev was torn between a short and a long answer, not between an answer and a page | `answerSplit` |
 | `confidence` at or above 0.5 and `recent` below 0.5 | The chosen format's card; web results while that module is only `routed` (today: `map`, `stock`) | `jev` |
 | `narrative` or `one_line` picked with confidence, but `recent` at or above 0.5 | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |
-| Over an answer on screen, `continues` at or above 0.5 and a card format (`map`, `stock`, `recall`, `image`, `site`, `video`) picked with confidence | That card | `jev` |
-| Over an answer on screen, `continues` at or above 0.5 and any other pick, sure or not, with `recent` below 0.5 | The answer on screen grows into a transcript: the query as a line, then a reply written with the earlier turns in view, as one line when `one_line` was picked with confidence and as a narrative otherwise | `continuation` (the pick is kept as `suggested`) |
+| The chain ends on an answer exchange and a card format (`map`, `stock`, `recall`, `image`, `site`, `video`) was picked with confidence | That card | `jev` |
+| The chain ends on an answer exchange and any other pick, sure or not, with `recent` below 0.5 | The answer on screen grows into a transcript: the query as a line, then a reply written with the earlier turns in view, as one line when `one_line` was picked with confidence and as a narrative otherwise | `continuation` (the pick is kept as `suggested`) |
+| The chain ends on a page, a search or a picture | The chosen format's card, with the chained exchanges as context: a narrative or one-line answer lists them under its context block; web results search what the words say | `jev` with `chain` above 0 |
 | `site` picked with confidence | The site, when the book knows the name; otherwise the choices card (see "After routing: sites") | `jev` |
 | Over a site opened by name, `rejects` at or above 0.5, whatever the pick | The name is forgotten and the choices card shown again | `rejection` (the pick is kept as `suggested`) |
 
 Web results, however reached, are for the query with its search verb gone: "google steve jobs" searches "steve jobs" (`SearchQuery`, see "Decided on the device"); the log keeps the spoken words. An `image` pick searches the subject alone (`ImageQuery`, see "After routing: Wikipedia images"). A `video` pick loads Google's video results for the term with the asking gone (`VideoQuery`, see "After routing: videos").
 
-Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.
+Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, the relevance answers and the chain, the reasoning score, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.
 
 ## After routing: recall
 
@@ -297,9 +322,9 @@ A `video` pick loads Google's video results (`QueryParser.videoSearchURL`, the r
 
 ## Question types not used yet
 
-- **score**: a position on an ordered scale with confidence. Candidate use: how much the query needs a written explanation.
+- **box**: where something is in an image. No use in sight.
 
-Adding a question is one entry in `JevRouting.request`; this file and `RoutingTests` pick it up. The yes/no `recent` question above is a noul.
+Adding a question is one entry in `EngineRouting.request`, or one line in an instinct's `questions` in `InstinctSpec`; this file and `RoutingTests` pick it up.
 
 ## After routing: Gemini answers
 
@@ -320,9 +345,26 @@ Context (use for "today" and "now"; do not repeat it unless the query asks about
 - Locale: en_US
 ```
 
+### Input with earlier exchanges
+
+When the relevance chain says the query depends on earlier exchanges of this session from other layers than the answer's own thread (a search, a page read, a picture looked at; `chain` in the decision), they follow the context block, oldest first, one line each:
+
+```
+Query: <query>
+
+Context (use for "today" and "now"; do not repeat it unless the query asks about it):
+- Date and time: Wednesday 21 October 2026, 11:26 (America/Chicago)
+- Your knowledge ends around January 2025, about 21 months before this date.
+- Locale: en_US
+
+Earlier in this session (oldest first; the query may lean on them, but answer only the query):
+- Searched "<term searched>"
+- Read "<page title>" (<host>)
+```
+
 ### Input for a narrative that continues
 
-When Jev judged the query a continuation of the narrative on screen (`continuation` in the decision), `input` is a list of `user_input` and `model_output` steps instead of a string, Google's stateless shape; `store` stays false. Oldest first: `{"type": "user_input", "content": [{"type": "text", "text": "<earlier query>"}]}`, `{"type": "model_output", "content": [{"type": "text", "text": "<earlier answer, markup included>"}]}`, and so on, then one last `user_input` step holding the block above. Every earlier turn is sent, however long the conversation.
+When the relevance chain ends on the answer on screen (`continuation` in the decision), `input` is a list of `user_input` and `model_output` steps instead of a string, Google's stateless shape; `store` stays false. Oldest first: `{"type": "user_input", "content": [{"type": "text", "text": "<earlier query>"}]}`, `{"type": "model_output", "content": [{"type": "text", "text": "<earlier answer, markup included>"}]}`, and so on, then one last `user_input` step holding the block above. Every earlier turn is sent, however long the conversation.
 
 ### `narrative` — system instruction, max 800 output tokens
 

@@ -23,8 +23,8 @@ public struct EvalRunner: Sendable {
         cache: JevCache,
         locale: Locale = Locale(identifier: "en_US"),
         book: SiteBook = .seeded(),
-        floor: Double = JevRouting.confidenceFloor,
-        recencyThreshold: Double = JevRouting.recencyThreshold,
+        floor: Double = EngineRouting.confidenceFloor,
+        recencyThreshold: Double = EngineRouting.recencyThreshold,
         now: Date = .now,
         homeZone: TimeZone = .current
     ) {
@@ -57,7 +57,8 @@ public struct EvalRunner: Sendable {
         if QueryParser.directURL(from: query) != nil {
             return EvalResult(evalCase, outcome: RouteOutcome(query: query, decision: .directURL()), cached: false)
         }
-        let request = JevRouting.request(for: query, locale: locale, model: model, thread: evalCase.thread ?? [], opened: evalCase.opened)
+        let exchanges = evalCase.exchanges ?? []
+        let request = EngineRouting.request(for: query, locale: locale, model: model, exchanges: exchanges, opened: evalCase.opened)
         let key: String
         do {
             key = try JevCache.key(for: request)
@@ -91,7 +92,7 @@ public struct EvalRunner: Sendable {
         } else {
             return .uncached(evalCase)
         }
-        let decision = JevRouting.decision(from: response, latencyMs: latencyMs, floor: floor, recencyThreshold: recencyThreshold)
+        let decision = EngineRouting.decision(from: response, latencyMs: latencyMs, floor: floor, recencyThreshold: recencyThreshold, exchanges: exchanges)
         return EvalResult(evalCase, outcome: RouteOutcome(query: query, decision: decision, opened: evalCase.opened), cached: cached)
     }
 

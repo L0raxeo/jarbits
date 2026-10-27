@@ -58,6 +58,18 @@ import Testing
         #expect(EvalCheck.failures(EvalCase(query: "apple.com", format: .webResults, term: "apple.com"), address) == ["term: expected \"apple.com\", got none"])
     }
 
+    @Test func theChainIsCheckedOnceTheFormatIsRight() throws {
+        let recipe = [Exchange.answer(query: "how do you make hot chocolate", text: "Heat milk.")]
+        let continued = RouteOutcome(query: "why?", decision: try decision(choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9], recency: 0.1, relevance: [0.8], exchanges: recipe))
+        #expect(EvalCheck.failures(EvalCase(query: "why?", exchanges: recipe, format: .narrative, chain: 1), continued).isEmpty)
+        #expect(EvalCheck.failures(EvalCase(query: "why?", exchanges: recipe, format: .narrative), continued).isEmpty, "no expectation, any chain")
+        let fresh = RouteOutcome(query: "capital of peru", decision: try decision(choice: "one_line", confidence: 0.9, probabilities: ["one_line": 0.9], recency: 0.1, relevance: [0.1], exchanges: recipe))
+        #expect(EvalCheck.failures(EvalCase(query: "capital of peru", exchanges: recipe, format: .oneLine, chain: 0), fresh).isEmpty)
+        #expect(EvalCheck.failures(EvalCase(query: "capital of peru", exchanges: recipe, format: .oneLine, chain: 1), fresh) == ["chain: expected 1, got 0 (newest relevance 0.10)"])
+        let wrongFormat = RouteOutcome(query: "why?", decision: try decision(choice: "image", confidence: 0.9, probabilities: ["image": 0.9], relevance: [0.1], exchanges: recipe))
+        #expect(EvalCheck.failures(EvalCase(query: "why?", exchanges: recipe, format: .narrative, chain: 1), wrongFormat) == ["format: expected narrative, got image (jev)"], "only once the format is right")
+    }
+
     @Test func anErrorNeverPasses() {
         let failed = RouteOutcome(query: "news", decision: RouteDecision(format: .webResults, source: .error("timeout")))
         #expect(EvalCheck.failures(EvalCase(query: "news", format: .webResults), failed) == ["error: timeout"])

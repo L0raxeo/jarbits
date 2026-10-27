@@ -33,44 +33,32 @@ public struct SystemOneRequest: Sendable, Equatable {
     }
 }
 
-/// What Jev is asked about. Kept to the query and the user's locale so the
-/// model has nothing irrelevant to be distracted by; the conversation
-/// rides along only while a narrative answer is on screen, for the
-/// `continues` question.
+/// What Jev is asked about: the query, the user's locale, the earlier
+/// exchanges of this session when there are any, and the site this app
+/// opened by name when one is on screen. Nothing else, so the model has
+/// nothing irrelevant to be distracted by.
 public struct RouteState: Codable, Sendable, Equatable {
-    /// One exchange of the conversation on screen as Jev reads it: the
-    /// query and the answer in full, without the format.
-    public struct Exchange: Codable, Sendable, Equatable {
-        public var query: String
-        public var answer: String
-
-        public init(query: String, answer: String) {
-            self.query = query
-            self.answer = answer
-        }
-    }
-
     public var query: String
     public var locale: String
-    /// Every exchange of the conversation on screen, oldest first, each
-    /// answer whole. Left out of the JSON when nil, so an ordinary request
-    /// is unchanged.
-    public var conversation: [Exchange]?
+    /// The newest `EngineRouting.maxExchanges` exchanges of this session,
+    /// oldest first, each answer whole. Left out of the JSON when nil, so a
+    /// first query's request carries only the query and the locale.
+    public var exchanges: [Exchange]?
     /// The site this app opened by name and that is on screen, for the
     /// `rejects` question. Left out when nil.
     public var openedSiteName: String?
     public var openedSiteHost: String?
 
     enum CodingKeys: String, CodingKey {
-        case query, locale, conversation
+        case query, locale, exchanges
         case openedSiteName = "opened_site_name"
         case openedSiteHost = "opened_site_host"
     }
 
-    public init(query: String, locale: String, conversation: [Exchange]? = nil, openedSiteName: String? = nil, openedSiteHost: String? = nil) {
+    public init(query: String, locale: String, exchanges: [Exchange]? = nil, openedSiteName: String? = nil, openedSiteHost: String? = nil) {
         self.query = query
         self.locale = locale
-        self.conversation = conversation
+        self.exchanges = exchanges
         self.openedSiteName = openedSiteName
         self.openedSiteHost = openedSiteHost
     }
@@ -83,6 +71,10 @@ public enum Question: Sendable, Equatable {
     /// A yes/no question answered with the probability of yes. `criteria`
     /// describe what a yes and a no mean when the boundary is subtle.
     case noul(instructions: String, criteria: (yes: String, no: String)?)
+    /// A position on an ordered scale. `levels` describe each level, low to
+    /// high, two to ten of them; the answer is a `score` on that scale, a
+    /// float that may fall between levels, with a probability per level.
+    case score(instructions: String, levels: [String])
 
     public static func == (lhs: Question, rhs: Question) -> Bool {
         switch (lhs, rhs) {
@@ -90,6 +82,8 @@ public enum Question: Sendable, Equatable {
             li == ri && lo.map(\.name) == ro.map(\.name) && lo.map(\.criterion) == ro.map(\.criterion)
         case let (.noul(li, lc), .noul(ri, rc)):
             li == ri && lc?.yes == rc?.yes && lc?.no == rc?.no
+        case let (.score(li, ll), .score(ri, rl)):
+            li == ri && ll == rl
         default:
             false
         }
@@ -115,6 +109,12 @@ public enum Question: Sendable, Equatable {
                 ])))
             }
             return try OrderedJSON.object(pairs)
+        case let .score(instructions, levels):
+            return try OrderedJSON.object([
+                ("type", OrderedJSON.encode("score")),
+                ("instructions", OrderedJSON.encode(instructions)),
+                ("criteria", OrderedJSON.array(try levels.map { try OrderedJSON.encode($0) })),
+            ])
         }
     }
 }
@@ -188,6 +188,7 @@ public enum Answer: Decodable, Sendable, Equatable {
     /// The probability of yes, 0 to 1. No confidence field: two outcomes
     /// are fully described by one number.
     case noul(Double)
+    case score(ScoreAnswer)
     /// A question type this app does not ask. Kept so one unexpected answer
     /// does not fail the whole decode.
     case other(type: String)
@@ -200,6 +201,8 @@ public enum Answer: Decodable, Sendable, Equatable {
             self = .choice(try ChoiceAnswer(from: decoder))
         case "noul":
             self = .noul(try container.decode(Double.self, forKey: .noul))
+        case "score":
+            self = .score(try ScoreAnswer(from: decoder))
         default:
             self = .other(type: type)
         }
@@ -208,6 +211,26 @@ public enum Answer: Decodable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case type
         case noul
+    }
+}
+
+/// Jev's position on a scale: each level's number times its probability,
+/// summed, so three levels give a `score` from 0 to 2 that may fall between
+/// them. `probabilities` is keyed by the level's number as a string.
+public struct ScoreAnswer: Decodable, Sendable, Equatable {
+    public var score: Double
+    /// 1 for a single peak, lower the more the probability is spread.
+    public var confidence: Double
+    public var probabilities: [String: Double]
+
+    public init(score: Double, confidence: Double, probabilities: [String: Double]) {
+        self.score = score
+        self.confidence = confidence
+        self.probabilities = probabilities
+    }
+
+    public func probability(ofLevel level: Int) -> Double {
+        probabilities[String(level)] ?? 0
     }
 }
 

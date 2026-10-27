@@ -260,9 +260,9 @@ import Testing
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = JevCache(directory: directory)
         let locale = Locale(identifier: "en_US")
-        let peru = JevRouting.request(for: "capital of peru", locale: locale)
+        let peru = EngineRouting.request(for: "capital of peru", locale: locale)
         try cache.store(key: try JevCache.key(for: peru), request: peru, response: Data(jevResponse(choice: "one_line", confidence: 0.92, probabilities: ["one_line": 0.93, "web_results": 0.07], recency: 0.1).utf8), latencyMs: 120)
-        let eiffel = JevRouting.request(for: "eiffel tower", locale: locale)
+        let eiffel = EngineRouting.request(for: "eiffel tower", locale: locale)
         try cache.store(key: try JevCache.key(for: eiffel), request: eiffel, response: Data(jevResponse(choice: "image", confidence: 0.42, probabilities: ["image": 0.46, "web_results": 0.41, "narrative": 0.09], recency: 0.1).utf8), latencyMs: 130)
 
         let runner = EvalRunner(client: nil, cache: cache, locale: locale, now: Date(timeIntervalSince1970: 1_792_600_000), homeZone: TimeZone(identifier: "America/Chicago")!)

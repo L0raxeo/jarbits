@@ -1,20 +1,24 @@
 import Foundation
 
 /// Renders `ROUTING.md`: the exact questions the app asks Jev, the options it
-/// offers, and what comes back. Built from the same `JevRouting.request` the
-/// app sends, so the document cannot describe a request the code does not make.
+/// offers, and what comes back. Built from the same `EngineRouting.request`
+/// the app sends, so the document cannot describe a request the code does
+/// not make.
 public enum RoutingReport {
     public static let regenerateCommand = "swift run --package-path Packages/Routing report routing > ROUTING.md"
 
     public static func markdown() -> String {
-        let request = JevRouting.request(for: "<query>", locale: Locale(identifier: "en_US"), model: JevClient.defaultModel)
-        // The same request over an answer, for the follow-up section.
-        let followUp = JevRouting.request(
+        let request = EngineRouting.request(for: "<query>", locale: Locale(identifier: "en_US"), model: JevClient.defaultModel)
+        // The same request with two earlier exchanges, for the context section.
+        let withExchanges = EngineRouting.request(
             for: "<query>", locale: Locale(identifier: "en_US"), model: JevClient.defaultModel,
-            thread: [AnswerTurn(query: "<earlier query>", answer: "<earlier answer>")]
+            exchanges: [
+                .answer(query: "<earlier query>", text: "<earlier answer>"),
+                Exchange(query: "<earlier query 2>", kind: .page, title: "<page title>", host: "<host>", address: "https://<host>/<path>"),
+            ]
         )
         // And over a site opened by name, for the rejection section.
-        let opened = JevRouting.request(
+        let opened = EngineRouting.request(
             for: "<query>", locale: Locale(identifier: "en_US"), model: JevClient.defaultModel,
             opened: OpenedSite(name: "<name>", host: "<host>")
         )
@@ -22,7 +26,7 @@ public enum RoutingReport {
 
         out.append("# Routing contract")
         out.append("")
-        out.append("Generated from `JevRouting` in `Packages/Routing`. Do not edit by hand; run:")
+        out.append("Generated from `EngineRouting` and the instinct registry (`InstinctSpec`) in `Packages/Routing`. Do not edit by hand; run:")
         out.append("")
         out.append("```")
         out.append(regenerateCommand)
@@ -30,7 +34,7 @@ public enum RoutingReport {
         out.append("")
         out.append("## The request")
         out.append("")
-        out.append("One `POST https://api.typesafe.ai/v1/systemone` per search, model `\(request.model)`, timeout \(timeoutText).")
+        out.append("One `POST https://api.typesafe.ai/v1/systemone` per query, model `\(request.model)`, timeout \(timeoutText). Every question below goes in that one request and is answered in parallel: which instinct fits, whether the answer may have gone stale, how a recall ask reads, which earlier exchanges the query depends on, and how much working out it needs.")
         out.append("")
         out.append("State (what Jev reads):")
         out.append("")
@@ -38,7 +42,7 @@ public enum RoutingReport {
         out.append("|---|---|")
         out.append("| `query` | The text as typed, trimmed. |")
         out.append("| `locale` | The device locale identifier, e.g. `en_US`. |")
-        out.append("| `conversation` | Only while a narrative or one-line answer is on screen and the query was typed over it: every exchange of that conversation, oldest first, each `{\"query\": …, \"answer\": …}` with the answer whole. The format question then reads differently and one more question is asked; see \"When an answer is on screen\". |")
+        out.append("| `exchanges` | Only after the first query of a session: the newest \(EngineRouting.maxExchanges) earlier exchanges, oldest first, each the query and what it got. Every exchange has `query` and `kind` (`answer`, `page`, `search`, `picture`, `recall`, `site`); an answer carries its `text` whole, a page its `title`, `host` and `address`, a search the `text` in its box, a picture the `text` of its subject. The format question then reads differently and one more question is asked per exchange; see \"When earlier exchanges are in the state\". |")
         out.append("| `opened_site_name`, `opened_site_host` | Only while a site this app opened by name is on screen: the name asked for and the host opened. One more question is asked; see \"When a site is on screen\". |")
         out.append("")
         out.append("Before any request: text that parses as an address (`example.com`, `https://…`) loads directly, and a query the device can decide itself becomes a card at once, opens a site the device already knows, or searches the term after a search verb; Jev is not asked in any of these cases.")
@@ -47,36 +51,42 @@ public enum RoutingReport {
 
         out.append("## The questions")
         out.append("")
+        out.append("The pick (`\(EngineRouting.questionID)`), then the questions the instincts add (`recent` from the two answered ones, the `recall_*` questions from recall), then the reasoning score. With earlier exchanges in the state the relevance questions come between.")
+        out.append("")
         for (id, question) in request.questions {
             out += render(id: id, question: question)
         }
-        out.append("## When an answer is on screen")
+        out.append("## When earlier exchanges are in the state")
         out.append("")
-        out.append("A follow-up typed over a narrative or one-line answer, Gemini's or the device's, is read as the conversation makes it. The `format` question's instructions become:")
+        out.append("From the second query of a session on, the state carries the earlier exchanges and the `\(EngineRouting.questionID)` question's instructions become:")
         out.append("")
-        out.append("> " + JevRouting.followUpInstructions)
+        out.append("> " + EngineRouting.contextInstructions())
         out.append("")
-        out.append("and one more question is asked:")
+        out.append("and one question is asked per exchange, `x0` for the oldest sent, `x1` for the next, and so on. For the first of two exchanges:")
         out.append("")
-        for (id, question) in followUp.questions where id == JevRouting.continuesQuestionID {
+        for (id, question) in withExchanges.questions where id == EngineRouting.relevanceQuestionID(0) {
             out += render(id: id, question: question)
         }
+        out.append("The app walks back from the newest exchange and stops at the first one below \(EngineRouting.relevanceThreshold.formatted()): that is the chain, the exchanges the query depends on. Every answer is logged (`relevance`, oldest first) with the chain's length (`chain`), so a yes behind a no stays visible. A chain that ends on an answer exchange means the query continues that answer; a chain that ends on a page, a search or a picture means the pick stands and the chosen instinct gets those exchanges as context (a narrative lists them under its context block; see \"After routing: Gemini answers\").")
+        out.append("")
         out.append("## When a site is on screen")
         out.append("")
-        out.append("A query typed over a site this app opened by name (from the book, or learned from a tap) carries the name and host in the state and asks one more question:")
+        out.append("A query typed over a site this app opened by name (from the book, or learned from a tap) carries the name and host in the state and the site instinct asks one more question:")
         out.append("")
-        for (id, question) in opened.questions where id == JevRouting.rejectsQuestionID {
+        for (id, question) in opened.questions where id == EngineRouting.rejectsQuestionID {
             out += render(id: id, question: question)
         }
         out.append("## What comes back")
         out.append("")
         out.append("```json")
-        out.append("{ \"model\": \"\(request.model)\", \"answers\": { \"\(JevRouting.questionID)\": { \"type\": \"choice\", \"choice\": \"stock\", \"confidence\": 0.91, \"probabilities\": { \"web_results\": 0.05, \"stock\": 0.92, … } } }, \"usage\": { \"input_tokens\": 512, \"output_tokens\": 9 } }")
+        out.append("{ \"model\": \"\(request.model)\", \"answers\": { \"\(EngineRouting.questionID)\": { \"type\": \"choice\", \"choice\": \"stock\", \"confidence\": 0.91, \"probabilities\": { \"web_results\": 0.05, \"stock\": 0.92, … } }, \"recent\": { \"type\": \"noul\", \"noul\": 0.08 }, \"x0\": { \"type\": \"noul\", \"noul\": 0.83 }, \"\(EngineRouting.reasoningQuestionID)\": { \"type\": \"score\", \"score\": 0.21, \"confidence\": 0.79, \"probabilities\": { \"0\": 0.82, \"1\": 0.15, \"2\": 0.03 } } }, \"usage\": { \"input_tokens\": 512, \"output_tokens\": 9 } }")
         out.append("```")
         out.append("")
         out.append("- `choice`: the option with the highest probability.")
         out.append("- `probabilities`: one per option, summing to 1.")
         out.append("- `confidence`: `(p_max − 1/n) / (1 − 1/n)`; 0 for a flat spread, 1 for a single peak. Only the top probability matters.")
+        out.append("- `noul`: the probability of yes, 0 to 1.")
+        out.append("- `score`: the level numbers weighted by their probabilities, so 0 to 2 here, with a probability per level and a confidence of its own.")
         out.append("")
         out.append("## What the app does with it")
         out.append("")
@@ -89,26 +99,27 @@ public enum RoutingReport {
         out.append("| Address typed | That page | `directURL` |")
         out.append("| No API key configured | Web results | `noKey` |")
         out.append("| Request failed or timed out | Web results | `error(reason)` |")
-        out.append("| `confidence` below \(JevRouting.confidenceFloor.formatted()) | Web results | `confidenceFallback` (the pick is kept as `suggested`) |")
-        out.append("| `one_line` or `narrative` picked below \(JevRouting.confidenceFloor.formatted()), but the two together at or above \(JevRouting.answerMassFloor.formatted()), and `recent` below \(JevRouting.recencyThreshold.formatted()) | The picked answer: Jev was torn between a short and a long answer, not between an answer and a page | `answerSplit` |")
-        out.append("| `confidence` at or above \(JevRouting.confidenceFloor.formatted()) and `recent` below \(JevRouting.recencyThreshold.formatted()) | The chosen format's card; web results while that module is only `routed` (today: \(routedList)) | `jev` |")
-        out.append("| `narrative` or `one_line` picked with confidence, but `recent` at or above \(JevRouting.recencyThreshold.formatted()) | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |")
-        out.append("| Over an answer on screen, `continues` at or above \(JevRouting.continuationThreshold.formatted()) and a card format (\(cardList)) picked with confidence | That card | `jev` |")
-        out.append("| Over an answer on screen, `continues` at or above \(JevRouting.continuationThreshold.formatted()) and any other pick, sure or not, with `recent` below \(JevRouting.recencyThreshold.formatted()) | The answer on screen grows into a transcript: the query as a line, then a reply written with the earlier turns in view, as one line when `one_line` was picked with confidence and as a narrative otherwise | `continuation` (the pick is kept as `suggested`) |")
+        out.append("| `confidence` below \(EngineRouting.confidenceFloor.formatted()) | Web results | `confidenceFallback` (the pick is kept as `suggested`; with `reasoning` at or above \(EngineRouting.reasoningThreshold.formatted()) the line also reads as `reasoningWanted`, for the day advanced reasoning takes these) |")
+        out.append("| `one_line` or `narrative` picked below \(EngineRouting.confidenceFloor.formatted()), but the two together at or above \(EngineRouting.answerMassFloor.formatted()), and `recent` below \(EngineRouting.recencyThreshold.formatted()) | The picked answer: Jev was torn between a short and a long answer, not between an answer and a page | `answerSplit` |")
+        out.append("| `confidence` at or above \(EngineRouting.confidenceFloor.formatted()) and `recent` below \(EngineRouting.recencyThreshold.formatted()) | The chosen format's card; web results while that module is only `routed` (today: \(routedList)) | `jev` |")
+        out.append("| `narrative` or `one_line` picked with confidence, but `recent` at or above \(EngineRouting.recencyThreshold.formatted()) | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |")
+        out.append("| The chain ends on an answer exchange and a card format (\(cardList)) was picked with confidence | That card | `jev` |")
+        out.append("| The chain ends on an answer exchange and any other pick, sure or not, with `recent` below \(EngineRouting.recencyThreshold.formatted()) | The answer on screen grows into a transcript: the query as a line, then a reply written with the earlier turns in view, as one line when `one_line` was picked with confidence and as a narrative otherwise | `continuation` (the pick is kept as `suggested`) |")
+        out.append("| The chain ends on a page, a search or a picture | The chosen format's card, with the chained exchanges as context: a narrative or one-line answer lists them under its context block; web results search what the words say | `jev` with `chain` above 0 |")
         out.append("| `site` picked with confidence | The site, when the book knows the name; otherwise the choices card (see \"After routing: sites\") | `jev` |")
-        out.append("| Over a site opened by name, `rejects` at or above \(JevRouting.rejectionThreshold.formatted()), whatever the pick | The name is forgotten and the choices card shown again | `rejection` (the pick is kept as `suggested`) |")
+        out.append("| Over a site opened by name, `rejects` at or above \(EngineRouting.rejectionThreshold.formatted()), whatever the pick | The name is forgotten and the choices card shown again | `rejection` (the pick is kept as `suggested`) |")
         out.append("")
         out.append("Web results, however reached, are for the query with its search verb gone: \"google steve jobs\" searches \"steve jobs\" (`SearchQuery`, see \"Decided on the device\"); the log keeps the spoken words. An `image` pick searches the subject alone (`ImageQuery`, see \"After routing: Wikipedia images\"). A `video` pick loads Google's video results for the term with the asking gone (`VideoQuery`, see \"After routing: videos\").")
         out.append("")
-        out.append("Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.")
+        out.append("Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, the relevance answers and the chain, the reasoning score, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.")
         out.append("")
         out += recallSection()
         out += videoSection()
         out.append("## Question types not used yet")
         out.append("")
-        out.append("- **score**: a position on an ordered scale with confidence. Candidate use: how much the query needs a written explanation.")
+        out.append("- **box**: where something is in an image. No use in sight.")
         out.append("")
-        out.append("Adding a question is one entry in `JevRouting.request`; this file and `RoutingTests` pick it up. The yes/no `recent` question above is a noul.")
+        out.append("Adding a question is one entry in `EngineRouting.request`, or one line in an instinct's `questions` in `InstinctSpec`; this file and `RoutingTests` pick it up.")
         return out.joined(separator: "\n") + "\n"
     }
 
@@ -117,6 +128,8 @@ public enum RoutingReport {
         func quoted(_ phrases: [String]) -> String { phrases.map { "\"\($0)\"" }.joined(separator: ", ") }
         var out: [String] = []
         out.append("## Decided on the device")
+        out.append("")
+        out.append("Each rule is the grammar of the instinct it decides for (`InstinctSpec.recognise`), tried in this order before any model: the time, a question handed to the model, a known site, a search verb.")
         out.append("")
         out.append("The time in a named place needs no model. A query that is exactly one opener, a place and at most one trailer (case, accents and punctuation aside) is answered from the device clock when the place is a country, a US state or a city in the device's zone database; otherwise it goes on to Jev like any other query. English only.")
         out.append("")
@@ -265,6 +278,23 @@ public enum RoutingReport {
             }
             out.append("")
             out.append("Answer: `choice` (one option name), `probabilities` (one per option), `confidence` (0–1).")
+            out.append("")
+        case let .score(instructions, levels):
+            out.append("### `\(id)` — type `score`")
+            out.append("")
+            out.append("A position on an ordered scale. Instructions sent with the question:")
+            out.append("")
+            out.append("> " + instructions.replacingOccurrences(of: "\n", with: " "))
+            out.append("")
+            out.append("Levels, low to high:")
+            out.append("")
+            out.append("| Level | Description |")
+            out.append("|---|---|")
+            for (index, level) in levels.enumerated() {
+                out.append("| \(index) | \(level) |")
+            }
+            out.append("")
+            out.append("Answer: `score` (the levels weighted by their probabilities, so 0 to \(levels.count - 1), possibly between two), `probabilities` (one per level, keyed by its number), `confidence` (0–1).")
             out.append("")
         }
         return out

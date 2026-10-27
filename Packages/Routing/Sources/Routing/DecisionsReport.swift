@@ -96,17 +96,26 @@ public enum DecisionsReport {
             func mean(_ values: [Double]) -> String {
                 values.isEmpty ? "–" : (values.reduce(0, +) / Double(values.count)).formatted(.number.precision(.fractionLength(2)))
             }
-            out.append("Recency (threshold \(JevRouting.recencyThreshold.formatted())): mean \(mean(answeredRecency)) for answers shown, \(mean(gatedRecency)) for queries sent to web.")
+            out.append("Recency (threshold \(EngineRouting.recencyThreshold.formatted())): mean \(mean(answeredRecency)) for answers shown, \(mean(gatedRecency)) for queries sent to web.")
             out.append("")
         }
-        let followUps = asked.filter { $0.decision.continuation != nil }
-        if !followUps.isEmpty {
-            let continued = followUps.filter(\.decision.continuesThread)
+        let withExchanges = asked.filter { $0.decision.relevance != nil }
+        if !withExchanges.isEmpty {
+            let chained = withExchanges.filter { $0.decision.chainedCount > 0 }
+            let continued = withExchanges.filter(\.decision.continuesThread)
             let oneLine = continued.filter { $0.decision.format == .oneLine }.count
-            let otherCard = followUps.filter { $0.decision.source == .jev && ($0.decision.continuation ?? 0) >= JevRouting.continuationThreshold }.count
-            let values = followUps.compactMap(\.decision.continuation)
+            let otherCard = chained.filter { $0.decision.source == .jev && ($0.decision.suggested?.outranksConversation ?? false) }.count
+            let chains = chained.map(\.decision.chainedCount)
+            let meanChain = chains.isEmpty ? "–" : (Double(chains.reduce(0, +)) / Double(chains.count)).formatted(.number.precision(.fractionLength(1)))
+            out.append("Queries with earlier exchanges: \(withExchanges.count) asked, \(chained.count) depended on the newest (mean chain \(meanChain)), \(continued.count) continued an answer (\(oneLine) as one line), \(otherCard) went to another card.")
+            out.append("")
+        }
+        let scored = asked.filter { $0.decision.reasoning != nil }
+        if !scored.isEmpty {
+            let values = scored.compactMap(\.decision.reasoning)
             let mean = (values.reduce(0, +) / Double(values.count)).formatted(.number.precision(.fractionLength(2)))
-            out.append("Follow-ups over an answer: \(followUps.count) asked, \(continued.count) continued it (\(oneLine) as one line), \(otherCard) went to another card, mean continuation \(mean).")
+            let wanted = scored.filter(\.decision.reasoningWanted).count
+            out.append("Reasoning (0 direct, 2 several steps): mean score \(mean) over \(scored.count); \(wanted) unsure picks leaned to several steps.")
             out.append("")
         }
         if !gated.isEmpty {

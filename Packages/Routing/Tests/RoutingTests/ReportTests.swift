@@ -12,7 +12,7 @@ import Testing
 
     @Test func routingReportDescribesEveryQuestionAndOption() {
         let markdown = RoutingReport.markdown()
-        let request = JevRouting.request(for: "x", locale: Locale(identifier: "en_US"))
+        let request = EngineRouting.request(for: "x", locale: Locale(identifier: "en_US"))
         for (id, question) in request.questions {
             switch question {
             case let .choice(instructions, options):
@@ -29,17 +29,25 @@ import Testing
                     #expect(markdown.contains(criteria.yes))
                     #expect(markdown.contains(criteria.no))
                 }
+            case let .score(instructions, levels):
+                #expect(markdown.contains("### `\(id)` — type `score`"))
+                #expect(markdown.contains(instructions.replacingOccurrences(of: "\n", with: " ")))
+                for level in levels { #expect(markdown.contains(level)) }
             }
         }
         #expect(markdown.contains("### `recent` — type `noul`"))
-        #expect(markdown.contains(JevRouting.recencyCriteria.yes))
-        #expect(markdown.contains("### `continues` — type `noul`"))
-        #expect(markdown.contains(JevRouting.continuesCriteria.yes))
-        #expect(markdown.contains(JevRouting.followUpInstructions))
-        #expect(markdown.contains("`conversation`"))
-        #expect(markdown.contains("`continuation` (the pick is kept as `suggested`)"))
-        #expect(markdown.contains("## When an answer is on screen"))
+        #expect(markdown.contains(EngineRouting.recencyCriteria.yes))
+        #expect(markdown.contains("### `reasoning` — type `score`"))
+        #expect(markdown.contains("| 2 | \(EngineRouting.reasoningLevels[2]) |"))
+        #expect(markdown.contains("### `x0` — type `noul`"))
+        #expect(markdown.contains(EngineRouting.relevanceCriteria.yes))
+        #expect(markdown.contains(EngineRouting.contextInstructions()))
+        #expect(markdown.contains("`exchanges`"))
+        #expect(markdown.contains("| `continuation` (the pick is kept as `suggested`) |"))
+        #expect(markdown.contains("## When earlier exchanges are in the state"))
         #expect(markdown.contains("as one line when `one_line` was picked with confidence"))
+        #expect(markdown.contains("| `jev` with `chain` above 0 |"))
+        #expect(markdown.contains("`reasoningWanted`"))
         #expect(markdown.contains("## After routing: recall"))
         #expect(markdown.contains(RecallRouting.recallCriteria.yes))
         #expect(markdown.contains("web page from yesterday (m.youtube.com)"))
@@ -59,10 +67,12 @@ import Testing
         #expect(markdown.contains("\"\(SearchQuery.corrections[0])\""))
         #expect(markdown.contains("| A search verb and a term (see above) | Web results for the term | `local(\"search\")` |"))
         #expect(markdown.contains("### `rejects` — type `noul`"))
-        #expect(markdown.contains(JevRouting.rejectsCriteria.yes))
+        #expect(markdown.contains(EngineRouting.rejectsCriteria.yes))
         #expect(markdown.contains("`opened_site_name`"))
         #expect(markdown.contains("`rejection` (the pick is kept as `suggested`)"))
         #expect(!markdown.contains("**noul**: a yes/no"), "noul is in use now")
+        #expect(!markdown.contains("**score**"), "score is in use now")
+        #expect(!markdown.contains("`continues`"), "the chain replaced the continues question")
         #expect(markdown.contains(JevClient.defaultModel))
         #expect(markdown.contains("2500 ms"))
         #expect(markdown.contains(RoutingReport.regenerateCommand))
@@ -79,10 +89,10 @@ import Testing
         let records = [
             DecisionRecord(timestamp: now, query: "nasdaq stock", decision: RouteDecision(
                 format: .stock, suggested: .stock, confidence: 0.91,
-                probabilities: ["stock": 0.92, "web_results": 0.05], model: "jev-1.13.0", latencyMs: 210, inputTokens: 500, source: .jev)),
+                probabilities: ["stock": 0.92, "web_results": 0.05], model: "jev-1.13.0", latencyMs: 210, inputTokens: 500, reasoning: 0.2, reasoningConfidence: 0.8, source: .jev)),
             DecisionRecord(timestamp: now.addingTimeInterval(60), query: "coffee", decision: RouteDecision(
                 format: .webResults, suggested: .map, confidence: 0.3,
-                probabilities: ["map": 0.37, "web_results": 0.33], model: "jev-1.13.0", latencyMs: 190, inputTokens: 500, source: .confidenceFallback)),
+                probabilities: ["map": 0.37, "web_results": 0.33], model: "jev-1.13.0", latencyMs: 190, inputTokens: 500, reasoning: 1.7, reasoningConfidence: 0.6, source: .confidenceFallback)),
             DecisionRecord(timestamp: now.addingTimeInterval(120), query: "apple.com", decision: .directURL()),
             DecisionRecord(timestamp: now.addingTimeInterval(180), query: "tesla", decision: RouteDecision(
                 format: .webResults, latencyMs: 2500, source: .error("timeout"))),
@@ -93,10 +103,10 @@ import Testing
             DecisionRecord(timestamp: now.addingTimeInterval(330), query: "look up steve jobs", decision: .local("search", format: .webResults)),
             DecisionRecord(timestamp: now.addingTimeInterval(360), query: "can I use water", decision: RouteDecision(
                 format: .narrative, suggested: .webResults, confidence: 0.3,
-                probabilities: ["web_results": 0.4, "narrative": 0.35], model: "jev-1.13.0", latencyMs: 230, inputTokens: 900, continuation: 0.8, source: .continuation)),
+                probabilities: ["web_results": 0.4, "narrative": 0.35], model: "jev-1.13.0", latencyMs: 230, inputTokens: 900, relevance: [0.8], chain: 1, source: .continuation)),
             DecisionRecord(timestamp: now.addingTimeInterval(390), query: "and chile?", decision: RouteDecision(
                 format: .oneLine, suggested: .oneLine, confidence: 0.9,
-                probabilities: ["one_line": 0.92, "narrative": 0.05], model: "jev-1.13.0", latencyMs: 210, inputTokens: 900, continuation: 0.9, source: .continuation)),
+                probabilities: ["one_line": 0.92, "narrative": 0.05], model: "jev-1.13.0", latencyMs: 210, inputTokens: 900, relevance: [0.9], chain: 1, source: .continuation)),
             DecisionRecord(timestamp: now.addingTimeInterval(420), query: "pull up the videos from yesterday", decision: RouteDecision(
                 format: .recall, suggested: .recall, confidence: 0.9,
                 probabilities: ["recall": 0.9, "web_results": 0.1], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, source: .jev),
@@ -131,8 +141,10 @@ import Testing
         let oldRecord = #"{"timestamp":"2026-10-01T00:00:00Z","query":"x","decision":{"format":"web_results","probabilities":{},"source":{"noKey":{}}}}"#
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).site == nil, "lines without a site summary decode")
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).decision.recall == nil, "lines without a recall intent decode")
+        #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).decision.chain == nil, "lines without a chain decode")
         #expect(markdown.contains("| `web_results` | 1 | 1 | 0 | 0 | 0.30 | \"can I use water\" |"), "a continuation counts as acted on")
-        #expect(markdown.contains("Follow-ups over an answer: 2 asked, 2 continued it (1 as one line), 0 went to another card, mean continuation 0.85."))
+        #expect(markdown.contains("Queries with earlier exchanges: 2 asked, 2 depended on the newest (mean chain 1.0), 2 continued an answer (1 as one line), 0 went to another card."))
+        #expect(markdown.contains("Reasoning (0 direct, 2 several steps): mean score 0.95 over 2; 1 unsure picks leaned to several steps."))
         #expect(markdown.contains("## Decided on the device"))
         #expect(markdown.contains("- `time`: 1, most recent \"what time is it in tokyo\""))
         #expect(markdown.contains("- `search`: 1, most recent \"look up steve jobs\""))

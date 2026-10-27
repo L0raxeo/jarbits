@@ -52,13 +52,26 @@ final class MockJevTransport: URLProtocol {
     override func stopLoading() {}
 }
 
-/// A response in the shape TypeSafe documents, with `format` as the question id.
-func jevResponse(choice: String, confidence: Double, probabilities: [String: Double], recency: Double? = nil, continues: Double? = nil, rejects: Double? = nil, nouls: [String: Double] = [:], model: String = "jev-1.13.0") -> String {
+/// A response in the shape TypeSafe documents, with `format` as the question
+/// id. `relevance` answers the per-exchange questions `x0`, `x1`, … in order;
+/// `reasoning` answers the score.
+func jevResponse(
+    choice: String, confidence: Double, probabilities: [String: Double],
+    recency: Double? = nil, rejects: Double? = nil, relevance: [Double]? = nil,
+    reasoning: (score: Double, confidence: Double)? = nil,
+    nouls: [String: Double] = [:], model: String = "jev-1.13.0"
+) -> String {
     let probs = probabilities.map { "\"\($0.key)\": \($0.value)" }.joined(separator: ", ")
-    let extra = (recency.map { ", \"recent\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
-        + (continues.map { ", \"continues\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
+    var extra = (recency.map { ", \"recent\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
         + (rejects.map { ", \"rejects\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
         + nouls.sorted { $0.key < $1.key }.map { ", \"\($0.key)\": { \"type\": \"noul\", \"noul\": \($0.value) }" }.joined()
+    for (index, value) in (relevance ?? []).enumerated() {
+        extra += ", \"\(EngineRouting.relevanceQuestionID(index))\": { \"type\": \"noul\", \"noul\": \(value) }"
+    }
+    if let reasoning {
+        let level = Int(reasoning.score.rounded())
+        extra += ", \"\(EngineRouting.reasoningQuestionID)\": { \"type\": \"score\", \"score\": \(reasoning.score), \"confidence\": \(reasoning.confidence), \"probabilities\": { \"\(level)\": \(reasoning.confidence) } }"
+    }
     return """
     {
       "model": "\(model)",
@@ -75,10 +88,17 @@ func jevResponse(choice: String, confidence: Double, probabilities: [String: Dou
     """
 }
 
-/// The decision the app would make from that response.
-func decision(choice: String, confidence: Double, probabilities: [String: Double], recency: Double? = nil, continues: Double? = nil, rejects: Double? = nil, nouls: [String: Double] = [:], floor: Double = JevRouting.confidenceFloor) throws -> RouteDecision {
-    let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(jevResponse(choice: choice, confidence: confidence, probabilities: probabilities, recency: recency, continues: continues, rejects: rejects, nouls: nouls).utf8))
-    return JevRouting.decision(from: response, latencyMs: 150, floor: floor)
+/// The decision the app would make from that response. `exchanges` are the
+/// ones the request carried, so the relevance answers line up.
+func decision(
+    choice: String, confidence: Double, probabilities: [String: Double],
+    recency: Double? = nil, rejects: Double? = nil, relevance: [Double]? = nil,
+    reasoning: (score: Double, confidence: Double)? = nil, exchanges: [Exchange] = [],
+    nouls: [String: Double] = [:], floor: Double = EngineRouting.confidenceFloor
+) throws -> RouteDecision {
+    let json = jevResponse(choice: choice, confidence: confidence, probabilities: probabilities, recency: recency, rejects: rejects, relevance: relevance, reasoning: reasoning, nouls: nouls)
+    let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(json.utf8))
+    return EngineRouting.decision(from: response, latencyMs: 150, floor: floor, exchanges: exchanges)
 }
 
 func temporaryDirectory() -> URL {
@@ -88,8 +108,8 @@ func temporaryDirectory() -> URL {
 /// The seven recall answers, yes as 1 and no as 0, keyed by question id.
 func recallNouls(kinds: Set<RecallIntent.Kind> = [], named: Bool, all: Bool) -> [String: Double] {
     var answers: [String: Double] = [:]
-    for kind in RecallIntent.Kind.allCases { answers[JevRouting.recallKindQuestionID(kind)] = kinds.contains(kind) ? 1 : 0 }
-    answers[JevRouting.recallNamedQuestionID] = named ? 1 : 0
-    answers[JevRouting.recallAllQuestionID] = all ? 1 : 0
+    for kind in RecallIntent.Kind.allCases { answers[EngineRouting.recallKindQuestionID(kind)] = kinds.contains(kind) ? 1 : 0 }
+    answers[EngineRouting.recallNamedQuestionID] = named ? 1 : 0
+    answers[EngineRouting.recallAllQuestionID] = all ? 1 : 0
     return answers
 }

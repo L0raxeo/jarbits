@@ -48,46 +48,33 @@ public struct RouteOutcome: Equatable, Sendable {
 }
 
 /// The device's rules before any model, in the order the app applies them
-/// (`LocalFirstRouter` in the app): a question `LocalAnswers` can answer
+/// (`InstinctSpec.deviceRuleOrder`): a question `LocalAnswers` can answer
 /// becomes a one-line card, a question handed to the model by name ("ask
 /// AI ...") is a narrative, an opener and a site name the book knows opens
 /// the site, and a verb that only ever means "search" is web results for
 /// the term. Nil means no rule fired and the query goes on to Jev.
 ///
-/// The app's own router still carries these three rules inline over its
-/// `SiteStore` actor; the report CLI and the eval use this so a query
-/// routes the same way in both. An address is not a rule here: the app's
-/// `FormatRouter` checks it after these, and so does the eval.
+/// Each rule is the `recognise` grammar of the instinct it decides for, so
+/// the app, the report CLI and the eval run the same code. An address is
+/// not a rule here: the engine checks it after these, and so does the eval.
 public enum DeviceRouting {
     public static let askRule = "ask"
     public static let siteRule = "site"
     public static let searchRule = "search"
 
+    /// `canAnswer` is false without a Gemini key, which skips the ask rule.
     public static func decide(
         _ query: String,
         now: Date = .now,
         locale: Locale = .current,
         homeZone: TimeZone = .current,
-        book: SiteBook
+        book: SiteBook,
+        canAnswer: Bool = true
     ) -> RouteOutcome? {
-        if let local = LocalAnswers.answer(query, now: now, locale: locale, homeZone: homeZone) {
-            return RouteOutcome(query: query, decision: .local(local.rule, format: local.format), localText: local.text)
-        }
-        // "ask AI what GDP means": the question to the model, as asked. The
-        // app skips this rule without an answer key.
-        if AnswerQuery.parse(query) != nil {
-            return RouteOutcome(query: query, decision: .local(askRule, format: .narrative))
-        }
-        // An opener and a known name: the site, no model asked. A bare name
-        // ("youtube") is left to Jev, which may read it as a search.
-        if let site = SiteQuery.parse(query), site.hasOpener, book.lookup(site.name) != nil {
-            return RouteOutcome(query: query, decision: .local(siteRule, format: .site))
-        }
-        // "search for X", "look up X": web results for X. A bare "google X"
-        // is not a command here ("google stock"); Jev decides, and the web
-        // branch drops the verb.
-        if let search = SearchQuery.parse(query), search.isCommand {
-            return RouteOutcome(query: query, decision: .local(searchRule, format: .webResults))
+        let context = RecogniseContext(now: now, locale: locale, homeZone: homeZone, book: book, canAnswer: canAnswer)
+        for format in InstinctSpec.deviceRuleOrder {
+            guard let hit = InstinctSpec.spec(for: format).recognise?(query, context) else { continue }
+            return RouteOutcome(query: query, decision: .local(hit.rule, format: format), localText: hit.arguments["text"])
         }
         return nil
     }

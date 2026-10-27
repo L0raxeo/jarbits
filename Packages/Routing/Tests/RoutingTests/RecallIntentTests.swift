@@ -12,19 +12,19 @@ import Testing
 
     private func decision(choice: String, confidence: Double = 0.9, nouls: [String: Double]) throws -> RouteDecision {
         let json = jevResponse(choice: choice, confidence: confidence, probabilities: [choice: confidence], recency: 0.1, nouls: nouls)
-        return JevRouting.decision(from: try JSONDecoder().decode(SystemOneResponse.self, from: Data(json.utf8)), latencyMs: 1)
+        return EngineRouting.decision(from: try JSONDecoder().decode(SystemOneResponse.self, from: Data(json.utf8)), latencyMs: 1)
     }
 
     @Test func theSevenQuestionsAreNoulsAfterRecent() throws {
-        let request = JevRouting.request(for: "x", locale: Locale(identifier: "en_US"))
-        #expect(JevRouting.recallQuestionIDs == ["recall_pages", "recall_answers", "recall_pictures", "recall_searches", "recall_videos", "recall_named", "recall_all"])
+        let request = EngineRouting.request(for: "x", locale: Locale(identifier: "en_US"))
+        #expect(EngineRouting.recallQuestionIDs == ["recall_pages", "recall_answers", "recall_pictures", "recall_searches", "recall_videos", "recall_named", "recall_all"])
         let json = try #require(JSONSerialization.jsonObject(with: try request.jsonData()) as? [String: Any])
         let questions = try #require(json["questions"] as? [String: Any])
-        for id in JevRouting.recallQuestionIDs {
+        for id in EngineRouting.recallQuestionIDs {
             let question = try #require(questions[id] as? [String: Any], Comment(rawValue: id))
             #expect(question["type"] as? String == "noul")
             let text = try #require(question["instructions"] as? String)
-            #expect(text.hasPrefix(JevRouting.recallLead), "every question carries the recall framing")
+            #expect(text.hasPrefix(EngineRouting.recallLead), "every question carries the recall framing")
             #expect(Set((question["criteria"] as? [String: String])?.keys.map { $0 } ?? []) == ["true", "false"])
         }
     }

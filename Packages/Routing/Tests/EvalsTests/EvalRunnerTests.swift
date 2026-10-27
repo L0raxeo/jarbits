@@ -7,7 +7,7 @@ import Testing
 @Suite(.serialized) struct EvalRunnerTests {
     private let peru = EvalCase(query: "capital of peru", format: .oneLine, source: "jev")
 
-    private func runner(client: JevClient?, directory: URL, floor: Double = JevRouting.confidenceFloor) -> EvalRunner {
+    private func runner(client: JevClient?, directory: URL, floor: Double = EngineRouting.confidenceFloor) -> EvalRunner {
         EvalRunner(client: client, cache: JevCache(directory: directory), floor: floor, now: Date(timeIntervalSince1970: 1_792_600_000), homeZone: TimeZone(identifier: "America/Chicago")!)
     }
 

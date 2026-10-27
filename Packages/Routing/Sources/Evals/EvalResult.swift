@@ -93,6 +93,10 @@ public enum EvalCheck {
             failures.append("source: expected \(expected), got \(decision.source.kind)")
         }
         guard decision.format == evalCase.format else { return failures }
+        if let chain = evalCase.chain, decision.chainedCount != chain {
+            let newest = decision.relevance?.last.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? "none"
+            failures.append("chain: expected \(chain), got \(decision.chainedCount) (newest relevance \(newest))")
+        }
         if let term = evalCase.term, outcome.searchTerm != term {
             failures.append("term: expected \"\(term)\", got \(outcome.searchTerm.map { "\"\($0)\"" } ?? "none")")
         }

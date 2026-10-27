@@ -14,8 +14,9 @@ public struct RouteDecision: Codable, Sendable, Equatable {
     /// Jev's probability that the right answer may have changed in the last
     /// two years; nil when the question was not asked or not answered.
     public var recency: Double?
-    /// Jev's probability that a follow-up continues the answer on screen;
-    /// nil when no answer was on screen or the question went unanswered.
+    /// From before the relevance chain: Jev's probability that a follow-up
+    /// continued the answer on screen. Nil on every new line; kept so older
+    /// logs decode.
     public var continuation: Double?
     /// Jev's probability that a follow-up rejects the site this app opened
     /// by name; nil when no such site was on screen or the question went
@@ -25,6 +26,17 @@ public struct RouteDecision: Codable, Sendable, Equatable {
     /// kinds, whether a thing is named, whether a set is wanted. Set only
     /// when `recall` was the pick; absent on older log lines.
     public var recall: RecallIntent?
+    /// One probability per exchange sent, oldest first: does the query
+    /// depend on it? Nil when no exchange was sent. Logged whole, so a yes
+    /// behind a no stays visible.
+    public var relevance: [Double]?
+    /// How many exchanges, from the newest back, the query depends on: the
+    /// walk stops at the first no. Nil when no exchange was sent.
+    public var chain: Int?
+    /// Jev's reasoning score: 0 direct, 1 a value must be read out of the
+    /// words, 2 several steps, a condition or a schedule. Nil when unanswered.
+    public var reasoning: Double?
+    public var reasoningConfidence: Double?
     public var source: Source
 
     public enum Source: Codable, Sendable, Equatable {
@@ -43,10 +55,10 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         case directURL
         /// No API key is configured, so Jev was not asked.
         case noKey
-        /// The query continues the answer on screen (`continuation` reached
-        /// the threshold), so the thread grows with a new turn whatever the
-        /// pick was: `one_line` when that was picked with confidence,
-        /// `narrative` otherwise; the pick is kept as `suggested`.
+        /// The relevance chain ends on an answer exchange: the query
+        /// continues the answer on screen, so the thread grows with a new
+        /// turn whatever the pick was: `one_line` when that was picked with
+        /// confidence, `narrative` otherwise; the pick is kept as `suggested`.
         case continuation
         /// The query rejects the site this app opened by name (`rejection`
         /// reached the threshold): `format` is `site` for the same name
@@ -71,6 +83,10 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         continuation: Double? = nil,
         rejection: Double? = nil,
         recall: RecallIntent? = nil,
+        relevance: [Double]? = nil,
+        chain: Int? = nil,
+        reasoning: Double? = nil,
+        reasoningConfidence: Double? = nil,
         source: Source
     ) {
         self.format = format
@@ -84,12 +100,26 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         self.continuation = continuation
         self.rejection = rejection
         self.recall = recall
+        self.relevance = relevance
+        self.chain = chain
+        self.reasoning = reasoning
+        self.reasoningConfidence = reasoningConfidence
         self.source = source
     }
 
     /// The follow-up carries on the answer on screen as a new turn.
     public var continuesThread: Bool {
         source == .continuation
+    }
+
+    /// How many exchanges, from the newest back, the query depends on.
+    public var chainedCount: Int { chain ?? 0 }
+
+    /// An unsure pick whose reasoning score leans to the top level: the
+    /// query wanted sequencing, not a page. Logged for now; advanced
+    /// reasoning acts on it once built.
+    public var reasoningWanted: Bool {
+        source == .confidenceFallback && (reasoning ?? 0) >= EngineRouting.reasoningThreshold
     }
 
     /// The follow-up says the site on screen is the wrong one.

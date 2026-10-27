@@ -20,6 +20,8 @@ import Testing
         #expect(markdown.contains("### `narrative` — system instruction, max \(AnswerPrompt.maxOutputTokens(for: .narrative)) output tokens"))
         #expect(markdown.contains("`user_input`") && markdown.contains("`model_output`"), "the continued-narrative shape is documented")
         #expect(markdown.contains("Every earlier turn is sent"))
+        #expect(markdown.contains("### Input with earlier exchanges"))
+        #expect(markdown.contains("- Searched \"<term searched>\"\n- Read \"<page title>\" (<host>)"), "the block is rendered from the same code")
     }
 
     /// The Gemini half must be in the file; `ImagesTests` checks the whole file.

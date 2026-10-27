@@ -51,24 +51,26 @@ public enum EvalReport {
             return "\(label) \(number(value)) \(value >= threshold ? "≥" : "<") \(threshold.formatted())"
         }
         let confidence = compare("confidence", decision.confidence, floor)
+        // "chain 1 of 2, relevance 0.83 ≥ 0.5": how far back the query reached.
+        let chain: String? = decision.relevance.flatMap { relevance in
+            guard decision.chainedCount > 0 else { return nil }
+            return ["chain \(decision.chainedCount) of \(relevance.count)", compare("relevance", relevance.last, EngineRouting.relevanceThreshold)].compactMap { $0 }.joined(separator: ", ")
+        }
+        let reasoning: String? = decision.reasoningWanted ? decision.reasoning.map { "reasoning \(number($0)) (wanted)" } : nil
         switch decision.source {
         case let .local(rule): return "device rule \(rule)"
         case .directURL: return "address"
         case .noKey: return "no key"
         case let .error(message): return "error: \(message)"
-        case .rejection: return compare("rejects", decision.rejection, JevRouting.rejectionThreshold) ?? "rejects"
-        case .continuation: return [compare("continues", decision.continuation, JevRouting.continuationThreshold), confidence].compactMap { $0 }.joined(separator: ", ")
+        case .rejection: return compare("rejects", decision.rejection, EngineRouting.rejectionThreshold) ?? "rejects"
+        case .continuation: return [chain, confidence].compactMap { $0 }.joined(separator: ", ")
         case .recencyFallback: return [compare("recency", decision.recency, recencyThreshold), confidence].compactMap { $0 }.joined(separator: ", ")
-        case .confidenceFallback: return confidence ?? "confidence below the floor"
+        case .confidenceFallback: return [confidence ?? "confidence below the floor", reasoning].compactMap { $0 }.joined(separator: ", ")
         case .answerSplit:
             let mass = (decision.probabilities[ResponseFormat.oneLine.rawValue] ?? 0) + (decision.probabilities[ResponseFormat.narrative.rawValue] ?? 0)
-            return [confidence, compare("answers together", mass, JevRouting.answerMassFloor)].compactMap { $0 }.joined(separator: ", ")
+            return [confidence, compare("answers together", mass, EngineRouting.answerMassFloor)].compactMap { $0 }.joined(separator: ", ")
         case .jev:
-            var parts = [confidence]
-            if let continuation = decision.continuation, continuation >= JevRouting.continuationThreshold {
-                parts.append(compare("continues", continuation, JevRouting.continuationThreshold))
-            }
-            return parts.compactMap { $0 }.joined(separator: ", ")
+            return [confidence, chain].compactMap { $0 }.joined(separator: ", ")
         }
     }
 

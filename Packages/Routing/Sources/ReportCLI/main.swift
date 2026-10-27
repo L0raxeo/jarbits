@@ -15,7 +15,9 @@ import Sites
 //     (one real Jev call, the same request the app sends; prints every option's probability)
 //   TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "can I use water" \
 //       --after "how do you make chocolate milk" "Heat milk and whisk in cocoa."
-//     (the same, typed over an answer; one --after pair per earlier turn, oldest first)
+//     (the same, with the session's earlier exchanges, oldest first: --after <q> <answer> for an answer,
+//      --page <q> <title> <url> for a page the user read, --search <q> <term> for a results page; prints the
+//      relevance of each, the chain and the reasoning score)
 //   TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "no not this one" --opened zillow www.zillow.com
 //     (the same, typed over a site the app opened by name; prints whether the query rejects it)
 //   [BRAVE_API_KEY=…] swift run --package-path Packages/Routing report sites "go to hacker news"
@@ -67,7 +69,7 @@ case "recall":
     // Jev's reading of the ask rides in the routing request; one real call here, as the app makes.
     var intent: RecallIntent?
     if let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty {
-        let decision = await FormatRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query)
+        let decision = await EngineRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query)
         if let read = decision.recall {
             intent = read
             print("jev intent (\(decision.latencyMs ?? 0) ms): kinds \(read.description), named \(read.namesThing ? "yes" : "no"), all \(read.wantsAll ? "yes" : "no")")
@@ -122,20 +124,33 @@ case "recall":
         print("jev failed: \(reason)")
     }
 case "route":
-    let usage = "usage: report route <query> [--after <earlier query> <earlier answer>]... [--opened <site name> <host>]"
+    let usage = "usage: report route <query> [--after <earlier query> <earlier answer>]... [--page <earlier query> <title> <url>]... [--search <earlier query> <term>]... [--opened <site name> <host>]"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
-    var thread: [AnswerTurn] = []
+    // The session's earlier exchanges, oldest first, as the flags come.
+    var exchanges: [Exchange] = []
     var opened: OpenedSite?
     while let flag = rest.first {
-        guard rest.count >= 3 else { fail(usage) }
         switch flag {
-        case "--after": thread.append(AnswerTurn(query: rest[1], answer: rest[2]))
-        case "--opened": opened = OpenedSite(name: rest[1], host: rest[2])
+        case "--after":
+            guard rest.count >= 3 else { fail(usage) }
+            exchanges.append(.answer(query: rest[1], text: rest[2]))
+            rest.removeFirst(3)
+        case "--page":
+            guard rest.count >= 4, let url = URL(string: rest[3]) else { fail(usage) }
+            exchanges.append(.page(query: rest[1], title: rest[2], address: url))
+            rest.removeFirst(4)
+        case "--search":
+            guard rest.count >= 3 else { fail(usage) }
+            exchanges.append(.search(query: rest[1], term: rest[2]))
+            rest.removeFirst(3)
+        case "--opened":
+            guard rest.count >= 3 else { fail(usage) }
+            opened = OpenedSite(name: rest[1], host: rest[2])
+            rest.removeFirst(3)
         default: fail(usage)
         }
-        rest.removeFirst(3)
     }
     if let device = DeviceRouting.decide(query, locale: Locale(identifier: "en_US"), book: .seeded()), case let .local(rule) = device.decision.source {
         print("query: \"\(query)\"")
@@ -152,9 +167,9 @@ case "route":
     guard let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty else {
         fail("set TYPESAFE_API_KEY in the environment (never paste it on the command line)")
     }
-    let decision = await FormatRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query, thread: thread, opened: opened)
+    let decision = await EngineRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query, exchanges: exchanges, opened: opened)
     print("query: \"\(query)\"")
-    let outcome = RouteOutcome(query: query, decision: decision)
+    let outcome = RouteOutcome(query: query, decision: decision, opened: opened)
     if let name = outcome.siteName, let site = SiteQuery.parse(query) {
         print("site name: \"\(name)\"\(site.hasOpener ? " (with an opener)" : "")")
     }
@@ -168,17 +183,24 @@ case "route":
     if let confidence = decision.confidence { print("confidence: \(confidence.formatted(.number.precision(.fractionLength(2))))") }
     if let suggested = decision.suggested { print("suggested: \(suggested.rawValue)") }
     if let recency = decision.recency {
-        print("recency: \(recency.formatted(.number.precision(.fractionLength(2)))) (threshold \(JevRouting.recencyThreshold.formatted()))")
+        print("recency: \(recency.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRouting.recencyThreshold.formatted()))")
     }
-    if let continuation = decision.continuation {
-        let verdict = decision.continuesThread ? "continues the thread as \(decision.format.rawValue)"
-            : continuation >= JevRouting.continuationThreshold && decision.source == .recencyFallback ? "continues, but needs live data: web results"
-            : continuation >= JevRouting.continuationThreshold ? "related, but another card"
-            : "fresh"
-        print("continuation: \(continuation.formatted(.number.precision(.fractionLength(2)))) (threshold \(JevRouting.continuationThreshold.formatted())), \(verdict)")
+    if let relevance = decision.relevance {
+        let values = relevance.map { $0.formatted(.number.precision(.fractionLength(2))) }.joined(separator: ", ")
+        let chain = decision.chainedCount
+        let verdict = decision.continuesThread ? "the chain ends on an answer: grows it as \(decision.format.rawValue)"
+            : chain > 0 && decision.source == .recencyFallback ? "the chain ends on an answer, but the reply needs live data: web results"
+            : chain > 0 ? "the chain ends on \(exchanges.last?.summary ?? "an exchange"): a new layer with \(chain) exchange\(chain == 1 ? "" : "s") as context"
+            : "fresh: no exchange matters"
+        print("relevance: [\(values)] (threshold \(EngineRouting.relevanceThreshold.formatted())), chain \(chain) of \(relevance.count), \(verdict)")
+    }
+    if let reasoning = decision.reasoning {
+        let level = reasoning < 0.5 ? "direct" : reasoning < EngineRouting.reasoningThreshold ? "needs a value" : "several steps"
+        let confidence = (decision.reasoningConfidence ?? 0).formatted(.number.precision(.fractionLength(2)))
+        print("reasoning: \(reasoning.formatted(.number.precision(.fractionLength(2)))) (confidence \(confidence), top level at \(EngineRouting.reasoningThreshold.formatted())), \(level)\(decision.reasoningWanted ? "; an unsure pick that wanted reasoning" : "")")
     }
     if let rejection = decision.rejection {
-        print("rejection: \(rejection.formatted(.number.precision(.fractionLength(2)))) (threshold \(JevRouting.rejectionThreshold.formatted())), \(decision.rejectsSite ? "rejects the site on screen" : "keeps it")")
+        print("rejection: \(rejection.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRouting.rejectionThreshold.formatted())), \(decision.rejectsSite ? "rejects the site on screen" : "keeps it")")
     }
     if let intent = decision.recall {
         func p(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(2))) }
@@ -228,8 +250,8 @@ case "eval":
     var out = packageRoot.appending(path: ".evalcache/results.jsonl")
     var baseline: URL?
     var only: ResponseFormat?
-    var floor = JevRouting.confidenceFloor
-    var recency = JevRouting.recencyThreshold
+    var floor = EngineRouting.confidenceFloor
+    var recency = EngineRouting.recencyThreshold
     var network = true
     var rest = Array(arguments.dropFirst())
     while let argument = rest.first {
@@ -316,8 +338,8 @@ case "sample":
     var log: URL?
     var count = EvalSample.defaultCount
     var seed = EvalSample.seed(for: .now, zone: .current)
-    var floor = JevRouting.confidenceFloor
-    var recency = JevRouting.recencyThreshold
+    var floor = EngineRouting.confidenceFloor
+    var recency = EngineRouting.recencyThreshold
     var network = true
     var rest = Array(arguments.dropFirst())
     while let argument = rest.first {
@@ -371,5 +393,5 @@ case "sample":
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report routing | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]... [--opened <name> <host>] | sites <query> | eval [cases.jsonl] [--only <format>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report routing | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | sites <query> | eval [cases.jsonl] [--only <format>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }

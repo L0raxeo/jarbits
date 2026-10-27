@@ -22,12 +22,15 @@ import Testing
     }
 
     @Test func gatesNameTheDecisiveThreshold() throws {
+        let recipe = [Exchange.answer(query: "how do you make hot chocolate", text: "Heat milk.")]
         #expect(EvalReport.gate(.local("time", format: .oneLine), floor: 0.5, recencyThreshold: 0.5) == "device rule time")
         #expect(EvalReport.gate(.directURL(), floor: 0.5, recencyThreshold: 0.5) == "address")
         #expect(EvalReport.gate(try decision(choice: "narrative", confidence: 0.92, probabilities: ["narrative": 0.93], recency: 0.9), floor: 0.5, recencyThreshold: 0.5) == "recency 0.90 ≥ 0.5, confidence 0.92 ≥ 0.5")
-        #expect(EvalReport.gate(try decision(choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9], recency: 0.1, continues: 0.83), floor: 0.5, recencyThreshold: 0.5) == "continues 0.83 ≥ 0.5, confidence 0.90 ≥ 0.5")
+        #expect(EvalReport.gate(try decision(choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9], recency: 0.1, relevance: [0.83], exchanges: recipe), floor: 0.5, recencyThreshold: 0.5) == "chain 1 of 1, relevance 0.83 ≥ 0.5, confidence 0.90 ≥ 0.5")
         #expect(EvalReport.gate(try decision(choice: "recall", confidence: 0.6, probabilities: ["recall": 0.7], rejects: 0.93), floor: 0.5, recencyThreshold: 0.5) == "rejects 0.93 ≥ 0.5")
-        #expect(EvalReport.gate(try decision(choice: "image", confidence: 0.9, probabilities: ["image": 0.9], continues: 0.8), floor: 0.5, recencyThreshold: 0.5) == "confidence 0.90 ≥ 0.5, continues 0.80 ≥ 0.5")
+        #expect(EvalReport.gate(try decision(choice: "image", confidence: 0.9, probabilities: ["image": 0.9], relevance: [0.8], exchanges: recipe), floor: 0.5, recencyThreshold: 0.5) == "confidence 0.90 ≥ 0.5, chain 1 of 1, relevance 0.80 ≥ 0.5")
+        #expect(EvalReport.gate(try decision(choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9], relevance: [0.2], exchanges: recipe), floor: 0.5, recencyThreshold: 0.5) == "confidence 0.90 ≥ 0.5", "no chain, nothing to say about it")
+        #expect(EvalReport.gate(try decision(choice: "web_results", confidence: 0.3, probabilities: ["web_results": 0.4, "narrative": 0.3], reasoning: (score: 1.7, confidence: 0.6)), floor: 0.5, recencyThreshold: 0.5) == "confidence 0.30 < 0.5, reasoning 1.70 (wanted)")
         #expect(EvalReport.gate(RouteDecision(format: .webResults, source: .error("timeout")), floor: 0.5, recencyThreshold: 0.5) == "error: timeout")
     }
 

@@ -1,0 +1,194 @@
+import Foundation
+
+/// What running an instinct can do beyond the screen. The engine confirms
+/// a paid or destructive one with the user before it runs.
+public enum SideEffects: String, Codable, Sendable {
+    case none
+    case reversible
+    case paid
+    case destructive
+}
+
+/// The values an instinct takes, declared once: Jev reads the closed-set
+/// ones as questions in the routing request, a small model call reads the
+/// free-form ones out of the words, and a plan passes either.
+public struct ArgumentSchema: Sendable, Equatable {
+    public struct Field: Sendable, Equatable {
+        public enum Kind: Sendable, Equatable {
+            case text
+            case number
+            case integer
+            case boolean
+            case choice([String])
+        }
+
+        public var name: String
+        public var kind: Kind
+        public var description: String
+        public var required: Bool
+
+        public init(name: String, kind: Kind, description: String, required: Bool = true) {
+            self.name = name
+            self.kind = kind
+            self.description = description
+            self.required = required
+        }
+
+        /// Text and numbers must be read out of the words; a boolean or a
+        /// choice is a question Jev can answer.
+        public var isFreeForm: Bool {
+            switch kind {
+            case .text, .number, .integer: true
+            case .boolean, .choice: false
+            }
+        }
+    }
+
+    public var fields: [Field]
+
+    public init(fields: [Field] = []) {
+        self.fields = fields
+    }
+
+    public static let none = ArgumentSchema()
+
+    public var isEmpty: Bool { fields.isEmpty }
+    public var freeForm: [Field] { fields.filter(\.isFreeForm) }
+    public var closedSet: [Field] { fields.filter { !$0.isFreeForm } }
+}
+
+/// Values read for an instinct, by field name, as text.
+public typealias Arguments = [String: String]
+
+/// A device grammar matched the query: which rule, and what it read out.
+public struct Recognised: Sendable, Equatable {
+    public var rule: String
+    public var arguments: Arguments
+
+    public init(rule: String, arguments: Arguments = [:]) {
+        self.rule = rule
+        self.arguments = arguments
+    }
+}
+
+/// What a grammar may need besides the words.
+public struct RecogniseContext: Sendable {
+    public var now: Date
+    public var locale: Locale
+    public var homeZone: TimeZone
+    public var book: SiteBook
+    /// A Gemini key is configured, so a question handed to the model by name can be answered.
+    public var canAnswer: Bool
+
+    public init(now: Date = .now, locale: Locale = .current, homeZone: TimeZone = .current, book: SiteBook, canAnswer: Bool = true) {
+        self.now = now
+        self.locale = locale
+        self.homeZone = homeZone
+        self.book = book
+        self.canAnswer = canAnswer
+    }
+}
+
+/// What a request is about, for the questions an instinct adds to it.
+public struct RequestContext: Sendable {
+    public var query: String
+    public var exchanges: [Exchange]
+    public var opened: OpenedSite?
+
+    public init(query: String, exchanges: [Exchange] = [], opened: OpenedSite? = nil) {
+        self.query = query
+        self.exchanges = exchanges
+        self.opened = opened
+    }
+}
+
+/// One instinct as the engine knows it: anything hard-coded the app can do
+/// for a query, named for Jev by its format, with the questions it adds to
+/// the routing request, the grammar that recognises it on the device when
+/// it has one, and the values it takes. The registry is `all`, in the
+/// order Jev sees the options. The app binds each spec to the code that
+/// runs it; adding an instinct is one `ResponseFormat` case, one branch in
+/// `init(format:)` and one conformer in the app.
+public struct InstinctSpec: Sendable, Identifiable {
+    public let format: ResponseFormat
+    public var id: String { format.rawValue }
+    public var criterion: Criterion { format.criterion }
+    public var outranksConversation: Bool { format.outranksConversation }
+    public var isAnswered: Bool { format.isAnswered }
+    public var stage: Stage { format.stage }
+    /// Running it puts a layer on screen; false for one that only acts.
+    public let showsLayer: Bool
+    public let sideEffects: SideEffects
+    public let arguments: ArgumentSchema
+    /// Questions this instinct adds to the request when they apply; a
+    /// question two instincts both add is asked once.
+    public let questions: @Sendable (RequestContext) -> [(id: String, question: Question)]
+    /// A grammar that decides the query with no model, when one exists.
+    public let recognise: (@Sendable (String, RecogniseContext) -> Recognised?)?
+
+    public init(format: ResponseFormat) {
+        self.format = format
+        showsLayer = true
+        sideEffects = .none
+        arguments = .none
+        switch format {
+        case .narrative:
+            questions = { _ in [(EngineRouting.recencyQuestionID, .noul(instructions: EngineRouting.recencyInstructions, criteria: EngineRouting.recencyCriteria))] }
+            // "ask AI what GDP means": the question to the model, as asked.
+            // Skipped without an answer key.
+            recognise = { query, context in
+                guard context.canAnswer, let ask = AnswerQuery.parse(query) else { return nil }
+                return Recognised(rule: DeviceRouting.askRule, arguments: ["question": ask.question])
+            }
+        case .oneLine:
+            questions = { _ in [(EngineRouting.recencyQuestionID, .noul(instructions: EngineRouting.recencyInstructions, criteria: EngineRouting.recencyCriteria))] }
+            // The time in a named place, from the device clock.
+            recognise = { query, context in
+                guard let local = LocalAnswers.answer(query, now: context.now, locale: context.locale, homeZone: context.homeZone) else { return nil }
+                return Recognised(rule: local.rule, arguments: ["text": local.text])
+            }
+        case .recall:
+            questions = { _ in EngineRouting.recallQuestions }
+            recognise = nil
+        case .site:
+            // Over a site this app opened by name: is the query saying it was the wrong one?
+            questions = { context in
+                guard context.opened != nil else { return [] }
+                return [(EngineRouting.rejectsQuestionID, .noul(instructions: EngineRouting.rejectsInstructions, criteria: EngineRouting.rejectsCriteria))]
+            }
+            // An opener and a known name: the site, no model asked. A bare
+            // name ("youtube") is left to Jev, which may read it as a search.
+            recognise = { query, context in
+                guard let site = SiteQuery.parse(query), site.hasOpener, context.book.lookup(site.name) != nil else { return nil }
+                return Recognised(rule: DeviceRouting.siteRule, arguments: ["name": site.name])
+            }
+        case .webResults:
+            questions = { _ in [] }
+            // "search for X", "look up X": web results for X. A bare "google
+            // X" is not a command here ("google stock"); Jev decides.
+            recognise = { query, _ in
+                guard let search = SearchQuery.parse(query), search.isCommand else { return nil }
+                return Recognised(rule: DeviceRouting.searchRule, arguments: ["term": search.term])
+            }
+        case .map, .stock, .image, .video:
+            questions = { _ in [] }
+            recognise = nil
+        }
+    }
+
+    /// Every instinct, in the order Jev sees the options: `web_results`
+    /// first, since Jev leans toward the first option when unsure.
+    public static let all: [InstinctSpec] = ResponseFormat.allCases.map(InstinctSpec.init(format:))
+
+    /// The device's rules in the order the app has always applied them:
+    /// the time, a question handed to the model, a known site, a search verb.
+    public static let deviceRuleOrder: [ResponseFormat] = [.oneLine, .narrative, .site, .webResults]
+
+    public static func spec(for id: String) -> InstinctSpec? {
+        all.first { $0.id == id }
+    }
+
+    public static func spec(for format: ResponseFormat) -> InstinctSpec {
+        all.first { $0.format == format }!
+    }
+}

@@ -60,31 +60,59 @@ public enum AnswerPrompt {
         }
     }
 
-    public static func input(query: String, context: AnswerContext) -> String {
-        [
+    /// `earlier` is the exchanges of this session the query depends on, from
+    /// other layers than the answer's own thread (a search, a page read, a
+    /// picture looked at), oldest first; empty for a query that stands alone.
+    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = []) -> String {
+        var lines = [
             "Query: \(query)",
             "",
             "Context (use for \"today\" and \"now\"; do not repeat it unless the query asks about it):",
             "- Date and time: \(dateText(context))",
             "- Your knowledge ends around \(knowledgeCutoffText), about \(monthsSinceCutoff(context)) months before this date.",
             "- Locale: \(context.locale.identifier)",
-        ].joined(separator: "\n")
+        ]
+        if !earlier.isEmpty {
+            lines.append("")
+            lines.append("Earlier in this session (oldest first; the query may lean on them, but answer only the query):")
+            for exchange in earlier {
+                lines.append("- " + describe(exchange))
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// One exchange as a line of the input block.
+    static func describe(_ exchange: Exchange) -> String {
+        switch exchange.kind {
+        case .answer: "Asked \"\(exchange.query)\" and got: \(exchange.text ?? "")"
+        case .page:
+            if let title = exchange.title, let host = exchange.host { "Read \"\(title)\" (\(host))" }
+            else if let title = exchange.title { "Read \"\(title)\"" }
+            else { "Read a page for \"\(exchange.query)\"" }
+        case .search: "Searched \"\(exchange.text ?? exchange.query)\""
+        case .picture: "Looked at a picture of \"\(exchange.text ?? exchange.query)\""
+        case .recall: "Looked through earlier memories for \"\(exchange.query)\""
+        case .site: "Chose among sites for \"\(exchange.title ?? exchange.query)\""
+        }
     }
 
     /// `history` is the conversation so far when the query continues a
     /// narrative on screen, sent whole: every earlier query and answer, so
     /// a reply can lean on anything said in it. Empty for a fresh answer.
+    /// `earlier` is what else in this session the query depends on; see `input`.
     public static func request(
         format: ResponseFormat,
         query: String,
         context: AnswerContext,
         model: String = GeminiClient.defaultModel,
-        history: [AnswerTurn] = []
+        history: [AnswerTurn] = [],
+        earlier: [Exchange] = []
     ) -> InteractionRequest {
         InteractionRequest(
             model: model,
             systemInstruction: system(for: format),
-            input: input(query: query, context: context),
+            input: input(query: query, context: context, earlier: earlier),
             history: history,
             maxOutputTokens: maxOutputTokens(for: format)
         )

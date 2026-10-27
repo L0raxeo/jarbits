@@ -1,8 +1,13 @@
 import Foundation
 
-/// The pure parts of routing: building the one Choice question and turning
-/// Jev's answer into a decision. No I/O here, so every branch is testable.
-public enum JevRouting {
+/// The pure parts of the cognitive engine's one Jev request per query: which
+/// earlier exchanges the query depends on, which instinct fits, how much
+/// working out it needs, and the questions the instincts add. Built from the
+/// instinct registry and turned into a decision here; no I/O, so every
+/// branch is testable.
+public enum EngineRouting {
+    /// The pick's wire id. "format" from the first version; the options are
+    /// the instincts.
     public static let questionID = "format"
     public static let recencyQuestionID = "recent"
 
@@ -24,42 +29,82 @@ public enum JevRouting {
     /// two is shown, logged as `answerSplit`; the recency gate still applies.
     public static let answerMassFloor = 0.6
 
-    public static let continuesQuestionID = "continues"
-
-    /// At or above this, a follow-up carries on the answer on screen as a
-    /// new turn instead of starting a fresh card.
-    public static let continuationThreshold = 0.5
-
     public static let instructions = """
         Which response format best answers this web search query? Judge the \
         query as typed. If several formats could work, prefer web_results.
         """
 
-    /// The format question over an answer on screen: the query is read as
-    /// the conversation makes it. Built from the format list, so a card
-    /// format added later is named here without another edit.
-    public static var followUpInstructions: String {
-        let cards = ResponseFormat.allCases.filter(\.outranksConversation).map(\.rawValue).joined(separator: ", ")
-        return "Which response format best answers this web search query? The state carries the whole conversation so far: "
-            + "every earlier query and every answer, oldest first. Judge the query as that conversation makes it, not as typed on its own. "
-            + "A reply, a reaction or a question that leans on the answer, however short, wants narrative; or one_line when the reply is itself a single short fact, "
+    /// The pick's instructions when exchanges are in the state: the query
+    /// is read as the exchanges it depends on make it. Built from the
+    /// registry, so an instinct added later is named here without another
+    /// edit.
+    public static func contextInstructions(instincts: [InstinctSpec] = InstinctSpec.all) -> String {
+        let cards = instincts.filter(\.outranksConversation).map(\.id).joined(separator: ", ")
+        return "Which response format best answers this web search query? The state carries the earlier exchanges of this session under `exchanges`, oldest first: "
+            + "each query and what it got (an answer's text, a page's title and address, a search's term, a picture's subject). "
+            + "Judge the query as the exchanges it depends on make it, not as typed on its own; a query that stands on its own is judged as typed. "
+            + "A reply, a reaction or a question that leans on an earlier answer, however short, wants narrative; or one_line when the reply is itself a single short fact, "
             + "a number, a name, a date, a yes/no, as \"and chile?\" after a capital is. "
+            + "A correction or narrowing of an earlier search (\"wait no I meant brazil\") wants web_results, read with the correction applied. "
             + "Pick another format only when the query asks for the kind of thing that format shows: \(cards), each described below; "
             + "or web_results for a page to browse."
     }
 
-    public static let continuesInstructions = """
-        The state carries the whole conversation so far, every earlier query \
-        and every answer, oldest first; the last answer is the one the user is \
-        looking at. Is this query a continuation of that conversation: a reply, \
-        a reaction, a request to go on or to clarify, or a question that only \
-        makes sense given what was said in it?
+    // MARK: Relevance, one question per exchange
+
+    /// The most exchanges sent, the newest; older ones are recall's job.
+    public static let maxExchanges = 20
+
+    /// The question for the exchange at `index` of the ones sent, oldest first.
+    public static func relevanceQuestionID(_ index: Int) -> String { "x\(index)" }
+
+    /// At or above this, the query depends on the exchange.
+    public static let relevanceThreshold = 0.5
+
+    public static func relevanceInstructions(for exchange: Exchange, at index: Int, of count: Int) -> String {
+        "The state lists the earlier exchanges of this session under `exchanges`, oldest first: each query and what it got. "
+            + "Does the current query depend on exchange \(index + 1) of \(count), the query \"\(exchange.query)\", which got \(exchange.summary), to be understood or acted on?"
+    }
+
+    public static let relevanceCriteria = (
+        yes: "The query replies to, corrects, narrows or builds on that exchange, or names something only it makes clear, however short: \"why?\", \"wait no I meant brazil\", \"the second one\", \"pictures of it\", \"and chile?\", \"is that open on sundays\".",
+        no: "The query stands on its own, or depends only on a different exchange: it would mean the same thing with that exchange gone."
+    )
+
+    /// How many exchanges, from the newest back, the query depends on: the
+    /// walk stops at the first no. `relevance` is oldest first.
+    public static func chain(_ relevance: [Double], threshold: Double = relevanceThreshold) -> Int {
+        var count = 0
+        for value in relevance.reversed() {
+            guard value >= threshold else { break }
+            count += 1
+        }
+        return count
+    }
+
+    // MARK: Reasoning, a score
+
+    public static let reasoningQuestionID = "reasoning"
+
+    /// At or above this the score leans to the top level: several steps, a
+    /// condition or a schedule. Logged for now; advanced reasoning acts on
+    /// it once built.
+    public static let reasoningThreshold = 1.5
+
+    public static let reasoningInstructions = """
+        How much working out does this query need before the chosen format \
+        can act on it? Judge the query as the earlier exchanges it depends on \
+        make it.
         """
 
-    public static let continuesCriteria = (
-        yes: "The query answers, reacts to, questions or builds on the previous answer, or would be incomplete without it, however short: \"why?\", \"can I use water\", \"and with oat milk\", \"tell me more\", \"is that true for cats too\".",
-        no: "A new question that stands on its own, even about a nearby topic: it would mean the same thing with no previous answer."
-    )
+    /// The three levels, low to high; the answer's `score` runs from 0 to 2.
+    public static let reasoningLevels = [
+        "Direct: the format acts on the words alone: a search, a question to answer, a picture, a site by name, videos, something seen before. \"capital of peru\", \"go to youtube\", \"pictures of it\", \"wait no I meant brazil\".",
+        "A value must be read out of the words first and passed along: a number, a name, a setting, a place, a time. \"set the thermostat to 68\", \"remind me at 7\", \"translate this to spanish\".",
+        "Several steps, a condition or a schedule: an \"and then\", an \"if\", a \"when\", an \"every\", or a comparison across several things. \"find the cheapest flight and book it\", \"if it rains tomorrow move my run to the evening\".",
+    ]
+
+    // MARK: Questions the instincts add
 
     public static let rejectsQuestionID = "rejects"
 
@@ -78,7 +123,7 @@ public enum JevRouting {
         no: "Anything else: a new search or question, a request for another site by its own name (\"open youtube\"), or something to do on the open site."
     )
 
-    // MARK: Recall intent, asked in every request so a recall costs no second round trip
+    // Recall intent, asked in every request so a recall costs no second round trip
 
     public static let recallQuestionPrefix = "recall_"
     public static func recallKindQuestionID(_ kind: RecallIntent.Kind) -> String { recallQuestionPrefix + kind.rawValue }
@@ -140,7 +185,7 @@ public enum JevRouting {
         no: "One thing: \"that answer about hot chocolate\", \"the video I was watching about muse\", \"go back to the reddit thread\", \"where's my grocery list\"."
     )
 
-    /// The seven recall questions, in order.
+    /// The seven recall questions, in order; the recall instinct adds them.
     static var recallQuestions: [(id: String, question: Question)] {
         RecallIntent.Kind.allCases.map { kind in
             (recallKindQuestionID(kind), Question.noul(instructions: recallKindInstructions(kind), criteria: recallKindCriteria(kind)))
@@ -162,48 +207,75 @@ public enum JevRouting {
         no: "A settled fact, history, how something works, a definition, a conversion, a place, a date or time, or anything else that does not go stale."
     )
 
-    /// `thread` is the conversation on screen, oldest first, when the query
-    /// was typed over an answer: every query and answer of it go into the
-    /// state, the format question reads the query in that light, and the
-    /// `continues` question is added. `opened` is a site this app opened by
-    /// name and still shows: its name and host go into the state and the
-    /// `rejects` question is added. A thread and an opened site never
-    /// coexist: a page on screen means no answer is.
-    public static func request(for query: String, locale: Locale = .current, model: String = JevClient.defaultModel, thread: [AnswerTurn] = [], opened: OpenedSite? = nil) -> SystemOneRequest {
+    // MARK: The request
+
+    /// `exchanges` is this session's history, oldest first; the newest
+    /// `maxExchanges` go into the state, the pick reads the query in their
+    /// light, and one relevance question is asked per exchange. `opened` is
+    /// a site this app opened by name and still shows: its name and host go
+    /// into the state and the site instinct adds its `rejects` question.
+    /// Then the instincts' own questions, in registry order and asked once
+    /// each, and last the reasoning score.
+    public static func request(
+        for query: String,
+        locale: Locale = .current,
+        model: String = JevClient.defaultModel,
+        exchanges: [Exchange] = [],
+        opened: OpenedSite? = nil,
+        instincts: [InstinctSpec] = InstinctSpec.all
+    ) -> SystemOneRequest {
+        let sent = Array(exchanges.suffix(maxExchanges))
         var state = RouteState(query: query, locale: locale.identifier)
-        var questions: [(id: String, question: Question)] = [
-            (questionID, .choice(
-                instructions: thread.isEmpty ? instructions : followUpInstructions,
-                options: ResponseFormat.allCases.map { ($0.rawValue, $0.criterion) }
-            )),
-            (recencyQuestionID, .noul(instructions: recencyInstructions, criteria: recencyCriteria)),
-        ] + recallQuestions
-        if !thread.isEmpty {
-            state.conversation = thread.map { RouteState.Exchange(query: $0.query, answer: $0.answer) }
-            questions.append((continuesQuestionID, .noul(instructions: continuesInstructions, criteria: continuesCriteria)))
-        }
+        if !sent.isEmpty { state.exchanges = sent }
         if let opened {
             state.openedSiteName = opened.name
             state.openedSiteHost = opened.host
-            questions.append((rejectsQuestionID, .noul(instructions: rejectsInstructions, criteria: rejectsCriteria)))
         }
+        var questions: [(id: String, question: Question)] = [
+            (questionID, .choice(
+                instructions: sent.isEmpty ? instructions : contextInstructions(instincts: instincts),
+                options: instincts.map { ($0.id, $0.criterion) }
+            )),
+        ]
+        var asked: Set<String> = [questionID]
+        let context = RequestContext(query: query, exchanges: sent, opened: opened)
+        for spec in instincts {
+            for question in spec.questions(context) where asked.insert(question.id).inserted {
+                questions.append(question)
+            }
+        }
+        for (index, exchange) in sent.enumerated() {
+            questions.append((relevanceQuestionID(index), .noul(instructions: relevanceInstructions(for: exchange, at: index, of: sent.count), criteria: relevanceCriteria)))
+        }
+        questions.append((reasoningQuestionID, .score(instructions: reasoningInstructions, levels: reasoningLevels)))
         return SystemOneRequest(model: model, state: state, questions: questions)
     }
 
+    // MARK: The decision
+
+    /// `exchanges` must be what `request` was given, so the relevance
+    /// answers line up with them.
     public static func decision(
         from response: SystemOneResponse,
         latencyMs: Int,
         floor: Double = confidenceFloor,
-        recencyThreshold: Double = recencyThreshold
+        recencyThreshold: Double = recencyThreshold,
+        exchanges: [Exchange] = []
     ) -> RouteDecision {
-        var recency: Double?
-        if case let .noul(value)? = response.answers[recencyQuestionID] { recency = value }
-        var continuation: Double?
-        if case let .noul(value)? = response.answers[continuesQuestionID] { continuation = value }
-        var rejection: Double?
-        if case let .noul(value)? = response.answers[rejectsQuestionID] { rejection = value }
+        let sent = Array(exchanges.suffix(maxExchanges))
         func noul(_ id: String) -> Double? {
             if case let .noul(value)? = response.answers[id] { value } else { nil }
+        }
+        let recency = noul(recencyQuestionID)
+        let rejection = noul(rejectsQuestionID)
+        // A missing relevance answer is a no.
+        let relevance: [Double]? = sent.isEmpty ? nil : sent.indices.map { noul(relevanceQuestionID($0)) ?? 0 }
+        let chain = relevance.map { Self.chain($0) }
+        var reasoning: Double?
+        var reasoningConfidence: Double?
+        if case let .score(answer)? = response.answers[reasoningQuestionID] {
+            reasoning = answer.score
+            reasoningConfidence = answer.confidence
         }
         // Read only on a recall pick: the questions are framed as a recall
         // ask, so for a stock pick their answers mean nothing. A missing
@@ -222,6 +294,12 @@ public enum JevRouting {
                 model: response.model,
                 latencyMs: latencyMs,
                 inputTokens: response.usage.inputTokens,
+                recency: recency,
+                rejection: rejection,
+                relevance: relevance,
+                chain: chain,
+                reasoning: reasoning,
+                reasoningConfidence: reasoningConfidence,
                 source: .error("no '\(questionID)' choice answer in response")
             )
         }
@@ -233,20 +311,27 @@ public enum JevRouting {
                 model: response.model,
                 latencyMs: latencyMs,
                 inputTokens: response.usage.inputTokens,
+                recency: recency,
+                rejection: rejection,
+                relevance: relevance,
+                chain: chain,
+                reasoning: reasoning,
+                reasoningConfidence: reasoningConfidence,
                 source: .error("unknown format '\(answer.choice)'")
             )
         }
         let passes = answer.confidence >= floor
         let stale = (recency ?? 0) >= recencyThreshold
-        let continues = (continuation ?? 0) >= continuationThreshold
+        // The chain ends on the answer on screen: the query continues it.
+        let continuesAnswer = (chain ?? 0) > 0 && sent.last?.kind == .answer
         let rejects = (rejection ?? 0) >= rejectionThreshold
         let (format, source): (ResponseFormat, RouteDecision.Source) = {
             // Over a site opened by name, "no not this one" is a site request
             // again, whatever the pick: such a query has no format of its own.
             if rejects { return (.site, .rejection) }
-            if continues {
-                // Over an answer, the continuation decides the frame and the
-                // pick decides the card: a confident ask for another kind of
+            if continuesAnswer {
+                // Over an answer, the chain decides the frame and the pick
+                // decides the card: a confident ask for another kind of
                 // card gets it; a confident one_line is a short reply in the
                 // thread; anything else, however a terse reply looked on its
                 // own, carries the conversation on as a narrative, which is
@@ -278,54 +363,63 @@ public enum JevRouting {
             latencyMs: latencyMs,
             inputTokens: response.usage.inputTokens,
             recency: recency,
-            continuation: continuation,
             rejection: rejection,
             recall: recallIntent(for: suggested),
+            relevance: relevance,
+            chain: chain,
+            reasoning: reasoning,
+            reasoningConfidence: reasoningConfidence,
             source: source
         )
     }
 }
 
-/// Decides a format for a query: addresses bypass Jev, everything else is
-/// asked, and any failure becomes the fallback format. Never throws.
-public struct FormatRouter: Sendable {
+/// Asks Jev about a query: addresses bypass it, everything else is sent as
+/// one request over the registry, and any failure becomes the fallback
+/// format. Never throws.
+public struct EngineRouter: Sendable {
     public var client: JevClient
     public var locale: Locale
     public var floor: Double
+    public var instincts: [InstinctSpec]
 
-    public init(client: JevClient, locale: Locale = .current, floor: Double = JevRouting.confidenceFloor) {
+    public init(client: JevClient, locale: Locale = .current, floor: Double = EngineRouting.confidenceFloor, instincts: [InstinctSpec] = InstinctSpec.all) {
         self.client = client
         self.locale = locale
         self.floor = floor
+        self.instincts = instincts
     }
 
-    /// `thread` is the conversation on screen, if any; with it Jev reads the
-    /// query in that light and is asked whether it continues it.
-    /// `opened` is a site this app opened by name and still shows; with it
-    /// Jev is asked whether the query rejects it.
-    public func decide(_ query: String, thread: [AnswerTurn] = [], opened: OpenedSite? = nil) async -> RouteDecision {
+    /// `exchanges` is this session's history, oldest first; `opened` a site
+    /// this app opened by name and still shows.
+    public func decide(_ query: String, exchanges: [Exchange] = [], opened: OpenedSite? = nil) async -> RouteDecision {
         if QueryParser.directURL(from: query) != nil {
             return .directURL()
         }
-        let request = JevRouting.request(for: query, locale: locale, model: client.model, thread: thread, opened: opened)
+        let request = EngineRouting.request(for: query, locale: locale, model: client.model, exchanges: exchanges, opened: opened, instincts: instincts)
         let clock = ContinuousClock()
         let start = clock.now
         do {
             let response = try await client.systemOne(request)
             let latency = Int((clock.now - start) / .milliseconds(1))
-            return JevRouting.decision(from: response, latencyMs: latency, floor: floor)
+            return EngineRouting.decision(from: response, latencyMs: latency, floor: floor, exchanges: exchanges)
         } catch {
             let latency = Int((clock.now - start) / .milliseconds(1))
-            return RouteDecision(format: .fallback, latencyMs: latency, source: .error(describe(error)))
+            return RouteDecision(format: .fallback, latencyMs: latency, source: .error(error.summary))
         }
     }
+}
 
-    private func describe(_ error: JevError) -> String {
-        switch error {
-        case .timeout: "timeout"
-        case let .transport(message): "transport: \(message)"
-        case let .http(status, body): "http \(status): \(body)"
-        case let .decoding(message): "decoding: \(message)"
-        }
+/// The first version's router, kept until the app's engine replaces its
+/// routers: a thread on screen is the newest exchanges.
+public struct FormatRouter: Sendable {
+    public var router: EngineRouter
+
+    public init(client: JevClient, locale: Locale = .current, floor: Double = EngineRouting.confidenceFloor) {
+        router = EngineRouter(client: client, locale: locale, floor: floor)
+    }
+
+    public func decide(_ query: String, thread: [AnswerTurn] = [], opened: OpenedSite? = nil) async -> RouteDecision {
+        await router.decide(query, exchanges: Exchange.fromTurns(thread), opened: opened)
     }
 }
