@@ -34,6 +34,48 @@ public struct GeminiClient: Sendable {
         self.session = session
     }
 
+    /// One request, one body: the finished Interaction, for a call that
+    /// needs the whole reply at once (a schema to fill, a plan). `stream`
+    /// goes as false whatever the request says. `timeout` bounds the whole
+    /// call; the client's total by default. No retries.
+    public func send(_ request: InteractionRequest, timeout: Duration? = nil) async throws(GeminiError) -> Data {
+        var request = request
+        request.stream = false
+        var urlRequest = URLRequest(url: baseURL.appending(path: "v1beta/interactions"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+        do {
+            urlRequest.httpBody = try request.jsonData()
+        } catch {
+            throw .response("encode: \(error)")
+        }
+        let prepared = urlRequest
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await withTimeout(timeout ?? totalTimeout) { [session] in
+                try await session.data(for: prepared)
+            }
+        } catch is TimeoutError {
+            throw .timeout
+        } catch {
+            throw .transport(String(describing: error))
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw .transport("not an HTTP response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw .http(status: http.statusCode, body: String(decoding: data.prefix(500), as: UTF8.self))
+        }
+        return data
+    }
+
+    /// `send`, read.
+    public func interact(_ request: InteractionRequest, timeout: Duration? = nil) async throws(GeminiError) -> Interaction {
+        try InteractionResponse.parse(try await send(request, timeout: timeout))
+    }
+
     public func stream(_ request: InteractionRequest) -> AsyncThrowingStream<AnswerEvent, any Error> {
         AsyncThrowingStream { continuation in
             let task = Task {

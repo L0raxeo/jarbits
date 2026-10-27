@@ -174,6 +174,7 @@ final class AnswerSession {
         case let .transport(message): "transport: \(message)"
         case let .http(status, body): "http \(status): \(body)"
         case let .stream(message): "stream: \(message)"
+        case let .response(message): "response: \(message)"
         case nil: String(describing: error)
         }
     }

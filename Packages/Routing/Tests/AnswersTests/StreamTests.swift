@@ -100,6 +100,38 @@ import Testing
         #expect(error == .stream("backend"))
     }
 
+    @Test func sendReturnsTheWholeBodyWithStreamOff() async throws {
+        let client = MockGeminiTransport.client(status: 200, body: InteractionResponseTests.planBody)
+        var streamed = request
+        streamed.stream = true   // forced off by send
+        let data = try await client.send(streamed)
+        #expect(data == Data(InteractionResponseTests.planBody.utf8))
+        let sent = try #require(MockGeminiTransport.requests.first)
+        #expect(sent.url?.absoluteString == "https://generativelanguage.googleapis.com/v1beta/interactions")
+        #expect(sent.value(forHTTPHeaderField: "Accept") == "application/json", "no event stream")
+        #expect(sent.value(forHTTPHeaderField: "x-goog-api-key") == "test-key")
+        let body = try #require(sent.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["stream"] as? Bool == false)
+        #expect(json["store"] as? Bool == false)
+        let interaction = try await client.interact(streamed)
+        #expect(interaction.functionCalls.map(\.name) == ["narrative", "done"])
+    }
+
+    @Test func sendMapsErrorsAndTimesOut() async {
+        let failing = MockGeminiTransport.client(status: 400, body: #"{"error":{"message":"bad schema"}}"#)
+        await #expect(throws: GeminiError.http(status: 400, body: #"{"error":{"message":"bad schema"}}"#)) { try await failing.send(request) }
+        let errorBody = MockGeminiTransport.client(status: 200, body: #"{"error":{"message":"quota"}}"#)
+        await #expect(throws: GeminiError.response("quota")) { try await errorBody.interact(request) }
+        MockGeminiTransport.handler = { _ in
+            Thread.sleep(forTimeInterval: 0.5)
+            return (200, Data(InteractionResponseTests.planBody.utf8))
+        }
+        MockGeminiTransport.requests = []
+        let slow = GeminiClient(apiKey: "test-key", session: MockGeminiTransport.session())
+        await #expect(throws: GeminiError.timeout) { try await slow.send(request, timeout: .milliseconds(50)) }
+    }
+
     @Test func slowHeadersTimeOut() async {
         MockGeminiTransport.handler = { _ in
             Thread.sleep(forTimeInterval: 0.5)

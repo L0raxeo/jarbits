@@ -26,6 +26,81 @@ import Testing
         #expect(positions == positions.sorted())
     }
 
+    @Test func theNewFieldsAtTheirDefaultsLeaveTheFirstVersionsBytesUnchanged() throws {
+        let request = AnswerPrompt.request(format: .narrative, query: "q", context: .example)
+        let explicit = InteractionRequest(
+            model: request.model, systemInstruction: request.systemInstruction, input: request.input, history: [],
+            maxOutputTokens: request.maxOutputTokens, thinkingLevel: "minimal", stream: true, tools: [], toolChoice: nil, outputSchema: nil, transcript: nil
+        )
+        #expect(try explicit.jsonData() == request.jsonData())
+        let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
+        #expect(Set(json.keys) == ["model", "system_instruction", "input", "generation_config", "stream", "store"])
+        let generation = try #require(json["generation_config"] as? [String: Any])
+        #expect(Set(generation.keys) == ["thinking_level", "max_output_tokens"])
+    }
+
+    @Test func toolsRenderAfterTheInputAndTheToolChoiceInsideGenerationConfig() throws {
+        var request = AnswerPrompt.request(format: .narrative, query: "q", context: .example)
+        request.tools = [ToolDeclaration(name: "narrative", description: "Answer in a paragraph.", parameters: ["type": "object", "properties": ["query": ["type": "string"]], "required": ["query"]])]
+        request.toolChoice = .any
+        let body = String(decoding: try request.jsonData(), as: UTF8.self)
+        let order = ["\"model\"", "\"system_instruction\"", "\"input\"", "\"tools\"", "\"generation_config\"", "\"tool_choice\"", "\"stream\"", "\"store\""]
+        let positions = order.map { body.range(of: $0)!.lowerBound }
+        #expect(positions == positions.sorted())
+        let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
+        let tools = try #require(json["tools"] as? [[String: Any]])
+        #expect(tools.count == 1)
+        #expect(tools[0]["type"] as? String == "function")
+        #expect(tools[0]["name"] as? String == "narrative")
+        #expect(tools[0]["description"] as? String == "Answer in a paragraph.")
+        #expect((tools[0]["parameters"] as? [String: Any])?["type"] as? String == "object")
+        #expect(((tools[0]["parameters"] as? [String: Any])?["required"] as? [String]) == ["query"])
+        #expect((json["generation_config"] as? [String: Any])?["tool_choice"] as? String == "any")
+        request.toolChoice = .only(["narrative", "done"])
+        let restricted = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
+        let choice = try #require(((restricted["generation_config"] as? [String: Any])?["tool_choice"] as? [String: Any])?["allowed_tools"] as? [String: Any])
+        #expect(choice["mode"] as? String == "any")
+        #expect(choice["tools"] as? [String] == ["narrative", "done"])
+    }
+
+    @Test func aSchemaBecomesTheResponseFormatAndStreamCanBeOff() throws {
+        var request = AnswerPrompt.request(format: .oneLine, query: "set the thermostat to 68", context: .example)
+        request.stream = false
+        request.outputSchema = ["type": "object", "properties": ["temperature": ["type": "integer"]], "required": ["temperature"], "additionalProperties": false]
+        let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
+        #expect(json["stream"] as? Bool == false)
+        let format = try #require(json["response_format"] as? [String: Any])
+        #expect(format["type"] as? String == "text")
+        #expect(format["mime_type"] as? String == "application/json")
+        #expect((format["schema"] as? [String: Any])?["type"] as? String == "object")
+        #expect(((format["schema"] as? [String: Any])?["required"] as? [String]) == ["temperature"])
+        #expect(json["tools"] == nil)
+        let body = String(decoding: try request.jsonData(), as: UTF8.self)
+        let order = ["\"generation_config\"", "\"response_format\"", "\"stream\"", "\"store\""]
+        let positions = order.map { body.range(of: $0)!.lowerBound }
+        #expect(positions == positions.sorted())
+    }
+
+    @Test func aTranscriptReplacesTheInputAndReplaysModelStepsVerbatim() throws {
+        var request = AnswerPrompt.request(format: .narrative, query: "ignored", context: .example, history: [AnswerTurn(query: "also", answer: "ignored")])
+        let call: JSONValue = ["type": "function_call", "id": "call_1", "name": "narrative", "arguments": ["query": "a vegetarian dinner"], "thought_signature": "sig==", "extra": ["nested": [1, 2]]]
+        request.transcript = [
+            .userText("Request: remember I'm vegetarian, then suggest dinner"),
+            .verbatim(call),
+            .functionResult(FunctionResult(callID: "call_1", name: "narrative", text: "shown")),
+            .modelText("ok"),
+        ]
+        let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
+        let steps = try #require(json["input"] as? [[String: Any]])
+        #expect(steps.map { $0["type"] as? String } == ["user_input", "function_call", "function_result", "model_output"])
+        #expect(try JSONValue(any: steps[1]) == call, "the model's step goes back exactly as it came")
+        #expect(steps[2]["call_id"] as? String == "call_1")
+        #expect(steps[2]["name"] as? String == "narrative")
+        #expect(((steps[2]["result"] as? [[String: Any]])?.first?["text"] as? String) == "shown")
+        #expect(((steps[3]["content"] as? [[String: Any]])?.first?["text"] as? String) == "ok")
+        #expect(json["store"] as? Bool == false)
+    }
+
     @Test func withoutHistoryTheInputIsAString() throws {
         let request = AnswerPrompt.request(format: .narrative, query: "q", context: .example)
         #expect(request.history.isEmpty)
