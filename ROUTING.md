@@ -426,7 +426,7 @@ The answer summary (model, tokens, first-token and total latency, outcome) is ap
 
 ### Values read by Gemini
 
-An instinct may declare the values it takes (`ArgumentSchema` on its `InstinctSpec`). A closed-set value, a choice or a yes/no, is two Jev questions in the routing request (ROUTING.md above: `<instinct>.<field>?` and `<instinct>.<field>`). A free-form value, a number or words, is one whole-body call to `gemini-3.1-flash-lite` within 1 s, made only when the pick declares such a field that its own grammar did not read, and the field is required or the reasoning score leans to a value (at or above 0.5). The reply must match a JSON schema of the fields still missing; nulls are dropped, "68" is read as 68, a choice is checked against its options. Nothing usable, or a required value still missing, shows web results for the words.
+An instinct may declare the values it takes (`ArgumentSchema` on its `InstinctSpec`). A closed-set value, a choice or a yes/no, is two Jev questions in the routing request (ROUTING.md above: `<instinct>.<field>?` and `<instinct>.<field>`). A free-form value, a number or words, is one whole-body call to `gemini-3.1-flash-lite` within 2 s, made only when the pick declares such a field that its own grammar did not read, and the field is required or the reasoning score leans to a value (at or above 0.5). The reply must match a JSON schema of the fields still missing; nulls are dropped, "68" is read as 68, a choice is checked against its options. Nothing usable, or a required value still missing, shows web results for the words.
 
 System instruction:
 

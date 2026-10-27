@@ -21,10 +21,11 @@ import Sites
 //   TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "no not this one" --opened zillow www.zillow.com
 //     (the same, typed over a site the app opened by name; prints whether the query rejects it)
 //   [GEMINI_API_KEY=…] swift run --package-path Packages/Routing report extract "set it to 68 in the bedroom" \
-//       --field temperature:integer --field room:text:optional [--after <q> <a>]...
+//       --field temperature:integer --field room:text:optional [--after <q> <a>]... [--timeout 3]
 //     (the request the engine sends Gemini to read an instinct's free-form values; with the key, one small
 //      metered call, printing the values read, the latency and the tokens. Kinds: text, number, integer,
-//      boolean, choice=a|b; a closed-set kind is Jev's question, not the model's)
+//      boolean, choice=a|b; a closed-set kind is Jev's question, not the model's. --timeout widens the
+//      app's one-second budget, to see how long the reply really takes)
 //   [BRAVE_API_KEY=…] swift run --package-path Packages/Routing report sites "go to hacker news"
 //     (what SiteQuery makes of the query, what the seeded book says, and with the key Brave's candidates)
 //   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Routing report eval [--out results.jsonl]
@@ -217,14 +218,19 @@ case "route":
     }
     if let ms = decision.latencyMs { print("latency: \(ms) ms, input tokens: \(decision.inputTokens ?? 0)") }
 case "extract":
-    let usage = "usage: report extract <query> --field <name>:<kind>[:optional]... [--after <earlier query> <earlier answer>]...  (kinds: text, number, integer, boolean, choice=a|b)"
+    let usage = "usage: report extract <query> --field <name>:<kind>[:optional]... [--after <earlier query> <earlier answer>]... [--timeout <seconds>]  (kinds: text, number, integer, boolean, choice=a|b)"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
     var fields: [ArgumentSchema.Field] = []
     var exchanges: [Exchange] = []
+    var timeout = ValueExtractor.timeout
     while let flag = rest.first {
         switch flag {
+        case "--timeout":
+            guard rest.count >= 2, let seconds = Double(rest[1]), seconds > 0 else { fail(usage) }
+            timeout = .milliseconds(Int(seconds * 1000))
+            rest.removeFirst(2)
         case "--field":
             guard rest.count >= 2 else { fail(usage) }
             let parts = rest[1].split(separator: ":", omittingEmptySubsequences: false).map(String.init)
@@ -263,21 +269,22 @@ case "extract":
         print("set GEMINI_API_KEY to make the call (one small metered request)")
         exit(0)
     }
-    let verdict = await ValueExtractor(client: GeminiClient(apiKey: key)).extract(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free))
+    let verdict = await ValueExtractor(client: GeminiClient(apiKey: key), timeout: timeout).extract(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free))
+    let budget = Double(timeout.components.seconds) + Double(timeout.components.attoseconds) / 1e18
     switch verdict {
     case let .values(values, summary):
         let read = schema.validate(values)
         let tokens = summary.usage.map { "\($0.inputTokens) in, \($0.outputTokens + $0.thoughtTokens) out" } ?? "no usage"
-        print("values (\(summary.latencyMs) ms, \(tokens)):")
+        print("values (\(summary.latencyMs) ms against a \(budget.formatted()) s budget, \(tokens)):")
         for (name, value) in read.sorted(by: { $0.key < $1.key }) {
-            print("  \(name): \(value.any)")
+            print("  \(name): \(value.intValue.map(String.init) ?? value.stringValue ?? "\(value.any)")")
         }
         let dropped = values.keys.filter { read[$0] == nil }.sorted()
         if !dropped.isEmpty { print("  dropped by validation: \(dropped.joined(separator: ", "))") }
-        let missing = schema.missingRequired(in: read).map(\.name)
+        let missing = ArgumentSchema(fields: free).missingRequired(in: read).map(\.name)
         if !missing.isEmpty { print("  required and still missing: \(missing.joined(separator: ", ")) → the app would show web results") }
     case let .failed(summary):
-        print("failed (\(summary.latencyMs) ms): \(summary.outcome)")
+        print("failed (\(summary.latencyMs) ms against a \(budget.formatted()) s budget): \(summary.outcome)")
     }
 case "sites":
     guard arguments.count == 2 else { fail("usage: report sites <query>") }

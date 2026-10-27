@@ -26,7 +26,7 @@ import Testing
         #expect(((format["schema"] as? [String: Any])?["required"] as? [String]) == ["temperature"])
         #expect(json["system_instruction"] as? String == ValueExtractor.system)
         #expect(json["input"] as? String == "Earlier: Searched \"thermostat\"\nRequest: set it to 68 in the bedroom")
-        #expect(ValueExtractor.timeout == .seconds(1))
+        #expect(ValueExtractor.timeout == .seconds(2))
         #expect(ValueExtractor(client: GeminiClient(apiKey: "k")).timeout == ValueExtractor.timeout)
     }
 }

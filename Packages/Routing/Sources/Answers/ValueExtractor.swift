@@ -10,9 +10,11 @@ import Routing
 /// shows web results when nothing usable comes back.
 public struct ValueExtractor: Sendable {
     public static let model = GeminiClient.defaultModel
-    /// A value should cost no more than a routing request's wait; a slower
-    /// reply is a miss, logged as such, and the log argues for more.
-    public static let timeout: Duration = .seconds(1)
+    /// A whole-body reply waits for the whole generation, not a first byte:
+    /// the first real call took 1.05 s for two values (2026-10-27), so one
+    /// second was a miss. A slower reply than this is a miss, logged as
+    /// such, and the log argues for more or less.
+    public static let timeout: Duration = .seconds(2)
     public static let maxOutputTokens = 120
 
     public static let system = """

@@ -178,7 +178,8 @@ Then one Jev request (`EngineRouting.request`, when a key is configured):
   TypeSafe's own function-calling recipe; the decision's `arguments`). A
   free-form value, a number or words, is one small Gemini call after the
   decision (`ValueExtractor`: Flash-Lite, a JSON schema of the fields
-  still missing, 1 s), made only when the pick declares such a field that
+  still missing, 2 s; the first real call took about a second), made only
+  when the pick declares such a field that
   its own grammar did not read and the field is required or the reasoning
   score leans to a value. Nothing usable, or a required value still
   missing, shows web results for the words; the call's outcome rides on the
