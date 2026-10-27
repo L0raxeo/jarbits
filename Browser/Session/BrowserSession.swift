@@ -9,9 +9,10 @@ import UIKit
 import WebKit
 
 /// One browsing session: the layers (one per query, like Safari's tabs,
-/// the current one on screen), the router that turns a query into a plan,
-/// the answer and image streams of the layers that have them, and where the
-/// current query is on its way to the screen.
+/// the current one on screen), the engine that turns a query into a plan
+/// (reading the session's earlier exchanges to do it), the answer and image
+/// streams of the layers that have them, and where the current query is on
+/// its way to the screen.
 ///
 /// Layers: every query opens a new layer; a query that continues the
 /// conversation on screen grows the current one instead. A layer that shows
@@ -71,8 +72,8 @@ final class BrowserSession {
     /// A look through the memories that has not resolved by then goes to
     /// the web, so the wave line never waits on it.
     private let recallTimeout: Duration = .seconds(3)
-    /// What each site name the user asks for means; `LocalFirstRouter`
-    /// reads it too.
+    /// What each site name the user asks for means; the engine's device
+    /// rules read it too.
     let sites: SiteStore
     /// Brave's web search for the sites an unknown name might mean; nil
     /// shows the Google results page for the name instead.
@@ -113,8 +114,13 @@ final class BrowserSession {
     /// The safe area below the page, where the capsule sits: left out of pictures.
     var bottomInset: CGFloat = 0
 
-    private let router: any Router
+    private let engine: Engine
     private let log: DecisionLog
+    /// Names the query in flight. `submit` and every user action that
+    /// changes what is on screen (a reset, a swipe, a tap on a card) give
+    /// out a new one, so a result that comes back for an older query lands
+    /// nowhere: a newer query wins, a reset cancels.
+    private var requestToken = UUID()
     private let cleaner = TranscriptCleaner()
     /// Counts spoken submissions, so a finish or a clean that outlives a
     /// reset never lands.
@@ -134,7 +140,7 @@ final class BrowserSession {
     /// Jev judging a recall shortlist; nil shows the shortlist in word order.
     private let recall: RecallResolver?
 
-    init(router: any Router, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared) {
+    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared) {
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
@@ -142,7 +148,7 @@ final class BrowserSession {
         self.recall = recall
         self.siteSearch = siteSearch
         self.sites = sites
-        self.router = router
+        self.engine = engine
         self.log = log
         self.answerClient = answerClient
         dictation.mayListen = { [weak self] in
@@ -168,39 +174,36 @@ final class BrowserSession {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         takePicture(reason: "leave")   // before anything moves: the page as last seen
-        let thread = thread   // the narrative under the query, if any, before anything moves
+        let exchanges = exchanges   // the session so far, before anything moves
         let opened = openedSite   // and the site opened by name, if one is on screen
+        let shown = current
         lastQuery = trimmed
         stage = .routing
+        let token = UUID()
+        requestToken = token
         Task {
-            let result = await router.route(trimmed, thread: thread, opened: opened)
-            guard trimmed == lastQuery, stage == .routing else { return }   // a newer query won, or cancelled
-            apply(result)
+            let result = await engine.route(trimmed, exchanges: exchanges, current: shown, opened: opened)
+            guard token == requestToken else { return }   // a newer query won, or cancelled
+            #if DEBUG
+            let decision = result.decision
+            let relevance = decision.relevance.map { "[" + $0.map { String(format: "%.2f", $0) }.joined(separator: ", ") + "]" } ?? "none"
+            let reasoning = decision.reasoning.map { String(format: "%.2f", $0) } ?? "none"
+            print("engine \"\(trimmed)\": \(decision.format.rawValue) (\(decision.source)) chain \(decision.chainedCount)/\(decision.relevance?.count ?? 0) relevance \(relevance) reasoning \(reasoning)")
+            #endif
+            apply(result, token: token)
         }
     }
 
-    /// The conversation on screen, oldest first: an answer card, narrative
-    /// or one-line, whose answer is in (or stopped with some text), a
-    /// one-line answer the device computed, or a remembered conversation.
-    /// What a follow-up typed over it may continue. Empty for anything else,
-    /// including an answer still streaming.
+    /// The conversation on screen, oldest first, when the current layer
+    /// shows one; see `Layer.thread`.
     var thread: [AnswerTurn] {
-        guard let layer = current else { return [] }
-        switch layer.plan {
-        case let .answer(format, query, history) where format.isAnswered:
-            guard let answer = layer.answer, answer.query == query, !answer.text.isEmpty else { return [] }
-            switch answer.phase {
-            case .done, .failed: return history + [AnswerTurn(query: query, answer: answer.text, format: format)]
-            case .idle, .waiting, .streaming: return []
-            }
-        case let .localAnswer(format, query, text):
-            return [AnswerTurn(query: query, answer: text, format: format)]
-        case let .memory(record) where record.kind == .narrative || record.turns != nil:
-            let kind: ResponseFormat = record.kind == .oneLine ? .oneLine : .narrative
-            return record.turns ?? record.text.map { [AnswerTurn(query: record.query, answer: $0, format: kind)] } ?? []
-        default:
-            return []
-        }
+        current?.thread ?? []
+    }
+
+    /// This session's exchanges up to the layer on screen, oldest first,
+    /// for the engine: the layers ahead are history a new query drops.
+    var exchanges: [SessionExchange] {
+        layers.prefix(index + 1).flatMap(\.exchanges)
     }
 
     /// The answer card has nothing to fade out for: a follow-up over it is
@@ -212,7 +215,7 @@ final class BrowserSession {
         case .routing, .cleaning:
             return !thread.isEmpty
         case .loading:
-            if case let .answer(_, _, history) = plan { return !history.isEmpty }
+            if case let .answer(_, _, history, _) = plan { return !history.isEmpty }
             return false
         case .idle, .ready:
             return false
@@ -319,6 +322,7 @@ final class BrowserSession {
     /// results a recall fell through to are not memorised as a search.
     func showWebResults() {
         guard let layer = current, !layer.query.isEmpty else { return }
+        requestToken = UUID()
         if case let .siteChoices(name, _) = layer.plan {
             let next = Layer(plan: .web(QueryParser.searchURL(for: name)), query: layer.query, decision: layer.decision)
             next.learningSite = name
@@ -332,6 +336,7 @@ final class BrowserSession {
     /// A page the result links to, such as the article or the site behind an
     /// image: a new layer, the card one swipe back.
     func open(_ url: URL) {
+        requestToken = UUID()
         openPage(url, query: current?.query ?? lastQuery, decision: current?.decision)
     }
 
@@ -346,6 +351,7 @@ final class BrowserSession {
             layer.page?.stop()
         }
         spokenGeneration += 1
+        requestToken = UUID()
         stage = .idle
     }
 
@@ -474,6 +480,7 @@ final class BrowserSession {
     /// page reloads to where its notes say it stood.
     private func move(to target: Int) {
         takePicture(reason: "leave")
+        requestToken = UUID()
         let leaving = current
         Task { await leaving?.page?.pause() }
         #if DEBUG
@@ -548,16 +555,21 @@ final class BrowserSession {
 
     // MARK: Plans
 
-    private func apply(_ result: RouteResult) {
+    /// `token` is the request's; every wait inside checks it still stands.
+    private func apply(_ result: RouteResult, token: UUID) {
         let query = lastQuery
         let decision = result.decision
+        // A memory's query asked again is never a recall of itself; the
+        // mark is read once, whatever the query routed to.
+        let replaying = replayingQuery
+        replayingQuery = nil
         switch result.plan {
         case let .web(url):
             openPage(url, query: query, decision: decision)
             record(decision, query: query)
-        case let .answer(format, query, history):
+        case let .answer(format, query, history, earlier):
             guard answerClient != nil else {
-                // Should not happen: the router only plans answers when a client exists.
+                // Should not happen: the engine only plans answers when a client exists.
                 openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
                 record(decision, query: query)
                 return
@@ -565,7 +577,7 @@ final class BrowserSession {
             // A follow-up that continues the conversation on screen grows
             // its layer; anything else is a new one.
             let layer: Layer
-            if decision.continuesThread, let shown = current {
+            if decision.continuesThread, let shown = current, !shown.thread.isEmpty {
                 layer = shown
                 layer.plan = result.plan
                 layer.query = query
@@ -577,7 +589,7 @@ final class BrowserSession {
             }
             if layer.answer == nil { layer.answer = makeAnswer(for: layer) }
             stage = .loading
-            layer.answer?.start(format: format, query: query, history: history)
+            layer.answer?.start(format: format, query: query, history: history, earlier: earlier)
             // Recorded when the answer finishes, with its summary attached.
         case let .localAnswer(_, query, _):
             open(Layer(plan: result.plan, query: query, decision: decision))
@@ -591,9 +603,8 @@ final class BrowserSession {
             layer.images?.start(query: query)
             // Recorded when the image loads or fails, with its summary attached.
         case let .recall(query):
-            if query == replayingQuery {
+            if query == replaying {
                 // A replayed query is never a recall of itself: web results.
-                replayingQuery = nil
                 record(decision, query: query)
                 openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
                 return
@@ -607,7 +618,7 @@ final class BrowserSession {
             Task { [weak self] in
                 guard let self else { return }
                 let shortlist = await memory.shortlist(query, intent: intent)
-                guard query == lastQuery, stage == .routing else { return }
+                guard token == requestToken else { return }
                 guard !shortlist.isEmpty else {
                     recalled([], shortlisted: 0, source: "words", filters: filters, for: query, decision: decision)
                     return
@@ -631,7 +642,7 @@ final class BrowserSession {
                 // "everything about the dyson": every memory about it, not the one.
                 let collection = filters.collection
                 let verdict = await recall.resolve(query, candidates: shortlist, collection: collection)
-                guard query == lastQuery, stage == .routing else { return }
+                guard token == requestToken else { return }
                 switch verdict {
                 case let .picked(picks, latencyMs):
                     // One sure pick opens; otherwise everything plausible goes
@@ -648,7 +659,7 @@ final class BrowserSession {
             }
             Task { [weak self, timeout = recallTimeout] in
                 try? await Task.sleep(for: timeout)
-                guard let self, query == lastQuery, stage == .routing else { return }
+                guard let self, token == requestToken, stage == .routing else { return }
                 recalled([], shortlisted: nil, source: "error: timeout", filters: filters, for: query, decision: decision)
             }
         case let .site(name):
@@ -657,17 +668,17 @@ final class BrowserSession {
                 // A rejection forgets what the name meant, then asks again.
                 if decision.rejectsSite { await sites.forget(name) }
                 if let entry = await sites.lookup(name) {
-                    guard query == lastQuery, stage == .routing else { return }
+                    guard token == requestToken else { return }
                     await sites.touch(name)
                     opened(name, url: entry.url, query: query, decision: decision)
                     record(decision, query: query, site: SiteSummary(name: name, outcome: "opened", host: entry.host))
                     return
                 }
-                guard query == lastQuery, stage == .routing else { return }
-                await findSites(for: name, query: query, decision: decision)
+                guard token == requestToken else { return }
+                await findSites(for: name, query: query, decision: decision, token: token)
             }
         case .recallPicker, .memory, .siteChoices:
-            // Only ever made by the session itself, never by a router.
+            // Only ever made by the session itself, never by an instinct.
             assertionFailure("\(result.plan) is not a routed plan")
         }
     }
@@ -678,7 +689,7 @@ final class BrowserSession {
     /// Without a client, with nothing found, or on any failure the Google
     /// results page for the name stands in, and the first site tapped off
     /// it is learned instead.
-    private func findSites(for name: String, query: String, decision: RouteDecision) async {
+    private func findSites(for name: String, query: String, decision: RouteDecision, token: UUID) async {
         let outcome = decision.rejectsSite ? "rejected" : "choices"
         guard let siteSearch else {
             fellBackToResults(for: name, query: query, decision: decision, outcome: outcome, reason: "no key")
@@ -690,13 +701,13 @@ final class BrowserSession {
         do {
             let found = try await siteSearch.find(name)
             let latency = Int((clock.now - start) / .milliseconds(1))
-            guard query == lastQuery, stage == .loading else { return }
+            guard token == requestToken else { return }
             open(Layer(plan: .siteChoices(name: name, found), query: query, decision: decision))
             stage = .ready
             record(decision, query: query, site: SiteSummary(name: name, outcome: outcome, candidates: found.count, latencyMs: latency))
         } catch {
             let latency = Int((clock.now - start) / .milliseconds(1))
-            guard query == lastQuery, stage == .loading else { return }
+            guard token == requestToken else { return }
             fellBackToResults(for: name, query: query, decision: decision, outcome: outcome, reason: Self.describe(error), latencyMs: latency)
         }
     }
@@ -715,6 +726,7 @@ final class BrowserSession {
     /// A choice tapped: `name` now means this site, which opens in a new
     /// layer, the choices one swipe back.
     func choose(_ candidate: SiteCandidate, for name: String) {
+        requestToken = UUID()
         let layer = Layer(plan: .web(candidate.url), query: current?.query ?? lastQuery, decision: current?.decision)
         learned(name, url: candidate.url, in: layer)
         open(layer)
@@ -787,6 +799,7 @@ final class BrowserSession {
     func replay(_ record: MemoryRecord) {
         let query = record.query.isEmpty ? record.title : record.query
         lastQuery = query
+        requestToken = UUID()
         let decision = current?.decision
         switch record.kind {
         case .page, .search:
@@ -846,6 +859,13 @@ final class BrowserSession {
     /// the first page after it; later pages answer to their own titles.
     private func addressChanged(to url: URL, title: String, in layer: Layer) {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
+        // The page the layer ended on, kept past an unload: what the engine
+        // sends Jev as this layer's exchange. A new address with no title
+        // yet drops the old page's title rather than keep it.
+        let moved = layer.pageAddress != url
+        layer.pageAddress = url
+        let settledTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !settledTitle.isEmpty { layer.pageTitle = settledTitle } else if moved { layer.pageTitle = nil }
         if QueryParser.isSearchResults(url) {
             rememberSearch(url, in: layer)
         } else {
@@ -976,8 +996,9 @@ final class BrowserSession {
             // A turn of a conversation that brought nothing, or that needs
             // live data: the thread stays and the card says so in the turn's
             // place. "why?" alone would be a poor web search, and the thread
-            // is the context the user is in.
-            break
+            // is the context the user is in. No first text ever came, so
+            // the stage is still loading: the card is on screen, so ready.
+            if layer === current, stage == .loading { stage = .ready }
         case .fellBackToWeb, .needsLiveData:
             // The layer becomes the results page.
             show(QueryParser.searchURL(for: answer.query), in: layer)

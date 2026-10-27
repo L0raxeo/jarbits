@@ -24,6 +24,11 @@ actor SiteStore {
         book().lookup(name)
     }
 
+    /// The book as it stands, for the engine's device rules.
+    func snapshot() -> SiteBook {
+        book()
+    }
+
     /// `name` now opens the origin of `url`; see `SiteBook.learn`.
     func learn(_ name: String, url: URL) {
         var book = book()

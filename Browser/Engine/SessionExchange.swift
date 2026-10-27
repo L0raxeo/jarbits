@@ -1,0 +1,64 @@
+import Foundation
+import Routing
+
+/// One exchange of this session as the engine sends it to Jev, with the
+/// layer it came from and, for an answer, the turn it was.
+struct SessionExchange {
+    let exchange: Exchange
+    let turn: AnswerTurn?
+    let layerID: UUID
+}
+
+extension Layer {
+    /// The conversation this layer shows, oldest first: an answer card,
+    /// narrative or one-line, whose answer is in (or stopped with some
+    /// text), a one-line answer the device computed, or a remembered
+    /// conversation. What a follow-up typed over it may continue. Empty for
+    /// anything else, including an answer still streaming.
+    var thread: [AnswerTurn] {
+        switch plan {
+        case let .answer(format, query, history, _) where format.isAnswered:
+            guard let answer, answer.query == query, !answer.text.isEmpty else { return [] }
+            switch answer.phase {
+            case .done, .failed: return history + [AnswerTurn(query: query, answer: answer.text, format: format)]
+            case .idle, .waiting, .streaming: return []
+            }
+        case let .localAnswer(format, query, text):
+            return [AnswerTurn(query: query, answer: text, format: format)]
+        case let .memory(record) where record.kind == .narrative || record.turns != nil:
+            let kind: ResponseFormat = record.kind == .oneLine ? .oneLine : .narrative
+            return record.turns ?? record.text.map { [AnswerTurn(query: record.query, answer: $0, format: kind)] } ?? []
+        default:
+            return []
+        }
+    }
+
+    /// What this layer got, as exchanges for Jev: one per turn of an
+    /// answer, one for the page it ended on (or the results page it shows),
+    /// one for a picture, a grid of memories or a choice of sites. Nothing
+    /// for an answer still streaming.
+    var exchanges: [SessionExchange] {
+        switch plan {
+        case let .web(url):
+            let address = pageAddress ?? notes?.address ?? url
+            if QueryParser.isSearchResults(address) {
+                let term = QueryParser.searchTerm(in: address)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                return [SessionExchange(exchange: .search(query: query, term: term?.isEmpty == false ? term! : query), turn: nil, layerID: id)]
+            }
+            let title = pageTitle ?? QueryParser.displayText(for: address)
+            return [SessionExchange(exchange: .page(query: query, title: title, address: address), turn: nil, layerID: id)]
+        case .answer, .localAnswer, .memory:
+            return thread.map { SessionExchange(exchange: .answer(query: $0.query, text: $0.answer), turn: $0, layerID: id) }
+        case let .image(query):
+            let title = images.flatMap { $0.results.indices.contains($0.primaryIndex) ? $0.results[$0.primaryIndex].title : nil }
+            return [SessionExchange(exchange: .picture(query: query, subject: ImageQuery.subject(for: query), title: title), turn: nil, layerID: id)]
+        case let .recallPicker(records, title):
+            return [SessionExchange(exchange: .recall(query: query, title: title, titles: records.map(\.title)), turn: nil, layerID: id)]
+        case let .siteChoices(name, candidates):
+            return [SessionExchange(exchange: .site(query: query, name: name, hosts: candidates.map(\.host)), turn: nil, layerID: id)]
+        case .recall, .site:
+            // Resolved by the session before a layer holds them.
+            return []
+        }
+    }
+}

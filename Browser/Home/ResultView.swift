@@ -89,7 +89,7 @@ struct ResultView: View {
             if let host = layer.page {
                 WebResultView(host: host, bottomInset: bottomInset, barCompact: $barCompact)
             }
-        case let .answer(format, query, history):
+        case let .answer(format, query, history, _):
             if let answer = layer.answer {
                 AnswerView(
                     spans: answer.styledSpans, stoppedEarly: answer.stoppedEarly, format: format, clayY: clayY, barCompact: $barCompact,

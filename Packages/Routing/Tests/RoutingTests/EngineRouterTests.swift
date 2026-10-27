@@ -64,16 +64,6 @@ import Testing
         #expect(questions["x0"] != nil && questions["x1"] != nil && questions["x2"] == nil)
     }
 
-    @Test func theOldRouterStillRoutesAThread() async throws {
-        let client = MockTransport.client(status: 200, body: jevResponse(
-            choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9], recency: 0.1, relevance: [0.9]))
-        let decision = await FormatRouter(client: client, locale: Locale(identifier: "en_US")).decide("why?", thread: [AnswerTurn(query: "q", answer: "a")])
-        #expect(decision.continuesThread)
-        let body = try #require(MockTransport.requests.first?.httpBody)
-        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-        #expect(((json["state"] as? [String: Any])?["exchanges"] as? [[String: Any]])?.count == 1)
-    }
-
     @Test func addressBypassesJev() async {
         MockTransport.handler = { _ in
             Issue.record("Jev must not be called for an address")

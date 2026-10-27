@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct BrowserApp: App {
     @State private var session = BrowserSession(
-        router: BrowserSession.makeRouter(),
+        engine: BrowserSession.makeEngine(),
         answerClient: BrowserSession.makeAnswerClient(),
         recall: BrowserSession.makeRecallResolver(),
         siteSearch: BrowserSession.makeSiteSearch()

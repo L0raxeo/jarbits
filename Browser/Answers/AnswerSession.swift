@@ -22,6 +22,8 @@ final class AnswerSession {
     private(set) var query = ""
     /// The conversation this answer continues, oldest first; empty for a fresh one.
     private(set) var history: [AnswerTurn] = []
+    /// What else in this session the query depends on, for the context block.
+    private(set) var earlier: [Exchange] = []
     private(set) var text = ""
     private(set) var phase: Phase = .idle
     private(set) var summary: AnswerSummary?
@@ -76,15 +78,16 @@ final class AnswerSession {
         AnswerMarkup.styled(displayText, for: format)
     }
 
-    func start(format: ResponseFormat, query: String, history: [AnswerTurn] = []) {
+    func start(format: ResponseFormat, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = []) {
         task?.cancel()
         self.format = format
         self.query = query
         self.history = history
+        self.earlier = earlier
         text = ""
         summary = nil
         phase = .waiting
-        task = Task { await run(format: format, query: query, history: history) }
+        task = Task { await run(format: format, query: query, history: history, earlier: earlier) }
     }
 
     func cancel() {
@@ -95,12 +98,12 @@ final class AnswerSession {
         }
     }
 
-    private func run(format: ResponseFormat, query: String, history: [AnswerTurn]) async {
+    private func run(format: ResponseFormat, query: String, history: [AnswerTurn], earlier: [Exchange]) async {
         let clock = ContinuousClock()
         let start = clock.now
         let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
         // An explicit ask ("ask AI what GDP means") sends the question alone; `query` keeps the words as typed.
-        let request = AnswerPrompt.request(format: format, query: AnswerQuery.question(for: query), context: context, model: client.model, history: history)
+        let request = AnswerPrompt.request(format: format, query: AnswerQuery.question(for: query), context: context, model: client.model, history: history, earlier: earlier)
 
         var usage: AnswerUsage?
         var firstTokenMs: Int?

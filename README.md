@@ -91,13 +91,34 @@ UIKit aborted touch delivery whenever such a page was scrolled far.
 
 ## How a query is routed
 
-`BrowserSession.submit` → `Router.route` → `RouteResult { plan, decision }`.
+`BrowserSession.submit` → `Engine.route` → `RouteResult { plan, decision }`.
 `BrowserSession.stage` (`idle`, `routing`, `loading`, `ready`) is what the
 home screen reads to show the line or the result; a page counts as ready
 when WebKit commits its first content (or after 8 s), an answer when its
 first text arrives.
 
-`LocalFirstRouter` wraps whichever router is behind it:
+The engine (`Browser/Engine/Engine.swift`) is the cognitive engine's first
+stage: it knows the session's **exchanges**, every earlier query up to the
+layer on screen and what it got (an answer's text whole, a page's title and
+address, a search's term, a picture's subject, a grid's titles, a choice of
+sites), oldest first, read off the layers (`Layer.exchanges`). The layers
+ahead of the current one are history a new query drops, so they are not
+sent. An answer still streaming has no exchange yet.
+
+**The instinct registry** (`InstinctSpec.all` in the package) is the list
+of everything the app can do for a query, one per `ResponseFormat`, in the
+order Jev sees the options: each one's criterion, the questions it adds to
+the request, the grammar that recognises it on the device when it has one,
+and, for later, the values it takes and its side effects. The app binds each
+spec to an `Instinct` (`Browser/Engine/Instincts.swift`) that turns the
+engine's decision into a `CardPlan`. Adding an instinct is one
+`ResponseFormat` case, one branch in `InstinctSpec.init(format:)` and one
+conformer.
+
+The device's rules go first and cost nothing (`DeviceRouting.decide`, each
+one an instinct's own grammar, tried in `InstinctSpec.deviceRuleOrder`; the
+report CLI and the eval run the same code, so a query routes the same way
+in all three):
 - A request to open a site whose name the book knows ("go to youtube",
   "pull up zillow") opens it at once, with no model and no network: a fixed
   grammar (`SiteQuery`: leads, one opener, articles, the name, trailers)
@@ -127,80 +148,110 @@ first text arrives.
   know, or any other phrasing, goes on to Jev unchanged. Logged as
   `local("time")`; an older `report` build cannot decode a log that holds it.
 
-`JevRouter` (used when a key is configured):
+Then one Jev request (`EngineRouting.request`, when a key is configured):
 - An address (`example.com`, `https://…`) loads directly; Jev is not asked.
-- Anything else is sent as `{ query, locale }` with one Choice question over
-  `ResponseFormat.allCases`. Options reach Jev in declaration order, with
-  `web_results` first, because Jev leans toward the first option when unsure.
-- Confidence below `JevRouting.confidenceFloor` (0.5) falls back to
+- Anything else is sent as `{ query, locale, exchanges?, opened_site_name?,
+  opened_site_host? }` with every question below in that one request,
+  answered in parallel:
+  - the `format` Choice over the registry, options in registry order with
+    `web_results` first, because Jev leans toward the first option when
+    unsure. With exchanges in the state its instructions say to judge the
+    query as the exchanges it depends on make it, and a standalone query as
+    typed (`EngineRouting.contextInstructions`);
+  - the questions the instincts add: `recent` (would the right answer depend
+    on something that may have changed in the last two years?), the seven
+    `recall_*` questions (Jev's reading of a recall ask; see "Recall"), and
+    `rejects` while a site this app opened by name is on screen (below);
+  - one yes/no question per exchange, `x0` for the oldest sent: does the
+    query depend on it to be understood or acted on? The newest 20 exchanges
+    go (`EngineRouting.maxExchanges`); older things are recall's job;
+  - the `reasoning` score, three levels: direct, a value must be read out of
+    the words first, several steps or a condition or a schedule. Logged for
+    now (`reasoning`, `reasoningConfidence`); advanced reasoning acts on it
+    once built. An unsure pick that leans to the top level is still web
+    results, marked `reasoningWanted` in the log.
+- Confidence below `EngineRouting.confidenceFloor` (0.5) falls back to
   `web_results`. Any error or a 2.5 s timeout does the same. One
   exception: an unsure `one_line` or `narrative` pick whose two answer
-  options together reach `JevRouting.answerMassFloor` (0.6) is shown as
+  options together reach `EngineRouting.answerMassFloor` (0.6) is shown as
   picked, logged as `answerSplit`, since Jev was torn between a short and
   a long answer rather than between an answer and a page ("can I use mr
   clean with clorox"). The recency gate still applies.
-- The same request carries a second, yes/no question (`recent`): would the
-  right answer depend on something that may have changed in the last two
-  years, such as whether a person is alive, who holds an office, or a new
-  phrase? A `narrative` or `one_line` pick with that probability at or
-  above `JevRouting.recencyThreshold` (0.5) is shown as web results and
-  logged as `recencyFallback`, because the model's knowledge is months old.
-- A follow-up typed over an answer, a narrative or a one-liner, Gemini's or
-  the device's own (the time in a place), sends the conversation along in
-  the state (`conversation`, every query and every answer so far, oldest
-  first, each answer whole), swaps
-  the format question's instructions for ones that judge the query as the
-  conversation makes it (`JevRouting.followUpInstructions`), and asks a
-  third yes/no question (`continues`): is this a reply to, or a continuation
-  of, that exchange? At or above `JevRouting.continuationThreshold` (0.5)
-  the continuation decides the frame and the pick decides the card: a card
-  format (`ResponseFormat.outranksConversation`: `image`, `map`, `stock`,
-  `recall`, and whatever is added later) picked with confidence shows that
-  card; `one_line` picked with confidence grows the thread with a one-line
-  turn; any other pick, sure or not, grows it with a narrative, which is
-  never wrong inside a thread, only longer; both logged as `continuation`
-  with the pick kept as `suggested`. So "can I use water" after a recipe
-  threads, "and chile?" after "capital of peru" answers in one line,
-  "why?" after it answers in a paragraph, and "pictures of chocolate milk"
-  becomes a picture. Below the threshold the rules above apply unchanged,
-  including prefer-web-when-unsure. Gemini gets the earlier turns of a
-  thread (see "Answer cards").
+- A `narrative` or `one_line` pick with `recent` at or above
+  `EngineRouting.recencyThreshold` (0.5) is shown as web results and logged
+  as `recencyFallback`, because the model's knowledge is months old.
+- **The chain.** The device walks back from the newest exchange and stops
+  at the first one Jev marked irrelevant (below
+  `EngineRouting.relevanceThreshold`, 0.5): those are the exchanges the
+  query depends on (`chain` in the decision; every answer is logged as
+  `relevance`, oldest first, so a yes behind a no stays visible). A chain
+  that ends on an answer exchange (a narrative, a one-liner, the device's
+  own time answer, a replayed conversation) means the query continues that
+  answer: a card format picked with confidence
+  (`ResponseFormat.outranksConversation`: `image`, `map`, `stock`, `recall`,
+  `site`, `video`) shows that card; `one_line` picked with confidence grows
+  the thread with a one-line turn; any other pick, sure or not, grows it
+  with a narrative, which is never wrong inside a thread, only longer; both
+  logged as `continuation` with the pick kept as `suggested`. A chain that
+  ends on a page, a search or a picture keeps the pick, and the chained
+  exchanges reach the instinct as context: a narrative or one-line answer
+  lists them under Gemini's context block ("Earlier in this session:
+  Searched …, Read …"; see "Answer cards"), web results search what the
+  words say. So "wait no I meant brazil" after a search is web results
+  read with the correction, "how big is it" after reading a page is an
+  answer that knows the page, "and chile?" after "capital of peru" answers
+  in one line, "why?" after it answers in a paragraph, and "pictures of it"
+  becomes a picture. With no chain the rules above apply unchanged,
+  including prefer-web-when-unsure.
 - A follow-up typed over a site this app opened by name sends the name and
-  host along in the state (`opened_site_name`, `opened_site_host`) and asks
-  a third yes/no question (`rejects`): does the query say that was the
-  wrong site? At or above `JevRouting.rejectionThreshold` (0.5) the query
-  is a site request for the same name again, whatever the pick: the name
-  is forgotten and the choices shown (see "Sites"), logged as `rejection`
-  with the pick kept as `suggested`. So "no not this one" and "I'm looking
-  for a different website" bring the list back, while "open youtube" over
-  zillow is a new site request and "why is zillow so popular" a narrative.
-- The format maps to a plan in `JevRouter.plan(for:query:thread:opened:)`: `web_results`,
-  `map` and `stock` load a Google results page; `narrative` and `one_line`
-  become `.answer(format:query:history:)`; `image` becomes `.image(query:)`;
+  host along in the state (`opened_site_name`, `opened_site_host`) and the
+  site instinct adds a yes/no question (`rejects`): does the query say that
+  was the wrong site? At or above `EngineRouting.rejectionThreshold` (0.5)
+  the query is a site request for the same name again, whatever the pick:
+  the name is forgotten and the choices shown (see "Sites"), logged as
+  `rejection` with the pick kept as `suggested`. So "no not this one" and
+  "I'm looking for a different website" bring the list back, while "open
+  youtube" over zillow is a new site request and "why is zillow so popular"
+  a narrative.
+- The chosen instinct makes the plan (`Browser/Engine/Instincts.swift`):
+  `web_results`, `map` and `stock` load a Google results page; `narrative`
+  and `one_line` become `.answer(format:query:history:earlier:)`, the
+  device's own time answer `.localAnswer`; `image` becomes
+  `.image(query:)`; `video` loads Google's video results for the term;
   `recall` becomes `.recall(query:)`, which the session resolves from the
   memories (see "Recall"); `site` becomes `.site(name:)`, which the session
   resolves from the site book or a search (see "Sites").
 - Each decision is appended to `Application Support/Browser/decisions.jsonl`
-  (query, format, confidence, every option's probability, model, latency,
-  tokens; for answer plans, the answer summary too; for recalls, how many
-  memories matched; for sites, whether the name was known, searched or
-  rejected). Nothing leaves the phone unless you export it from
-  the ribbon.
+  (query, format, confidence, every option's probability, the relevance
+  answers and the chain, the reasoning score, model, latency, tokens; for
+  answer plans, the answer summary too; for recalls, how many memories
+  matched; for sites, whether the name was known, searched or rejected).
+  Nothing leaves the phone unless you export it.
+
+A result that comes back for a query the user has moved on from lands
+nowhere: every query, reset, swipe and tap on a card gives out a new
+request token, and every wait in the engine's path checks it still stands.
 
 Model is pinned to `jev-1.13.0`. A routing request is roughly 1,200 input
-tokens at $0.042 per million, so a few hundred searches a month cost under a
-cent. To see what Jev makes of one query from the Mac (one real call):
+tokens at $0.042 per million with no exchanges, and each exchange adds its
+text (an answer whole), so a long session's request runs to a few thousand;
+a few hundred searches a month still cost under a cent. To see what Jev
+makes of one query from the Mac (one real call):
 
 ```
 TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "some query"
 ```
 
-It prints the pick, the confidence and every option's probability.
+It prints the pick, the confidence and every option's probability; with
+`--after <query> <answer>`, `--page <query> <title> <url>` or `--search
+<query> <term>` for the session's earlier exchanges, oldest first, it also
+prints the relevance of each, the chain and the reasoning score.
 
 To run the whole golden set, `Packages/Routing/Evals/routing.jsonl` (one
-labelled query per line: the query, what was on screen, the format the app
-should act on, and optionally Jev's pick, the path, the search term, the
-image subject or the site name):
+labelled query per line: the query, the exchanges and the opened site that
+were on screen, the format the app should act on, and optionally the chain
+expected, Jev's pick, the path, the search term, the image subject or the
+site name):
 
 ```
 TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report eval --out before.jsonl
@@ -491,8 +542,8 @@ airbnb, netflix, gmail, github…; the list is `SiteBook.seed`). Names are
 keyed by their words, articles and trailers dropped, so "the Zillow
 website" and "zillow.com" are one entry.
 
-A query with an opener and a known name never reaches Jev: `LocalFirstRouter`
-opens the site, logged as `local("site")`. Everything else is Jev's call
+A query with an opener and a known name never reaches Jev: the site
+instinct's grammar opens the site on the device, logged as `local("site")`. Everything else is Jev's call
 between `site`, `recall` ("pull up that youtube page from earlier" points at
 the past), `web_results` ("zillow homes in austin" is a search on a site)
 and the rest; a `site` pick is then looked up the same way. An unknown name
@@ -558,20 +609,19 @@ coming from it. Nothing of this outlives the app.
 
 | Path | Role |
 |---|---|
-| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the System One client, the decision type, the confidence, recency, continuation and rejection gates, `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, over `QueryTokens`), the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
-| `Browser/Router/Router.swift` | The seam: query in, `RouteResult` out. |
-| `Browser/Router/LocalFirstRouter.swift` | Tries `LocalAnswers`, an explicit ask, the site book and the search verbs before the router it wraps; a hit is a `.localAnswer`, `.answer`, `.site` or `.web` plan. The same chain is `DeviceRouting` in the package, for the report CLI and the eval. |
-| `Browser/Router/JevRouter.swift` | Asks Jev, maps format → `CardPlan`. Also `BrowserSession.makeRouter()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
+| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the instinct registry (`InstinctSpec`), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and decision (`EngineRouting`: the pick, the relevance chain, the reasoning score, the confidence, recency and rejection gates), `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, over `QueryTokens`), the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
+| `Browser/Engine/Engine.swift` | The cognitive engine's first stage: the device's rules (each instinct's grammar), then one Jev request over the registry carrying the session's exchanges, then the chosen instinct's plan; the chain decides whether a follow-up grows the answer on screen or gets the exchanges as context. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
+| `Browser/Engine/Instinct.swift`, `Instincts.swift` | The `Instinct` protocol (a spec from the registry and a `plan` for a decision), the registry of conformers in order, and the nine instincts the app has today. |
+| `Browser/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |
 | `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
 | `Browser/Images/ImageSession.swift` | Loads one picture (and its alternates) for an image plan, Wikipedia first and Brave behind it, and the summary for the log. |
 | `Browser/Memory/MemoryStore.swift` | The memories file: load once, append as results appear, refresh a repeat within a day, drop the oldest past the cap, search by words (`MemorySearch` in the package). |
 | `Browser/Memory/SiteStore.swift` | The site book on disk: seeded on first load, written whole on each learn, touch, forget or clear. |
-| `Browser/Router/LocalRouter.swift` | No-network fallback used when no key is configured. |
-| `Browser/Router/DecisionLog.swift` | JSON Lines log of every decision and answer. |
-| `Browser/Router/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`, `BraveAPIKey`). |
-| `Browser/Router/CardPlan.swift` | The renderable plans. One enum case per card type. |
-| `Browser/Session/BrowserSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the router, applies the plan (a recall through the memories, a site through the book or the search), opens, swipes between, unloads and reloads layers under the live cap, memorises what each layer shows, writes the log. |
-| `Browser/Session/Layer.swift` | One query's result: its plan, its live page (`PageHost`) or the notes left by an unload, its own answer stream and pictures, its opened site and memory chain, when it was last shown. |
+| `Browser/Engine/DecisionLog.swift` | JSON Lines log of every decision and answer. |
+| `Browser/Engine/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`, `BraveAPIKey`). |
+| `Browser/Engine/CardPlan.swift` | The renderable plans. One enum case per card type. |
+| `Browser/Session/BrowserSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the engine, applies the plan (a recall through the memories, a site through the book or the search), opens, swipes between, unloads and reloads layers under the live cap, memorises what each layer shows, writes the log. |
+| `Browser/Session/Layer.swift` | One query's result: its plan, its live page (`PageHost`) or the notes left by an unload, its own answer stream and pictures, the page it ended on (for the engine's exchanges), its opened site and memory chain, when it was last shown. |
 | `Browser/Web/PageHost.swift` | One live web page: the `WebPage` with its watcher, what it pins to its edges, whether it loads or plays or is in use, the navigation watch and the document bookkeeping behind the chrome, the notes read as it goes and the restore when it comes back. |
 | `Browser/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, address changes for the memories, audio, and whether the page is in use), the page's notes for an unload, the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
 | `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `Clay` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar; the page bounces sideways only when it is wider than the screen, since the web view's default rubber-bands sideways on every page and a vertical drag with a little drift wobbles it) `ClayCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard, and swipes between layers) and `QueryField` (the text field the clay and the capsule share). No system toolbars, so no Liquid Glass. |
@@ -585,8 +635,8 @@ Each response format is a module with a stage recorded in code
 web results stand in), `built` (a real card renders), `verified` (used on a
 device and accepted). Today: `web_results` verified; `narrative`,
 `one_line`, `recall`, `image` and `site` built; `map` and `stock` routed. A routed pick shows web
-results and is logged as the pick it was, and `JevRouter` asserts the stage
-and the switch agree. Flip the stage in the same change that adds the card.
+results and is logged as the pick it was, and each instinct asserts the
+stage and its plan agree. Flip the stage in the same change that adds the card.
 
 ## How it routes
 
@@ -600,8 +650,8 @@ instructions and input block for the answer formats. Regenerate it with:
 swift run --package-path Packages/Routing report routing > ROUTING.md
 ```
 
-For what real queries triggered, export `decisions.jsonl` from the Debug
-ribbon (AirDrop or Files to the Mac) and run:
+For what real queries triggered, copy `decisions.jsonl` off the phone (the
+app's container, through Xcode's device window or `xcrun devicectl`) and run:
 
 ```
 swift run --package-path Packages/Routing report decisions ~/Downloads/decisions.jsonl
@@ -620,8 +670,10 @@ swift test --package-path Packages/Routing
 ```
 
 Covers the Jev request body against TypeSafe's documented shape and option
-order, decoding of their example response, the confidence gate, every failure
-path falling back to web results, and the address bypass; the on-device time
+order (the exchanges in the state, a relevance question per exchange, the
+reasoning score), decoding of their example response, the confidence gate,
+the chain and what it grows or hands on, every failure path falling back to
+web results, and the address bypass; the on-device time
 rule (its grammar, every alias and country row resolving to a real zone, and
 the day shift and clock format against a fixed instant); the site grammar,
 the seed, learning and forgetting, the `rejects` question's shape and gate,

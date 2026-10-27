@@ -409,17 +409,3 @@ public struct EngineRouter: Sendable {
         }
     }
 }
-
-/// The first version's router, kept until the app's engine replaces its
-/// routers: a thread on screen is the newest exchanges.
-public struct FormatRouter: Sendable {
-    public var router: EngineRouter
-
-    public init(client: JevClient, locale: Locale = .current, floor: Double = EngineRouting.confidenceFloor) {
-        router = EngineRouter(client: client, locale: locale, floor: floor)
-    }
-
-    public func decide(_ query: String, thread: [AnswerTurn] = [], opened: OpenedSite? = nil) async -> RouteDecision {
-        await router.decide(query, exchanges: Exchange.fromTurns(thread), opened: opened)
-    }
-}

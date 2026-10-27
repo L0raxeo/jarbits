@@ -24,6 +24,11 @@ final class Layer: Identifiable {
     var page: PageHost?
     /// Where the page stood when it was unloaded; nil while live.
     var notes: PageNotes?
+    /// The address and title the page last reported, kept on the layer so
+    /// an unloaded one still knows the page it ended on: what the engine
+    /// sends Jev as this layer's exchange.
+    var pageAddress: URL?
+    var pageTitle: String?
     /// An answer layer's own stream, so its text and turns survive leaving.
     var answer: AnswerSession?
     /// A picture layer's own results.

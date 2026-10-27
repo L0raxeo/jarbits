@@ -2,17 +2,21 @@ import Foundation
 import Routing
 import Sites
 
-/// What the router decided to show for a query.
+/// What the engine decided to show for a query.
 ///
-/// One case per card type. Adding a format means adding a case here,
-/// a card view in `Cards/`, and whatever provider fills it in behind the router.
+/// One case per card type. Adding a format means adding a case here, a
+/// card view in `ResultView`, and whatever provider fills it in behind the
+/// instinct.
 enum CardPlan: Hashable, Sendable {
     /// A full web page: a search results page or a specific site.
     case web(URL)
     /// A model-written answer for `narrative` or `one_line`, streamed by
     /// `AnswerSession`. `history` is the conversation this answer continues,
-    /// oldest first; empty for a fresh answer.
-    case answer(format: ResponseFormat, query: String, history: [AnswerTurn])
+    /// oldest first; empty for a fresh answer. `earlier` is what else in
+    /// this session the query depends on (a search, a page read), listed
+    /// for the model under its context block; empty for a query that stands
+    /// alone.
+    case answer(format: ResponseFormat, query: String, history: [AnswerTurn], earlier: [Exchange])
     /// A picture of the thing named, from Wikipedia or Brave, loaded by `ImageSession`.
     case image(query: String)
     /// A one-line answer computed on the device by a `LocalAnswers` rule; `text` carries the format's markup.
@@ -39,7 +43,7 @@ enum CardPlan: Hashable, Sendable {
     var cardID: String {
         switch self {
         case .web: "web"
-        case let .answer(_, query, history): "answer:" + (history.first?.query ?? query)
+        case let .answer(_, query, history, _): "answer:" + (history.first?.query ?? query)
         case .image: "image"
         case let .localAnswer(_, query, _): "answer:" + query   // the thread grown from it is the same card
         case .recall: "recall"
