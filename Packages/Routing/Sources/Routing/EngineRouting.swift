@@ -91,6 +91,11 @@ public enum EngineRouting {
     /// it once built.
     public static let reasoningThreshold = 1.5
 
+    /// At or above this the score says a value should be read out of the
+    /// words: the engine asks a model for the pick's free-form fields its
+    /// grammar did not read. A required field is read whatever the score.
+    public static let extractionThreshold = 0.5
+
     public static let reasoningInstructions = """
         How much working out does this query need before the chosen format \
         can act on it? Judge the query as the earlier exchanges it depends on \
@@ -103,6 +108,66 @@ public enum EngineRouting {
         "A value must be read out of the words first and passed along: a number, a name, a setting, a place, a time. \"set the thermostat to 68\", \"remind me at 7\", \"translate this to spanish\".",
         "Several steps, a condition or a schedule: an \"and then\", an \"if\", a \"when\", an \"every\", or a comparison across several things. \"find the cheapest flight and book it\", \"if it rains tomorrow move my run to the evening\".",
     ]
+
+    // MARK: An instinct's closed-set values, asked alongside
+
+    /// A closed-set field (a choice, a yes/no) is two questions in the
+    /// routing request, asked for every instinct that declares one and read
+    /// only for the pick: `<instinct>.<field>?`, whether the words say
+    /// anything about it, and `<instinct>.<field>`, which value. TypeSafe's
+    /// own function-calling recipe; a free-form value is read by a model
+    /// instead (`ValueExtractor`).
+    public static func statedQuestionID(_ spec: InstinctSpec, _ field: ArgumentSchema.Field) -> String { "\(spec.id).\(field.name)?" }
+    public static func argumentQuestionID(_ spec: InstinctSpec, _ field: ArgumentSchema.Field) -> String { "\(spec.id).\(field.name)" }
+
+    /// At or above this a field was stated, and a yes/no field is on.
+    public static let argumentThreshold = 0.5
+
+    static func argumentQuestions(for spec: InstinctSpec) -> [(id: String, question: Question)] {
+        spec.arguments.closedSet.flatMap { field -> [(id: String, question: Question)] in
+            let lead = "Read the query as a \(spec.id.replacingOccurrences(of: "_", with: " ")) request. "
+            var out: [(id: String, question: Question)] = [
+                (statedQuestionID(spec, field), .noul(
+                    instructions: lead + "Does the query say anything about its \(field.name) (\(field.description))?",
+                    criteria: (yes: "The words give a value for it, outright or by a plain synonym.", no: "The words leave it unsaid, for the default to fill.")
+                )),
+            ]
+            switch field.kind {
+            case let .choice(options):
+                out.append((argumentQuestionID(spec, field), .choice(
+                    instructions: lead + "Which \(field.name) (\(field.description)) does the query ask for? If it says nothing about it, pick the first.",
+                    options: options.map { ($0, Criterion(what: $0, notFor: "", examples: [])) }
+                )))
+            case .boolean:
+                out.append((argumentQuestionID(spec, field), .noul(
+                    instructions: lead + "Is its \(field.name) (\(field.description)) on, true or wanted?",
+                    criteria: (yes: "The words turn it on, ask for it, or say yes to it.", no: "The words turn it off, decline it, or say nothing about it.")
+                )))
+            case .text, .number, .integer:
+                break
+            }
+            return out
+        }
+    }
+
+    /// The closed-set values the pick's questions gave: a stated field's
+    /// choice, or "true"/"false" for a yes/no.
+    static func arguments(for pick: ResponseFormat, from response: SystemOneResponse, floor: Double, instincts: [InstinctSpec]) -> [String: String] {
+        guard let spec = instincts.first(where: { $0.format == pick }) else { return [:] }
+        var out: [String: String] = [:]
+        for field in spec.arguments.closedSet {
+            guard case let .noul(stated)? = response.answers[statedQuestionID(spec, field)], stated >= argumentThreshold else { continue }
+            switch response.answers[argumentQuestionID(spec, field)] {
+            case let .choice(answer)?:
+                if answer.confidence >= floor { out[field.name] = answer.choice }
+            case let .noul(value)?:
+                out[field.name] = value >= argumentThreshold ? "true" : "false"
+            default:
+                break
+            }
+        }
+        return out
+    }
 
     // MARK: Questions the instincts add
 
@@ -244,6 +309,11 @@ public enum EngineRouting {
                 questions.append(question)
             }
         }
+        for spec in instincts {
+            for question in argumentQuestions(for: spec) where asked.insert(question.id).inserted {
+                questions.append(question)
+            }
+        }
         for (index, exchange) in sent.enumerated() {
             questions.append((relevanceQuestionID(index), .noul(instructions: relevanceInstructions(for: exchange, at: index, of: sent.count), criteria: relevanceCriteria)))
         }
@@ -253,14 +323,16 @@ public enum EngineRouting {
 
     // MARK: The decision
 
-    /// `exchanges` must be what `request` was given, so the relevance
-    /// answers line up with them.
+    /// `exchanges` and `instincts` must be what `request` was given, so the
+    /// relevance answers line up with the exchanges and the argument
+    /// answers with the pick's fields.
     public static func decision(
         from response: SystemOneResponse,
         latencyMs: Int,
         floor: Double = confidenceFloor,
         recencyThreshold: Double = recencyThreshold,
-        exchanges: [Exchange] = []
+        exchanges: [Exchange] = [],
+        instincts: [InstinctSpec] = InstinctSpec.all
     ) -> RouteDecision {
         let sent = Array(exchanges.suffix(maxExchanges))
         func noul(_ id: String) -> Double? {
@@ -369,6 +441,10 @@ public enum EngineRouting {
             chain: chain,
             reasoning: reasoning,
             reasoningConfidence: reasoningConfidence,
+            arguments: {
+                let read = arguments(for: suggested, from: response, floor: floor, instincts: instincts)
+                return read.isEmpty ? nil : read
+            }(),
             source: source
         )
     }
@@ -402,7 +478,7 @@ public struct EngineRouter: Sendable {
         do {
             let response = try await client.systemOne(request)
             let latency = Int((clock.now - start) / .milliseconds(1))
-            return EngineRouting.decision(from: response, latencyMs: latency, floor: floor, exchanges: exchanges)
+            return EngineRouting.decision(from: response, latencyMs: latency, floor: floor, exchanges: exchanges, instincts: instincts)
         } catch {
             let latency = Int((clock.now - start) / .milliseconds(1))
             return RouteDecision(format: .fallback, latencyMs: latency, source: .error(error.summary))

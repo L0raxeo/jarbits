@@ -566,12 +566,12 @@ final class BrowserSession {
         switch result.plan {
         case let .web(url):
             openPage(url, query: query, decision: decision)
-            record(decision, query: query)
+            record(decision, query: query, extraction: result.extraction)
         case let .answer(format, query, history, earlier):
             guard answerClient != nil else {
                 // Should not happen: the engine only plans answers when a client exists.
                 openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
-                record(decision, query: query)
+                record(decision, query: query, extraction: result.extraction)
                 return
             }
             // A follow-up that continues the conversation on screen grows
@@ -587,6 +587,7 @@ final class BrowserSession {
                 layer = Layer(plan: result.plan, query: query, decision: decision)
                 open(layer)
             }
+            layer.extraction = result.extraction
             if layer.answer == nil { layer.answer = makeAnswer(for: layer) }
             stage = .loading
             layer.answer?.start(format: format, query: query, history: history, earlier: earlier)
@@ -594,9 +595,10 @@ final class BrowserSession {
         case let .localAnswer(_, query, _):
             open(Layer(plan: result.plan, query: query, decision: decision))
             stage = .ready
-            record(decision, query: query)
+            record(decision, query: query, extraction: result.extraction)
         case let .image(query):
             let layer = Layer(plan: result.plan, query: query, decision: decision)
+            layer.extraction = result.extraction
             layer.images = makeImages(for: layer)
             open(layer)
             stage = .loading
@@ -970,7 +972,7 @@ final class BrowserSession {
     private func imageFinished(_ summary: ImageSummary, in layer: Layer) {
         guard let images = layer.images, case .image = layer.plan else { return }
         if let decision = layer.decision {
-            record(decision, query: images.query, image: summary)
+            record(decision, query: images.query, image: summary, extraction: layer.extraction)
         }
         if case .fellBackToWeb = summary.outcome {
             // Neither Wikipedia nor Brave had a picture: Google Images for the
@@ -989,7 +991,7 @@ final class BrowserSession {
     private func answerFinished(_ summary: AnswerSummary, in layer: Layer) {
         guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
         if let decision = layer.decision {
-            record(decision, query: answer.query, answer: summary)
+            record(decision, query: answer.query, answer: summary, extraction: layer.extraction)
         }
         switch summary.outcome {
         case .fellBackToWeb where !answer.history.isEmpty, .needsLiveData where !answer.history.isEmpty:
@@ -1019,8 +1021,8 @@ final class BrowserSession {
         }
     }
 
-    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil) {
-        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image, recall: recall, site: site)
+    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil) {
+        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image, recall: recall, site: site, extraction: extraction)
         Task { await log.append(record) }
     }
 

@@ -22,6 +22,11 @@ import Testing
         #expect(markdown.contains("Every earlier turn is sent"))
         #expect(markdown.contains("### Input with earlier exchanges"))
         #expect(markdown.contains("- Searched \"<term searched>\"\n- Read \"<page title>\" (<host>)"), "the block is rendered from the same code")
+        #expect(markdown.contains("### Values read by Gemini"))
+        #expect(markdown.contains(ValueExtractor.system))
+        #expect(markdown.contains("Earlier: Searched \"<term searched>\"\nRequest: <query>"))
+        #expect(markdown.contains("\"required\":[\"temperature\"]"))
+        #expect(markdown.contains("`extraction.outcome = extracted`"))
     }
 
     /// The Gemini half must be in the file; `ImagesTests` checks the whole file.

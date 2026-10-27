@@ -16,13 +16,17 @@ struct Engine {
     /// Jev; nil when no key is configured, in which case anything that is
     /// not an address or a device rule is web results.
     let router: EngineRouter?
+    /// Reads a pick's free-form values out of the words; nil without a
+    /// Gemini key, in which case an instinct that needs one is web results.
+    let extractor: ValueExtractor?
     let sites: SiteStore
     /// A Gemini key is configured, so an answer can be planned.
     let canAnswer: Bool
     let instincts: [any Instinct]
 
-    init(router: EngineRouter?, sites: SiteStore, canAnswer: Bool, instincts: [any Instinct] = InstinctRegistry.all()) {
+    init(router: EngineRouter?, extractor: ValueExtractor? = nil, sites: SiteStore, canAnswer: Bool, instincts: [any Instinct] = InstinctRegistry.all()) {
         self.router = router
+        self.extractor = extractor
         self.sites = sites
         self.canAnswer = canAnswer
         self.instincts = instincts
@@ -47,6 +51,35 @@ struct Engine {
         }
         let decision = outcome.decision
         let chained = Array(sent.suffix(decision.chainedCount))
+        // The values the pick takes: what its grammar read, what Jev read
+        // for its closed-set fields, and what a model reads out of the words
+        // for the free-form ones still missing, when the field is required
+        // or the reasoning score says a value is in the words.
+        let spec = InstinctSpec.spec(for: decision.format)
+        var arguments = outcome.arguments.mapValues(JSONValue.string)
+        for (name, value) in decision.arguments ?? [:] where arguments[name] == nil {
+            arguments[name] = .string(value)
+        }
+        var extraction: ExtractionSummary?
+        let missing = spec.arguments.freeForm.filter { arguments[$0.name] == nil }
+        if !missing.isEmpty, missing.contains(where: \.required) || (decision.reasoning ?? 0) >= EngineRouting.extractionThreshold {
+            if let extractor {
+                let schema = spec.arguments.jsonSchema(only: missing)
+                switch await extractor.extract(query: query, exchanges: chained.map(\.exchange), schema: schema) {
+                case let .values(values, summary):
+                    arguments.merge(spec.arguments.validate(values)) { _, read in read }
+                    extraction = summary
+                case let .failed(summary):
+                    extraction = summary
+                }
+            } else {
+                extraction = ExtractionSummary(model: "", latencyMs: 0, outcome: .failed("no key"))
+            }
+        }
+        if !spec.arguments.missingRequired(in: arguments).isEmpty {
+            // A value the instinct cannot run without never came: the words go to the web.
+            return RouteResult(plan: .web(QueryParser.searchURL(for: query)), decision: decision, extraction: extraction)
+        }
         // A continuation grows the current answer: its own turns go as the
         // thread, so only exchanges from other layers are context there.
         let earlier = chained.filter { !(decision.continuesThread && $0.layerID == current?.id) }.map(\.exchange)
@@ -56,9 +89,10 @@ struct Engine {
             opened: opened,
             canAnswer: canAnswer,
             thread: decision.continuesThread ? (current?.thread ?? []) : [],
-            earlier: earlier
+            earlier: earlier,
+            arguments: arguments
         )
-        return RouteResult(plan: instinct(for: decision.format).plan(context), decision: decision)
+        return RouteResult(plan: instinct(for: decision.format).plan(context), decision: decision, extraction: extraction)
     }
 
     private func instinct(for format: ResponseFormat) -> any Instinct {
@@ -67,18 +101,22 @@ struct Engine {
     }
 }
 
-/// What to render, and the decision behind it for the log.
+/// What to render, the decision behind it for the log, and how reading
+/// the pick's values went when a model was asked.
 struct RouteResult: Sendable {
     var plan: CardPlan
     var decision: RouteDecision
+    var extraction: ExtractionSummary? = nil
 }
 
 extension BrowserSession {
     /// Jev behind the device's rules when a key is configured; without one
-    /// the rules alone, and web results for the rest.
+    /// the rules alone, and web results for the rest. Gemini reads a
+    /// pick's free-form values when its key is configured.
     static func makeEngine(sites: SiteStore = .shared) -> Engine {
         let router = Secrets.typeSafeAPIKey.map { EngineRouter(client: JevClient(apiKey: $0)) }
-        return Engine(router: router, sites: sites, canAnswer: Secrets.geminiAPIKey != nil)
+        let extractor = Secrets.geminiAPIKey.map { ValueExtractor(client: GeminiClient(apiKey: $0)) }
+        return Engine(router: router, extractor: extractor, sites: sites, canAnswer: Secrets.geminiAPIKey != nil)
     }
 
     /// Brave's web search for the sites an unknown name might mean, when a

@@ -424,6 +424,38 @@ A call that needs the whole reply at once (a value read out of the words, a plan
 
 The answer summary (model, tokens, first-token and total latency, outcome) is appended to the same `decisions.jsonl` line as the routing decision.
 
+### Values read by Gemini
+
+An instinct may declare the values it takes (`ArgumentSchema` on its `InstinctSpec`). A closed-set value, a choice or a yes/no, is two Jev questions in the routing request (ROUTING.md above: `<instinct>.<field>?` and `<instinct>.<field>`). A free-form value, a number or words, is one whole-body call to `gemini-3.1-flash-lite` within 1 s, made only when the pick declares such a field that its own grammar did not read, and the field is required or the reasoning score leans to a value (at or above 0.5). The reply must match a JSON schema of the fields still missing; nulls are dropped, "68" is read as 68, a choice is checked against its options. Nothing usable, or a required value still missing, shows web results for the words.
+
+System instruction:
+
+```
+You read values out of a request made to a phone's browser. Reply with JSON matching the schema and nothing else.
+A value is what the request says: a number as a number, words as the words used. Anything the request does not state is null.
+Never guess, never add fields. Earlier exchanges of the session may come before the request, oldest first; "it", "that" and the like resolve against them.
+```
+
+Input, with the chained exchanges first, and the schema for a thermostat instinct that takes a required `temperature` and an optional `room`:
+
+```
+Earlier: Searched "<term searched>"
+Request: <query>
+```
+
+```json
+{"additionalProperties":false,"properties":{"room":{"description":"which room, when one is named","type":["string","null"]},"temperature":{"description":"the degrees asked for","type":"integer"}},"required":["temperature"],"type":"object"}
+```
+
+| Outcome | Then | Logged as |
+|---|---|---|
+| At least one value read | The instinct runs with it | `extraction.outcome = extracted` |
+| The reply held no value | Web results when a required field is empty, else the instinct runs without it | `empty` |
+| Failed, timed out, or not JSON | Web results when a required field is empty, else the instinct runs without it | `failed(reason)` |
+| No Gemini key | Web results when a required field is empty | `failed("no key")` |
+
+The extraction summary (model, latency, tokens, the fields read, the outcome) rides on the same `decisions.jsonl` line.
+
 ## After routing: Wikipedia images
 
 An `image` pick is filled by `ImageLookup` in `Packages/Routing/Sources/Images` from two sources in order: Wikipedia (`ImageSearch`), free and without a key, whose article carries the picture's licence; then, only when Wikipedia answered and had nothing, Brave's image search (`BraveImageSearch`) with the same key as the site search (`BRAVE_API_KEY`, $5 per 1,000 requests), for a subject Wikipedia has no article on (a product from this year, say). Every Wikipedia request sends `User-Agent: Browser/0.1 (com.lorcancheng.browser)`.

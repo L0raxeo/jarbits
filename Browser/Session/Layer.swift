@@ -19,6 +19,9 @@ final class Layer: Identifiable {
     var query: String
     /// Why the plan is what it is; logged with the record.
     var decision: RouteDecision?
+    /// How reading the plan's values out of the words went, when a model
+    /// was asked; logged with the record once the layer's result is in.
+    var extraction: ExtractionSummary?
     /// The live page of a web layer; nil while the layer is unloaded or
     /// shows a card.
     var page: PageHost?

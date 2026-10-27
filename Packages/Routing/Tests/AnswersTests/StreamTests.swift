@@ -132,6 +132,75 @@ import Testing
         await #expect(throws: GeminiError.timeout) { try await slow.send(request, timeout: .milliseconds(50)) }
     }
 
+    /// A whole-body reply holding `text` as its one `model_output` part.
+    private func body(_ text: String) -> String {
+        let escaped = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        return "{\"id\":\"int_3\",\"status\":\"completed\",\"steps\":[{\"type\":\"model_output\",\"content\":[{\"type\":\"text\",\"text\":\"\(escaped)\"}]}],\"usage\":{\"total_input_tokens\":200,\"total_output_tokens\":9,\"total_thought_tokens\":0}}"
+    }
+
+    private let thermostat = ValueExtractorTests.thermostat
+
+    @Test func theExtractorReadsValuesWithoutNulls() async {
+        let client = MockGeminiTransport.client(status: 200, body: body(#"{"temperature": 68, "room": null}"#))
+        let verdict = await ValueExtractor(client: client).extract(query: "set it to 68", exchanges: [], schema: thermostat)
+        guard case let .values(values, summary) = verdict else {
+            Issue.record("expected values, got \(verdict)")
+            return
+        }
+        #expect(values == ["temperature": 68])
+        #expect(summary.outcome == .extracted)
+        #expect(summary.fields == ["temperature"])
+        #expect(summary.usage == AnswerUsage(inputTokens: 200, outputTokens: 9, thoughtTokens: 0))
+        #expect(summary.model == GeminiClient.defaultModel)
+        #expect(summary.latencyMs >= 0)
+        let sent = MockGeminiTransport.requests.first?.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        #expect(sent?["stream"] as? Bool == false)
+        #expect((sent?["response_format"] as? [String: Any])?["mime_type"] as? String == "application/json")
+    }
+
+    @Test func theExtractorCallsProseAnEmptyObjectAndAFailureMisses() async {
+        let prose = MockGeminiTransport.client(status: 200, body: body("I think 68 degrees."))
+        if case let .failed(summary) = await ValueExtractor(client: prose).extract(query: "x", exchanges: [], schema: thermostat), case let .failed(reason) = summary.outcome {
+            #expect(reason.hasPrefix("not an object"))
+        } else {
+            Issue.record("prose is a failure")
+        }
+        let empty = MockGeminiTransport.client(status: 200, body: body(#"{"temperature": null, "room": null}"#))
+        if case let .failed(summary) = await ValueExtractor(client: empty).extract(query: "x", exchanges: [], schema: thermostat) {
+            #expect(summary.outcome == .empty)
+            #expect(summary.usage?.inputTokens == 200)
+        } else {
+            Issue.record("nothing read is empty")
+        }
+        let http = MockGeminiTransport.client(status: 400, body: "bad schema")
+        if case let .failed(summary) = await ValueExtractor(client: http).extract(query: "x", exchanges: [], schema: thermostat) {
+            #expect(summary.outcome == .failed("http 400: bad schema"))
+        } else {
+            Issue.record("an HTTP error is a failure")
+        }
+        let failed = MockGeminiTransport.client(status: 200, body: #"{"id":"x","status":"failed","steps":[]}"#)
+        if case let .failed(summary) = await ValueExtractor(client: failed).extract(query: "x", exchanges: [], schema: thermostat) {
+            #expect(summary.outcome == .failed("status failed"))
+        } else {
+            Issue.record("a failed status is a failure")
+        }
+    }
+
+    @Test func theExtractorGivesUpAtItsBudget() async {
+        MockGeminiTransport.handler = { _ in
+            Thread.sleep(forTimeInterval: 0.3)
+            return (200, Data(#"{"status":"completed","steps":[]}"#.utf8))
+        }
+        MockGeminiTransport.requests = []
+        let extractor = ValueExtractor(client: GeminiClient(apiKey: "test-key", session: MockGeminiTransport.session()), timeout: .milliseconds(50))
+        if case let .failed(summary) = await extractor.extract(query: "x", exchanges: [], schema: thermostat) {
+            #expect(summary.outcome == .failed("timeout"))
+            #expect(summary.latencyMs < 250, "gave up at the budget, not at the reply")
+        } else {
+            Issue.record("a slow reply is a timeout")
+        }
+    }
+
     @Test func slowHeadersTimeOut() async {
         MockGeminiTransport.handler = { _ in
             Thread.sleep(forTimeInterval: 0.5)

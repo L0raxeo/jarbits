@@ -14,8 +14,10 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     public var recall: RecallSummary?
     /// How a site request fared: opened from the book, choices shown, or the results page.
     public var site: SiteSummary?
+    /// How reading the pick's free-form values out of the words fared, when a model was asked.
+    public var extraction: ExtractionSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
@@ -23,6 +25,7 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
         self.image = image
         self.recall = recall
         self.site = site
+        self.extraction = extraction
     }
 
     public static let encoder: JSONEncoder = {
@@ -252,6 +255,22 @@ public enum DecisionsReport {
             out.append("\(sites.count) site requests: \(opened) opened a remembered site, \(choices.count) showed choices, \(results.count) fell back to web results, \(rejected) rejected the site on screen. Median search latency \(median(choices.compactMap(\.1.latencyMs))).")
             if !results.isEmpty {
                 out.append("Fell back: " + results.suffix(10).map { "\"\($0.1.name)\": \($0.1.reason ?? "?")" }.joined(separator: ", "))
+            }
+            out.append("")
+        }
+
+        let extractions = records.compactMap { record in record.extraction.map { (record, $0) } }
+        if !extractions.isEmpty {
+            out.append("## Values read")
+            out.append("")
+            let read = extractions.filter { $0.1.outcome == .extracted }.count
+            let empty = extractions.filter { $0.1.outcome == .empty }.count
+            let failed = extractions.filter { if case .failed = $0.1.outcome { true } else { false } }
+            out.append("\(extractions.count) asked a model for a value: \(read) read one, \(empty) came back empty, \(failed.count) failed. Median latency \(median(extractions.map(\.1.latencyMs))).")
+            if !failed.isEmpty {
+                out.append("Failed: " + failed.suffix(10).map { record, summary in
+                    if case let .failed(reason) = summary.outcome { "\"\(record.query)\": \(reason)" } else { "\"\(record.query)\"" }
+                }.joined(separator: ", "))
             }
             out.append("")
         }

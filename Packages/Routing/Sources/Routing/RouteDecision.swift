@@ -37,6 +37,10 @@ public struct RouteDecision: Codable, Sendable, Equatable {
     /// words, 2 several steps, a condition or a schedule. Nil when unanswered.
     public var reasoning: Double?
     public var reasoningConfidence: Double?
+    /// The pick's closed-set values Jev read out of the words, by field
+    /// name: a choice's option, "true" or "false" for a yes/no. Nil when
+    /// the pick declares none or none was stated.
+    public var arguments: [String: String]?
     public var source: Source
 
     public enum Source: Codable, Sendable, Equatable {
@@ -87,6 +91,7 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         chain: Int? = nil,
         reasoning: Double? = nil,
         reasoningConfidence: Double? = nil,
+        arguments: [String: String]? = nil,
         source: Source
     ) {
         self.format = format
@@ -104,6 +109,7 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         self.chain = chain
         self.reasoning = reasoning
         self.reasoningConfidence = reasoningConfidence
+        self.arguments = arguments
         self.source = source
     }
 

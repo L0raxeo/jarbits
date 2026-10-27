@@ -150,6 +150,43 @@ import Testing
         #expect(request.questions.last?.id == "reasoning")
     }
 
+    @Test func anInstinctsClosedSetFieldsAreTwoQuestionsEachReadForThePickOnly() throws {
+        let thermostat = InstinctSpec(format: .stock, arguments: ArgumentSchema(fields: [
+            .init(name: "mode", kind: .choice(["heat", "cool"]), description: "heat or cool"),
+            .init(name: "fan", kind: .boolean, description: "the fan on", required: false),
+            .init(name: "temperature", kind: .integer, description: "the degrees"),
+        ]))
+        let instincts = InstinctSpec.all.map { $0.format == .stock ? thermostat : $0 }
+        let request = EngineRouting.request(for: "cool it to 68 with the fan", locale: locale, instincts: instincts)
+        let ids = request.questions.map(\.id)
+        #expect(ids.contains("stock.mode?") && ids.contains("stock.mode") && ids.contains("stock.fan?") && ids.contains("stock.fan"))
+        #expect(!ids.contains("stock.temperature?") && !ids.contains("stock.temperature"), "a free-form field is a model's to read, not Jev's")
+        #expect(ids.last == "reasoning")
+        #expect(ids.firstIndex(of: "stock.mode?")! > ids.firstIndex(of: "recall_all")!, "after the instincts' own questions")
+        let json = try #require(JSONSerialization.jsonObject(with: try request.jsonData()) as? [String: Any])
+        let questions = try #require(json["questions"] as? [String: Any])
+        let mode = try #require(questions["stock.mode"] as? [String: Any])
+        #expect(mode["type"] as? String == "choice")
+        #expect(Set((mode["criteria"] as? [String: Any])?.keys.map { $0 } ?? []) == ["heat", "cool"])
+        #expect((mode["instructions"] as? String)?.contains("heat or cool") == true)
+        #expect((questions["stock.mode?"] as? [String: Any])?["type"] as? String == "noul")
+        #expect((questions["stock.fan"] as? [String: Any])?["type"] as? String == "noul")
+
+        func decide(_ json: String) throws -> RouteDecision {
+            EngineRouting.decision(from: try JSONDecoder().decode(SystemOneResponse.self, from: Data(json.utf8)), latencyMs: 1, instincts: instincts)
+        }
+        let stated = try decide(jevResponse(choice: "stock", confidence: 0.9, probabilities: ["stock": 0.9], nouls: ["stock.mode?": 0.9, "stock.fan?": 0.8, "stock.fan": 0.95], choices: ["stock.mode": (choice: "cool", confidence: 0.8)]))
+        #expect(stated.arguments == ["mode": "cool", "fan": "true"])
+        let unstated = try decide(jevResponse(choice: "stock", confidence: 0.9, probabilities: ["stock": 0.9], nouls: ["stock.mode?": 0.2, "stock.fan?": 0.1, "stock.fan": 0.95], choices: ["stock.mode": (choice: "cool", confidence: 0.8)]))
+        #expect(unstated.arguments == nil, "a value the words did not state is left to the default")
+        let unsure = try decide(jevResponse(choice: "stock", confidence: 0.9, probabilities: ["stock": 0.9], nouls: ["stock.mode?": 0.9, "stock.fan?": 0.9, "stock.fan": 0.2], choices: ["stock.mode": (choice: "cool", confidence: 0.3)]))
+        #expect(unsure.arguments == ["fan": "false"], "an unsure choice is dropped; a stated no is a no")
+        let otherPick = try decide(jevResponse(choice: "web_results", confidence: 0.9, probabilities: ["web_results": 0.9], nouls: ["stock.mode?": 0.9, "stock.fan?": 0.8, "stock.fan": 0.95], choices: ["stock.mode": (choice: "cool", confidence: 0.8)]))
+        #expect(otherPick.arguments == nil, "read for the pick only")
+        #expect(try JSONDecoder().decode(RouteDecision.self, from: JSONEncoder().encode(stated)).arguments == ["mode": "cool", "fan": "true"])
+        #expect(EngineRouting.request(for: "x", locale: locale).questions.map(\.id) == ["format", "recent"] + EngineRouting.recallQuestionIDs + ["reasoning"], "no instinct declares a closed-set field today")
+    }
+
     @Test func scoreAnswerDecodes() throws {
         let json = """
         { "model": "jev-1.13.0", "answers": { "reasoning": { "type": "score", "score": 1.62, "confidence": 0.71, "probabilities": { "0": 0.08, "1": 0.22, "2": 0.7 }, "legend": { "0": "Direct", "1": "A value", "2": "Several steps" } } }, "usage": { "input_tokens": 1, "output_tokens": 0 } }

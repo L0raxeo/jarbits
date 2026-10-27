@@ -59,6 +59,52 @@ public enum AnswersReport {
         out.append("| No Gemini key configured | Web results; Jev's pick is still logged | the decision alone |")
         out.append("")
         out.append("The answer summary (model, tokens, first-token and total latency, outcome) is appended to the same `decisions.jsonl` line as the routing decision.")
+        out.append("")
+        out += valuesSection()
         return out.joined(separator: "\n") + "\n"
+    }
+
+    /// The one small call that reads an instinct's free-form values out of
+    /// the words, quoted from the same `ValueExtractor` the engine uses.
+    private static func valuesSection() -> [String] {
+        let sample = ArgumentSchema(fields: [
+            .init(name: "temperature", kind: .integer, description: "the degrees asked for"),
+            .init(name: "room", kind: .text, description: "which room, when one is named", required: false),
+        ])
+        let request = ValueExtractor.request(
+            query: "<query>",
+            exchanges: [.search(query: "<earlier query>", term: "<term searched>")],
+            schema: sample.jsonSchema()
+        )
+        var out: [String] = []
+        out.append("### Values read by Gemini")
+        out.append("")
+        out.append("An instinct may declare the values it takes (`ArgumentSchema` on its `InstinctSpec`). A closed-set value, a choice or a yes/no, is two Jev questions in the routing request (ROUTING.md above: `<instinct>.<field>?` and `<instinct>.<field>`). A free-form value, a number or words, is one whole-body call to `\(ValueExtractor.model)` within \(ValueExtractor.timeout.components.seconds) s, made only when the pick declares such a field that its own grammar did not read, and the field is required or the reasoning score leans to a value (at or above \(EngineRouting.extractionThreshold.formatted())). The reply must match a JSON schema of the fields still missing; nulls are dropped, \"68\" is read as 68, a choice is checked against its options. Nothing usable, or a required value still missing, shows web results for the words.")
+        out.append("")
+        out.append("System instruction:")
+        out.append("")
+        out.append("```")
+        out.append(ValueExtractor.system)
+        out.append("```")
+        out.append("")
+        out.append("Input, with the chained exchanges first, and the schema for a thermostat instinct that takes a required `temperature` and an optional `room`:")
+        out.append("")
+        out.append("```")
+        out.append(request.input)
+        out.append("```")
+        out.append("")
+        out.append("```json")
+        out.append(String(decoding: (try? sample.jsonSchema().data()) ?? Data(), as: UTF8.self))
+        out.append("```")
+        out.append("")
+        out.append("| Outcome | Then | Logged as |")
+        out.append("|---|---|---|")
+        out.append("| At least one value read | The instinct runs with it | `extraction.outcome = extracted` |")
+        out.append("| The reply held no value | Web results when a required field is empty, else the instinct runs without it | `empty` |")
+        out.append("| Failed, timed out, or not JSON | Web results when a required field is empty, else the instinct runs without it | `failed(reason)` |")
+        out.append("| No Gemini key | Web results when a required field is empty | `failed(\"no key\")` |")
+        out.append("")
+        out.append("The extraction summary (model, latency, tokens, the fields read, the outcome) rides on the same `decisions.jsonl` line.")
+        return out
     }
 }

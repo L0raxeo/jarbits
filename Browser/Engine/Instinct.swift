@@ -18,6 +18,10 @@ struct InstinctContext {
     /// The chained exchanges that are not the thread: a search made, a page
     /// read, a picture looked at; oldest first.
     let earlier: [Exchange]
+    /// The values the instinct takes, by field name: what its grammar read,
+    /// what Jev read for a closed-set field, what a model read out of the
+    /// words for a free-form one. Empty for an instinct that takes none.
+    let arguments: [String: JSONValue]
 
     var decision: RouteDecision { outcome.decision }
 }

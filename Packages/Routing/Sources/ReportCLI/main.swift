@@ -20,6 +20,11 @@ import Sites
 //      relevance of each, the chain and the reasoning score)
 //   TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "no not this one" --opened zillow www.zillow.com
 //     (the same, typed over a site the app opened by name; prints whether the query rejects it)
+//   [GEMINI_API_KEY=…] swift run --package-path Packages/Routing report extract "set it to 68 in the bedroom" \
+//       --field temperature:integer --field room:text:optional [--after <q> <a>]...
+//     (the request the engine sends Gemini to read an instinct's free-form values; with the key, one small
+//      metered call, printing the values read, the latency and the tokens. Kinds: text, number, integer,
+//      boolean, choice=a|b; a closed-set kind is Jev's question, not the model's)
 //   [BRAVE_API_KEY=…] swift run --package-path Packages/Routing report sites "go to hacker news"
 //     (what SiteQuery makes of the query, what the seeded book says, and with the key Brave's candidates)
 //   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Routing report eval [--out results.jsonl]
@@ -211,6 +216,69 @@ case "route":
         print("  \(name.padding(toLength: 12, withPad: " ", startingAt: 0)) \(p.formatted(.number.precision(.fractionLength(3))))")
     }
     if let ms = decision.latencyMs { print("latency: \(ms) ms, input tokens: \(decision.inputTokens ?? 0)") }
+case "extract":
+    let usage = "usage: report extract <query> --field <name>:<kind>[:optional]... [--after <earlier query> <earlier answer>]...  (kinds: text, number, integer, boolean, choice=a|b)"
+    var rest = Array(arguments.dropFirst())
+    guard let query = rest.first else { fail(usage) }
+    rest.removeFirst()
+    var fields: [ArgumentSchema.Field] = []
+    var exchanges: [Exchange] = []
+    while let flag = rest.first {
+        switch flag {
+        case "--field":
+            guard rest.count >= 2 else { fail(usage) }
+            let parts = rest[1].split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count >= 2, !parts[0].isEmpty else { fail(usage) }
+            let kind: ArgumentSchema.Field.Kind
+            switch parts[1] {
+            case "text": kind = .text
+            case "number": kind = .number
+            case "integer": kind = .integer
+            case "boolean": kind = .boolean
+            default:
+                guard parts[1].hasPrefix("choice=") else { fail(usage) }
+                kind = .choice(parts[1].dropFirst("choice=".count).split(separator: "|").map(String.init))
+            }
+            let required = parts.count < 3 || parts[2] != "optional"
+            fields.append(.init(name: parts[0], kind: kind, description: parts[0].replacingOccurrences(of: "_", with: " "), required: required))
+            rest.removeFirst(2)
+        case "--after":
+            guard rest.count >= 3 else { fail(usage) }
+            exchanges.append(.answer(query: rest[1], text: rest[2]))
+            rest.removeFirst(3)
+        default: fail(usage)
+        }
+    }
+    guard !fields.isEmpty else { fail(usage) }
+    let schema = ArgumentSchema(fields: fields)
+    let free = schema.freeForm
+    guard !free.isEmpty else { fail("every field is closed-set: those are Jev's questions in the routing request, not a model call") }
+    if free.count < fields.count {
+        print("closed-set fields (Jev's questions, left out of the call): \(schema.closedSet.map(\.name).joined(separator: ", "))")
+    }
+    let request = ValueExtractor.request(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free))
+    print("request body:")
+    print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
+    guard let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
+        print("set GEMINI_API_KEY to make the call (one small metered request)")
+        exit(0)
+    }
+    let verdict = await ValueExtractor(client: GeminiClient(apiKey: key)).extract(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free))
+    switch verdict {
+    case let .values(values, summary):
+        let read = schema.validate(values)
+        let tokens = summary.usage.map { "\($0.inputTokens) in, \($0.outputTokens + $0.thoughtTokens) out" } ?? "no usage"
+        print("values (\(summary.latencyMs) ms, \(tokens)):")
+        for (name, value) in read.sorted(by: { $0.key < $1.key }) {
+            print("  \(name): \(value.any)")
+        }
+        let dropped = values.keys.filter { read[$0] == nil }.sorted()
+        if !dropped.isEmpty { print("  dropped by validation: \(dropped.joined(separator: ", "))") }
+        let missing = schema.missingRequired(in: read).map(\.name)
+        if !missing.isEmpty { print("  required and still missing: \(missing.joined(separator: ", ")) → the app would show web results") }
+    case let .failed(summary):
+        print("failed (\(summary.latencyMs) ms): \(summary.outcome)")
+    }
 case "sites":
     guard arguments.count == 2 else { fail("usage: report sites <query>") }
     let query = arguments[1]
@@ -393,5 +461,5 @@ case "sample":
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report routing | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | sites <query> | eval [cases.jsonl] [--only <format>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report routing | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | sites <query> | eval [cases.jsonl] [--only <format>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }

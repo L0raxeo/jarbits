@@ -54,17 +54,18 @@ final class MockTransport: URLProtocol {
 
 /// A response in the shape TypeSafe documents, with `format` as the question
 /// id. `relevance` answers the per-exchange questions `x0`, `x1`, … in order;
-/// `reasoning` answers the score.
+/// `reasoning` answers the score; `choices` answers other Choice questions by id.
 func jevResponse(
     choice: String, confidence: Double, probabilities: [String: Double],
     recency: Double? = nil, rejects: Double? = nil, relevance: [Double]? = nil,
     reasoning: (score: Double, confidence: Double)? = nil,
-    nouls: [String: Double] = [:], model: String = "jev-1.13.0"
+    nouls: [String: Double] = [:], choices: [String: (choice: String, confidence: Double)] = [:], model: String = "jev-1.13.0"
 ) -> String {
     let probs = probabilities.map { "\"\($0.key)\": \($0.value)" }.joined(separator: ", ")
     var extra = (recency.map { ", \"recent\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
         + (rejects.map { ", \"rejects\": { \"type\": \"noul\", \"noul\": \($0) }" } ?? "")
         + nouls.sorted { $0.key < $1.key }.map { ", \"\($0.key)\": { \"type\": \"noul\", \"noul\": \($0.value) }" }.joined()
+        + choices.sorted { $0.key < $1.key }.map { ", \"\($0.key)\": { \"type\": \"choice\", \"choice\": \"\($0.value.choice)\", \"confidence\": \($0.value.confidence), \"probabilities\": { \"\($0.value.choice)\": \($0.value.confidence) } }" }.joined()
     for (index, value) in (relevance ?? []).enumerated() {
         extra += ", \"\(EngineRouting.relevanceQuestionID(index))\": { \"type\": \"noul\", \"noul\": \(value) }"
     }

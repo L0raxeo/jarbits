@@ -55,6 +55,82 @@ public struct ArgumentSchema: Sendable, Equatable {
     public var isEmpty: Bool { fields.isEmpty }
     public var freeForm: [Field] { fields.filter(\.isFreeForm) }
     public var closedSet: [Field] { fields.filter { !$0.isFreeForm } }
+
+    /// A JSON schema of an object with these fields (`only` narrows it to
+    /// some), as Gemini's `response_format` takes it: each field a
+    /// property with its description, the required ones listed, the rest
+    /// nullable, no other keys allowed.
+    public func jsonSchema(only chosen: [Field]? = nil) -> JSONValue {
+        let fields = chosen ?? self.fields
+        var properties: [String: JSONValue] = [:]
+        for field in fields {
+            var property: [String: JSONValue] = ["description": .string(field.description)]
+            let type: String
+            switch field.kind {
+            case .text: type = "string"
+            case .number: type = "number"
+            case .integer: type = "integer"
+            case .boolean: type = "boolean"
+            case let .choice(options):
+                type = "string"
+                property["enum"] = .array(options.map(JSONValue.string))
+            }
+            property["type"] = field.required ? .string(type) : .array([.string(type), .string("null")])
+            properties[field.name] = .object(property)
+        }
+        return .object([
+            "type": "object",
+            "properties": .object(properties),
+            "required": .array(fields.filter(\.required).map { .string($0.name) }),
+            "additionalProperties": false,
+        ])
+    }
+
+    /// What a model returned, kept to the fields declared: unknown keys and
+    /// nulls dropped, "68" read as a number, a choice checked against its
+    /// options, "yes" read as true.
+    public func validate(_ values: [String: JSONValue]) -> [String: JSONValue] {
+        var out: [String: JSONValue] = [:]
+        for field in fields {
+            guard let value = values[field.name], !value.isNull else { continue }
+            switch field.kind {
+            case .text:
+                if let text = value.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                    out[field.name] = .string(text)
+                } else if let number = value.doubleValue {
+                    out[field.name] = .string(value.intValue.map(String.init) ?? String(number))
+                }
+            case .number:
+                if let number = value.doubleValue {
+                    out[field.name] = .number(number)
+                } else if let text = value.stringValue, let number = Double(text.trimmingCharacters(in: .whitespaces)) {
+                    out[field.name] = .number(number)
+                }
+            case .integer:
+                if let number = value.intValue {
+                    out[field.name] = .number(Double(number))
+                } else if let text = value.stringValue, let number = Int(text.trimmingCharacters(in: .whitespaces)) {
+                    out[field.name] = .number(Double(number))
+                }
+            case .boolean:
+                if let bool = value.boolValue {
+                    out[field.name] = .bool(bool)
+                } else if let text = value.stringValue?.lowercased(), ["true", "false", "yes", "no", "on", "off"].contains(text) {
+                    out[field.name] = .bool(["true", "yes", "on"].contains(text))
+                }
+            case let .choice(options):
+                if let text = value.stringValue, options.contains(text) {
+                    out[field.name] = .string(text)
+                }
+            }
+        }
+        return out
+    }
+
+    /// The required fields `values` leaves unfilled.
+    public func missingRequired(in values: [String: JSONValue]) -> [Field] {
+        fields.filter { $0.required && values[$0.name] == nil }
+    }
 }
 
 /// Values read for an instinct, by field name, as text.
@@ -174,6 +250,24 @@ public struct InstinctSpec: Sendable, Identifiable {
             questions = { _ in [] }
             recognise = nil
         }
+    }
+
+    /// A spec set by hand: for an instinct whose values or side effects the
+    /// format does not fix, and for tests.
+    public init(
+        format: ResponseFormat,
+        showsLayer: Bool = true,
+        sideEffects: SideEffects = .none,
+        arguments: ArgumentSchema = .none,
+        questions: @escaping @Sendable (RequestContext) -> [(id: String, question: Question)] = { _ in [] },
+        recognise: (@Sendable (String, RecogniseContext) -> Recognised?)? = nil
+    ) {
+        self.format = format
+        self.showsLayer = showsLayer
+        self.sideEffects = sideEffects
+        self.arguments = arguments
+        self.questions = questions
+        self.recognise = recognise
     }
 
     /// Every instinct, in the order Jev sees the options: `web_results`

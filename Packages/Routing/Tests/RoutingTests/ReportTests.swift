@@ -125,20 +125,26 @@ import Testing
                 format: .site, suggested: .site, confidence: 0.8,
                 probabilities: ["site": 0.8, "web_results": 0.2], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, source: .jev),
                 site: SiteSummary(name: "lobsters", outcome: "results", reason: "no key")),
+            DecisionRecord(timestamp: now.addingTimeInterval(720), query: "videos of pele", decision: RouteDecision(
+                format: .video, suggested: .video, confidence: 0.9,
+                probabilities: ["video": 0.9, "web_results": 0.1], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, source: .jev),
+                extraction: ExtractionSummary(model: "gemini-3.1-flash-lite", latencyMs: 400, usage: AnswerUsage(inputTokens: 150, outputTokens: 8, thoughtTokens: 0), fields: ["count"], outcome: .extracted)),
         ]
         let lines = try records.map { String(decoding: try DecisionRecord.encoder.encode($0), as: UTF8.self) }.joined(separator: "\n") + "\n"
         let parsed = try DecisionsReport.parse(Data(lines.utf8))
         #expect(parsed == records)
 
+        let oldRecord = #"{"timestamp":"2026-10-01T00:00:00Z","query":"x","decision":{"format":"web_results","probabilities":{},"source":{"noKey":{}}}}"#
         let markdown = DecisionsReport.markdown(records: parsed)
-        #expect(markdown.contains("14 queries: 9 asked Jev, 3 decided on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("15 queries: 10 asked Jev, 3 decided on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("1 asked a model for a value: 1 read one, 0 came back empty, 0 failed. Median latency 400 ms."))
+        #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).extraction == nil, "lines without an extraction decode")
         #expect(markdown.contains("1 recalls: 1 opened one memory, 0 showed a picker, 0 matched nothing and went to web. Jev judged 1, median 310 ms; 0 fell back to word order."))
         #expect(markdown.contains("4 site requests: 1 opened a remembered site, 1 showed choices, 1 fell back to web results, 1 rejected the site on screen. Median search latency 640 ms."))
         #expect(markdown.contains("Fell back: \"lobsters\": no key"))
         #expect(markdown.contains("- `site`: 1, most recent \"open insta\""))
         let old = #"{"matches":2}"#
         #expect(try DecisionRecord.decoder.decode(RecallSummary.self, from: Data(old.utf8)).source == nil, "old recall lines decode")
-        let oldRecord = #"{"timestamp":"2026-10-01T00:00:00Z","query":"x","decision":{"format":"web_results","probabilities":{},"source":{"noKey":{}}}}"#
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).site == nil, "lines without a site summary decode")
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).decision.recall == nil, "lines without a recall intent decode")
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).decision.chain == nil, "lines without a chain decode")

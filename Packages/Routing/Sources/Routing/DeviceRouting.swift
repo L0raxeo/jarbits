@@ -20,12 +20,16 @@ public struct RouteOutcome: Equatable, Sendable {
     /// What the answer model is asked on a narrative or one-line pick: the
     /// query, or the question after an explicit ask (`AnswerQuery`).
     public var question: String?
+    /// What a device grammar read out of the words for its instinct, by
+    /// field name; empty when no rule fired.
+    public var arguments: Arguments
 
     /// `opened` is the site on screen, if the app opened one by name: a
     /// decision that rejects it names that site again, whatever was typed.
-    public init(query: String, decision: RouteDecision, localText: String? = nil, opened: OpenedSite? = nil) {
+    public init(query: String, decision: RouteDecision, localText: String? = nil, opened: OpenedSite? = nil, arguments: Arguments = [:]) {
         self.decision = decision
         self.localText = localText
+        self.arguments = arguments
         switch decision.format {
         case .webResults:
             searchTerm = decision.source == .directURL ? nil : SearchQuery.term(for: query)
@@ -74,7 +78,7 @@ public enum DeviceRouting {
         let context = RecogniseContext(now: now, locale: locale, homeZone: homeZone, book: book, canAnswer: canAnswer)
         for format in InstinctSpec.deviceRuleOrder {
             guard let hit = InstinctSpec.spec(for: format).recognise?(query, context) else { continue }
-            return RouteOutcome(query: query, decision: .local(hit.rule, format: format), localText: hit.arguments["text"])
+            return RouteOutcome(query: query, decision: .local(hit.rule, format: format), localText: hit.arguments["text"], arguments: hit.arguments)
         }
         return nil
     }

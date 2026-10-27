@@ -250,4 +250,15 @@ public enum GeminiError: Error, Sendable, Equatable {
     case stream(String)
     /// A whole-body reply that does not parse, or that carries an error.
     case response(String)
+
+    /// The error in a few words, for the log.
+    public var summary: String {
+        switch self {
+        case .timeout: "timeout"
+        case let .transport(message): "transport: \(message)"
+        case let .http(status, body): "http \(status): \(body)"
+        case let .stream(message): "stream: \(message)"
+        case let .response(message): "response: \(message)"
+        }
+    }
 }

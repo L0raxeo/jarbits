@@ -170,6 +170,20 @@ Then one Jev request (`EngineRouting.request`, when a key is configured):
     now (`reasoning`, `reasoningConfidence`); advanced reasoning acts on it
     once built. An unsure pick that leans to the top level is still web
     results, marked `reasoningWanted` in the log.
+- **Values.** An instinct may declare the values it takes (`ArgumentSchema`
+  on its spec; none does yet). A closed-set value, a choice or a yes/no, is
+  two more Jev questions in this request for every instinct that declares
+  one, read only for the pick: whether the words say anything about the
+  field, and which value (`<instinct>.<field>?` and `<instinct>.<field>`,
+  TypeSafe's own function-calling recipe; the decision's `arguments`). A
+  free-form value, a number or words, is one small Gemini call after the
+  decision (`ValueExtractor`: Flash-Lite, a JSON schema of the fields
+  still missing, 1 s), made only when the pick declares such a field that
+  its own grammar did not read and the field is required or the reasoning
+  score leans to a value. Nothing usable, or a required value still
+  missing, shows web results for the words; the call's outcome rides on the
+  decision's line as `extraction`. See "Values read by Gemini" in
+  ROUTING.md, and try one with `report extract`.
 - Confidence below `EngineRouting.confidenceFloor` (0.5) falls back to
   `web_results`. Any error or a 2.5 s timeout does the same. One
   exception: an unsure `one_line` or `narrative` pick whose two answer
@@ -609,7 +623,7 @@ coming from it. Nothing of this outlives the app.
 
 | Path | Role |
 |---|---|
-| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the instinct registry (`InstinctSpec`), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and decision (`EngineRouting`: the pick, the relevance chain, the reasoning score, the confidence, recency and rejection gates), `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, over `QueryTokens`), the log record and reports. `Answers`: the Gemini streaming client, SSE parsing, the per-format prompts and the emphasis markup. `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
+| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the instinct registry (`InstinctSpec`), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and decision (`EngineRouting`: the pick, the relevance chain, the reasoning score, the confidence, recency and rejection gates), `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, over `QueryTokens`), the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a value or a plan), SSE parsing, the per-format prompts, the emphasis markup and the value extractor. `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
 | `Browser/Engine/Engine.swift` | The cognitive engine's first stage: the device's rules (each instinct's grammar), then one Jev request over the registry carrying the session's exchanges, then the chosen instinct's plan; the chain decides whether a follow-up grows the answer on screen or gets the exchanges as context. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Browser/Engine/Instinct.swift`, `Instincts.swift` | The `Instinct` protocol (a spec from the registry and a `plan` for a decision), the registry of conformers in order, and the nine instincts the app has today. |
 | `Browser/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |
