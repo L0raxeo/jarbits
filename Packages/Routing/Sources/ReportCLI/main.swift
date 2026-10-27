@@ -208,6 +208,9 @@ case "route":
     if let rejection = decision.rejection {
         print("rejection: \(rejection.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRouting.rejectionThreshold.formatted())), \(decision.rejectsSite ? "rejects the site on screen" : "keeps it")")
     }
+    if let remember = decision.remember {
+        print("remember: \(remember.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRouting.rememberThreshold.formatted())), \(decision.statesFact ? "states a lasting fact about the user" : "no fact to keep")")
+    }
     if let intent = decision.recall {
         func p(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(2))) }
         let kinds = RecallIntent.Kind.allCases.map { "\($0.rawValue) \(p(intent.probability(of: $0)))" }.joined(separator: " ")

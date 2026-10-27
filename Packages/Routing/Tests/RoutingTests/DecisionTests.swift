@@ -260,6 +260,19 @@ import Testing
         #expect(try decide(jevResponse(choice: "web_results", confidence: 0.3, probabilities: ["web_results": 0.4], reasoning: (score: EngineRouting.reasoningThreshold, confidence: 0.5))).reasoningWanted, "inclusive")
     }
 
+    @Test func theRememberGateIsReadOnEveryPickAndNeverGates() throws {
+        let stated = try decide(jevResponse(choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9], recency: 0.1, nouls: ["remember": 0.86]))
+        #expect(stated.remember == 0.86)
+        #expect(stated.statesFact)
+        #expect(stated.format == .narrative && stated.source == .jev, "the pick runs as usual; the fact is noted beside it")
+        let plain = try decide(jevResponse(choice: "web_results", confidence: 0.9, probabilities: ["web_results": 0.9], nouls: ["remember": 0.1]))
+        #expect(!plain.statesFact)
+        let unasked = try decide(jevResponse(choice: "web_results", confidence: 0.9, probabilities: ["web_results": 0.9]))
+        #expect(unasked.remember == nil && !unasked.statesFact)
+        #expect(try decide(jevResponse(choice: "remember", confidence: 0.9, probabilities: ["remember": 0.9], nouls: ["remember": EngineRouting.rememberThreshold])).statesFact, "inclusive")
+        #expect(try JSONDecoder().decode(RouteDecision.self, from: JSONEncoder().encode(stated)).remember == 0.86)
+    }
+
     @Test func aMissingScoreNeverGates() throws {
         let decision = try decide(jevResponse(choice: "narrative", confidence: 0.3, probabilities: ["narrative": 0.4]))
         #expect(decision.reasoning == nil)

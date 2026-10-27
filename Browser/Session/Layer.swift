@@ -22,6 +22,9 @@ final class Layer: Identifiable {
     /// How reading the plan's values out of the words went, when a model
     /// was asked; logged with the record once the layer's result is in.
     var extraction: ExtractionSummary?
+    /// A fact the query stated on the way to this layer, kept beside it;
+    /// logged with the record once the layer's result is in.
+    var fact: FactSummary?
     /// The live page of a web layer; nil while the layer is unloaded or
     /// shows a card.
     var page: PageHost?

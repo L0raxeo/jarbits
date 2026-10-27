@@ -51,12 +51,16 @@ struct Engine {
         }
         let decision = outcome.decision
         let chained = Array(sent.suffix(decision.chainedCount))
-        // The values the pick takes: what its grammar read, what Jev read
-        // for its closed-set fields, and what a model reads out of the words
-        // for the free-form ones still missing, when the field is required
-        // or the reasoning score says a value is in the words.
+        // The values the pick takes: what its grammars read (the device
+        // rule's, then the pick's own), what Jev read for its closed-set
+        // fields, and what a model reads out of the words for the free-form
+        // ones still missing, when the field is required or the reasoning
+        // score says a value is in the words.
         let spec = InstinctSpec.spec(for: decision.format)
         var arguments = outcome.arguments.mapValues(JSONValue.string)
+        for (name, value) in spec.read?(query) ?? [:] where arguments[name] == nil {
+            arguments[name] = .string(value)
+        }
         for (name, value) in decision.arguments ?? [:] where arguments[name] == nil {
             arguments[name] = .string(value)
         }
@@ -76,9 +80,19 @@ struct Engine {
                 extraction = ExtractionSummary(model: "", latencyMs: 0, outcome: .failed("no key"))
             }
         }
+        // A lasting fact the words state on the way to something else
+        // ("I'm allergic to peanuts, what can I snack on"): Jev's remember
+        // question says so, a model distils it, the session keeps it beside
+        // the pick. The remember and forget instincts handle their own.
+        var inferred: Fact?
+        if decision.statesFact, decision.format != .remember, decision.format != .forget, let extractor {
+            let (text, summary) = await extractor.distill(query: query, exchanges: chained.map(\.exchange))
+            if let text { inferred = Fact(text: text, source: .inferred, madeBy: query) }
+            if extraction == nil { extraction = summary }
+        }
         if !spec.arguments.missingRequired(in: arguments).isEmpty {
             // A value the instinct cannot run without never came: the words go to the web.
-            return RouteResult(plan: .web(QueryParser.searchURL(for: query)), decision: decision, extraction: extraction)
+            return RouteResult(plan: .web(QueryParser.searchURL(for: query)), decision: decision, extraction: extraction, inferred: inferred)
         }
         // A continuation grows the current answer: its own turns go as the
         // thread, so only exchanges from other layers are context there.
@@ -92,7 +106,11 @@ struct Engine {
             earlier: earlier,
             arguments: arguments
         )
-        return RouteResult(plan: instinct(for: decision.format).plan(context), decision: decision, extraction: extraction)
+        let instinct = instinct(for: decision.format)
+        if !spec.showsLayer {
+            return RouteResult(plan: nil, decision: decision, extraction: extraction, action: instinct, context: context, inferred: inferred)
+        }
+        return RouteResult(plan: instinct.plan(context), decision: decision, extraction: extraction, inferred: inferred)
     }
 
     private func instinct(for format: ResponseFormat) -> any Instinct {
@@ -101,12 +119,19 @@ struct Engine {
     }
 }
 
-/// What to render, the decision behind it for the log, and how reading
-/// the pick's values went when a model was asked.
-struct RouteResult: Sendable {
-    var plan: CardPlan
+/// What to render, or the instinct to run when it shows nothing; the
+/// decision behind it for the log; how reading the pick's values went
+/// when a model was asked; and a fact the words stated on the way, for
+/// the session to keep.
+struct RouteResult {
+    /// What to show; nil for an instinct that acts instead.
+    var plan: CardPlan?
     var decision: RouteDecision
     var extraction: ExtractionSummary? = nil
+    /// The instinct to run when there is no plan, with what it needs.
+    var action: (any Instinct)? = nil
+    var context: InstinctContext? = nil
+    var inferred: Fact? = nil
 }
 
 extension BrowserSession {
@@ -135,6 +160,12 @@ extension BrowserSession {
     /// the shortlist in word order.
     static func makeRecallResolver() -> RecallResolver? {
         Secrets.typeSafeAPIKey.map { RecallResolver(client: JevClient(apiKey: $0)) }
+    }
+
+    /// Jev judging which fact a forget means, when a key is configured;
+    /// nil offers the shortlist in word order.
+    static func makeFactResolver() -> FactResolver? {
+        Secrets.typeSafeAPIKey.map { FactResolver(client: JevClient(apiKey: $0)) }
     }
 
     /// Gemini when a key is configured; nil leaves the answer formats on web results.

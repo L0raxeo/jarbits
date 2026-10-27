@@ -16,8 +16,10 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     public var site: SiteSummary?
     /// How reading the pick's free-form values out of the words fared, when a model was asked.
     public var extraction: ExtractionSummary?
+    /// How the query touched the facts: remembered, forgotten, declined.
+    public var fact: FactSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
@@ -26,6 +28,7 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
         self.recall = recall
         self.site = site
         self.extraction = extraction
+        self.fact = fact
     }
 
     public static let encoder: JSONEncoder = {
@@ -271,6 +274,30 @@ public enum DecisionsReport {
                 out.append("Failed: " + failed.suffix(10).map { record, summary in
                     if case let .failed(reason) = summary.outcome { "\"\(record.query)\": \(reason)" } else { "\"\(record.query)\"" }
                 }.joined(separator: ", "))
+            }
+            out.append("")
+        }
+
+        let facts = records.compactMap { record in record.fact.map { (record, $0) } }
+        if !facts.isEmpty {
+            out.append("## Facts")
+            out.append("")
+            let remembered = facts.filter { $0.1.action == "remembered" }
+            func count(_ source: Fact.Source) -> Int { remembered.filter { $0.1.source == source }.count }
+            let forgotten = facts.filter { $0.1.action == "forgotten" }.count
+            let declined = facts.filter { $0.1.action == "declined" }.count
+            let nothing = facts.filter { $0.1.action == "none" }.count
+            out.append("\(facts.count) touched the facts: \(remembered.count) remembered (\(count(.told)) told, \(count(.chosen)) chosen, \(count(.inferred)) inferred), \(forgotten) forgotten, \(declined) declined, \(nothing) found nothing to keep or drop.")
+            let gates = records.compactMap(\.decision.remember)
+            if !gates.isEmpty {
+                let kept = remembered.compactMap(\.0.decision.remember)
+                func mean(_ values: [Double]) -> String {
+                    values.isEmpty ? "–" : (values.reduce(0, +) / Double(values.count)).formatted(.number.precision(.fractionLength(2)))
+                }
+                out.append("Remember gate (threshold \(EngineRouting.rememberThreshold.formatted())): mean \(mean(kept)) where a fact was kept, \(mean(gates)) over every query asked.")
+            }
+            if !remembered.isEmpty {
+                out.append("Kept: " + remembered.suffix(10).map { "\"\($0.1.text ?? $0.0.query)\"" }.joined(separator: ", "))
             }
             out.append("")
         }

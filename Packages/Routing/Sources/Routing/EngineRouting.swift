@@ -171,6 +171,23 @@ public enum EngineRouting {
 
     // MARK: Questions the instincts add
 
+    /// Asked in every request by the remember instinct: does the query
+    /// state a lasting fact about the user? A yes on another pick is an
+    /// inferred fact, noted quietly; see the facts section of the README.
+    public static let rememberQuestionID = "remember"
+    public static let rememberThreshold = 0.5
+
+    public static let rememberInstructions = """
+        Does the query state a lasting fact about the user, their preferences, \
+        people, places, things or situation, or ask the app to remember \
+        something for later?
+        """
+
+    public static let rememberCriteria = (
+        yes: "The user tells the app something that will still be true next week and could shape a later answer, or asks it to keep something in mind: \"remember that I'm allergic to peanuts\", \"I'm vegetarian\", \"my wife's name is Ana\", \"we moved to Austin\", \"I don't eat pork\", \"keep in mind I have a nut allergy\", \"I'm allergic to peanuts, what can I snack on\".",
+        no: "A question or request with no lasting fact in it; something true only now (\"I'm hungry\", \"I'm at the airport\"); a fact about the world rather than the user (\"the capital of peru is lima\"); and \"remember\" pointing at something seen before in this app (\"remember that convo on the dyson pencilvac\", \"remember that page\"), which is recall."
+    )
+
     public static let rejectsQuestionID = "rejects"
 
     /// At or above this, a follow-up over a site this app opened by name is
@@ -340,6 +357,7 @@ public enum EngineRouting {
         }
         let recency = noul(recencyQuestionID)
         let rejection = noul(rejectsQuestionID)
+        let remember = noul(rememberQuestionID)
         // A missing relevance answer is a no.
         let relevance: [Double]? = sent.isEmpty ? nil : sent.indices.map { noul(relevanceQuestionID($0)) ?? 0 }
         let chain = relevance.map { Self.chain($0) }
@@ -445,6 +463,7 @@ public enum EngineRouting {
                 let read = arguments(for: suggested, from: response, floor: floor, instincts: instincts)
                 return read.isEmpty ? nil : read
             }(),
+            remember: remember,
             source: source
         )
     }

@@ -160,8 +160,10 @@ Then one Jev request (`EngineRouting.request`, when a key is configured):
     typed (`EngineRouting.contextInstructions`);
   - the questions the instincts add: `recent` (would the right answer depend
     on something that may have changed in the last two years?), the seven
-    `recall_*` questions (Jev's reading of a recall ask; see "Recall"), and
-    `rejects` while a site this app opened by name is on screen (below);
+    `recall_*` questions (Jev's reading of a recall ask; see "Recall"),
+    `remember` (does the query state a lasting fact about the user? see
+    "Facts"), and `rejects` while a site this app opened by name is on
+    screen (below);
   - one yes/no question per exchange, `x0` for the oldest sent: does the
     query depend on it to be understood or acted on? The newest 20 exchanges
     go (`EngineRouting.maxExchanges`); older things are recall's job;
@@ -540,6 +542,62 @@ exported memories file. Debug builds show a "Clear memory" link at the top of th
 screen that deletes the file and every picture; there is no user-facing
 control yet.
 
+## Facts
+
+A fact is one thing the app knows about the user, in their own words: a
+preference, an allergy, a name, where they live. Facts are the second
+memory store, beside the memories of things seen: few, short, and never
+expiring on their own. Every fact goes into every answer (`AnswerPrompt`'s
+"What you know about the user" block, after the context and the earlier
+exchanges; the prompts say to let them shape the answer when they bear on
+it and never to repeat them), and later into every plan. Nothing in the
+file leaves the phone except inside a Gemini request, which keeps nothing
+(`store: false`).
+
+A fact comes to be known three ways (`Fact.source`):
+- **told**: "remember that I'm allergic to peanuts", "keep in mind I'm
+  vegetarian", "note that I don't eat pork". Jev picks the `remember`
+  instinct; the words after the opener are the fact, as typed
+  (`RememberQuery`: leads, one opener, the fact, trailers). A plain
+  statement with nothing asked ("I live in austin now") is a remember too,
+  and the fact is read out of the words by the small Gemini call, since
+  there is no opener to cut.
+- **inferred**: the query states something lasting on the way to asking
+  something else ("I'm allergic to peanuts, what can I snack on"). Every
+  routing request carries a `remember` question (ROUTING.md); at or above
+  `EngineRouting.rememberThreshold` (0.5) on any other pick, the pick runs
+  as usual and the same small call distils the fact into one sentence in
+  the user's voice, which is kept quietly. The query waits for that call
+  (about a second) before the pick runs.
+- **chosen**: the answer to a question on the sheet, when a plan asks one
+  (not built yet).
+
+Keeping a fact shows one quiet line for three seconds, "Remembered: I'm
+vegetarian", above the capsule over a result or under the clay on the idle
+screen (`RememberedMark`): the only sign that something was kept, so a
+wrong note can be seen and undone. The same words again (case and
+punctuation aside) refresh the fact rather than repeat it.
+
+"Forget that", "forget that I'm vegetarian", "stop remembering my peanut
+allergy" is the `forget` instinct, the first destructive one: the facts
+the words point at are shortlisted on the device (`FactSearch`: the ones
+holding any of the content words first, then the newest, so a bare
+"forget that" offers what was just kept), judged by Jev one yes/no each as
+a recall's candidates are (`FactRouting`), and put to the user on the
+sheet: "Forget “I'm vegetarian”?" with Forget and Keep when one is sure,
+"Forget which?" with up to three when several are plausible. A tap
+forgets it and the mark says so; a swipe down keeps it. Nothing is ever
+forgotten unasked.
+
+Neither instinct shows a layer: the screen stays where it was (the idle
+clay, or the result under the capsule), and the sheet rises over it when
+one is needed. The decision log carries `fact` on the query's line
+(remembered by source, forgotten, declined, or none), and `report
+decisions` summarises them. The facts live in
+`Application Support/Browser/facts.jsonl` (`FactStore`, in the package so
+it is tested against a file of its own); Debug builds' "Clear memory"
+empties it with the rest.
+
 ## Sites
 
 `site` is for a website asked for by name: "go to youtube", "pull up
@@ -624,18 +682,21 @@ coming from it. Nothing of this outlives the app.
 
 | Path | Role |
 |---|---|
-| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the instinct registry (`InstinctSpec`), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and decision (`EngineRouting`: the pick, the relevance chain, the reasoning score, the confidence, recency and rejection gates), `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, over `QueryTokens`), the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a value or a plan), SSE parsing, the per-format prompts, the emphasis markup and the value extractor. `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
+| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the instinct registry (`InstinctSpec`), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and decision (`EngineRouting`: the pick, the relevance chain, the reasoning score, the confidence, recency and rejection gates), `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, `RememberQuery`, over `QueryTokens`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a value or a plan), SSE parsing, the per-format prompts, the emphasis markup and the value extractor. `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
 | `Browser/Engine/Engine.swift` | The cognitive engine's first stage: the device's rules (each instinct's grammar), then one Jev request over the registry carrying the session's exchanges, then the chosen instinct's plan; the chain decides whether a follow-up grows the answer on screen or gets the exchanges as context. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Browser/Engine/Instinct.swift`, `Instincts.swift` | The `Instinct` protocol (a spec from the registry and a `plan` for a decision), the registry of conformers in order, and the nine instincts the app has today. |
 | `Browser/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |
+| `Browser/Engine/FactInstincts.swift` | The two instincts that show nothing: `remember` keeps a fact, `forget` judges which one the words mean and asks on the sheet. |
+| `Browser/Engine/PendingQuestion.swift` | One question put to the user on the sheet and the wait on its answer, resumed once by a tap, a return or a cancel. |
 | `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
 | `Browser/Images/ImageSession.swift` | Loads one picture (and its alternates) for an image plan, Wikipedia first and Brave behind it, and the summary for the log. |
 | `Browser/Memory/MemoryStore.swift` | The memories file: load once, append as results appear, refresh a repeat within a day, drop the oldest past the cap, search by words (`MemorySearch` in the package). |
 | `Browser/Memory/SiteStore.swift` | The site book on disk: seeded on first load, written whole on each learn, touch, forget or clear. |
+| `Browser/Home/AskSheet.swift`, `RememberedMark.swift` | The small sheet the app asks with (a question, then up to three buttons or a line to type; sized to its content), and the quiet line shown for a moment after a fact is kept or dropped. |
 | `Browser/Engine/DecisionLog.swift` | JSON Lines log of every decision and answer. |
 | `Browser/Engine/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`, `BraveAPIKey`). |
 | `Browser/Engine/CardPlan.swift` | The renderable plans. One enum case per card type. |
-| `Browser/Session/BrowserSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the engine, applies the plan (a recall through the memories, a site through the book or the search), opens, swipes between, unloads and reloads layers under the live cap, memorises what each layer shows, writes the log. |
+| `Browser/Session/BrowserSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the engine, applies the plan (a recall through the memories, a site through the book or the search) or runs an instinct that shows nothing, keeps the facts and the mark, puts a question on the sheet and waits for it, opens, swipes between, unloads and reloads layers under the live cap, memorises what each layer shows, writes the log. |
 | `Browser/Session/Layer.swift` | One query's result: its plan, its live page (`PageHost`) or the notes left by an unload, its own answer stream and pictures, the page it ended on (for the engine's exchanges), its opened site and memory chain, when it was last shown. |
 | `Browser/Web/PageHost.swift` | One live web page: the `WebPage` with its watcher, what it pins to its edges, whether it loads or plays or is in use, the navigation watch and the document bookkeeping behind the chrome, the notes read as it goes and the restore when it comes back. |
 | `Browser/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, address changes for the memories, audio, and whether the page is in use), the page's notes for an unload, the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
@@ -649,7 +710,8 @@ Each response format is a module with a stage recorded in code
 (`ResponseFormat.stage` in `Packages/Routing`): `routed` (Jev can pick it,
 web results stand in), `built` (a real card renders), `verified` (used on a
 device and accepted). Today: `web_results` verified; `narrative`,
-`one_line`, `recall`, `image` and `site` built; `map` and `stock` routed. A routed pick shows web
+`one_line`, `recall`, `image`, `site`, `video`, `remember` and `forget` built;
+`map` and `stock` routed. A routed pick shows web
 results and is logged as the pick it was, and each instinct asserts the
 stage and its plan agree. Flip the stage in the same change that adds the card.
 
@@ -692,8 +754,10 @@ web results, and the address bypass; the on-device time
 rule (its grammar, every alias and country row resolving to a real zone, and
 the day shift and clock format against a fixed instant); the site grammar,
 the seed, learning and forgetting, the `rejects` question's shape and gate,
-and the Brave client against canned results; and for Gemini, the
-request body and key order (and that no tool is sent), the per-format prompts
+and the Brave client against canned results; the facts (the remember
+grammar, the store against a file of its own, the forget judge's request
+and picks, the shortlist); and for Gemini, the request body and key order
+(and that no tool is sent for an answer), the per-format prompts
 and budgets, the context block, SSE parsing, a canned stream end to end,
 error frames, timeouts, and old log lines without answers. Nothing here needs
 a simulator.

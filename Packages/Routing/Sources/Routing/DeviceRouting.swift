@@ -45,7 +45,7 @@ public struct RouteOutcome: Equatable, Sendable {
             }
         case .narrative, .oneLine:
             question = AnswerQuery.question(for: query)
-        case .map, .stock, .recall:
+        case .map, .stock, .recall, .remember, .forget:
             break
         }
     }

@@ -8,7 +8,7 @@ swift run --package-path Packages/Routing report routing > ROUTING.md
 
 ## The request
 
-One `POST https://api.typesafe.ai/v1/systemone` per query, model `jev-1.13.0`, timeout 2500 ms. Every question below goes in that one request and is answered in parallel: which instinct fits, whether the answer may have gone stale, how a recall ask reads, which earlier exchanges the query depends on, and how much working out it needs.
+One `POST https://api.typesafe.ai/v1/systemone` per query, model `jev-1.13.0`, timeout 2500 ms. Every question below goes in that one request and is answered in parallel: which instinct fits, whether the answer may have gone stale, how a recall ask reads, whether the query states a lasting fact about the user, which earlier exchanges the query depends on, and how much working out it needs.
 
 State (what Jev reads):
 
@@ -59,7 +59,7 @@ The term is what is left with the punctuation that closed or opened the stripped
 
 ## The questions
 
-The pick (`format`), then the questions the instincts add (`recent` from the two answered ones, the `recall_*` questions from recall), then the reasoning score. With earlier exchanges in the state the relevance questions come between.
+The pick (`format`), then the questions the instincts add (`recent` from the two answered ones, the `recall_*` questions from recall, `remember` from remember), then the reasoning score. With earlier exchanges in the state the relevance questions come between.
 
 ### `format` — type `choice`
 
@@ -80,6 +80,8 @@ Options, in the order Jev sees them (it leans toward the first when unsure):
 | 7 | `image` | A single picture of one specific, named thing with a definitive look: a flag, a logo or emblem, a landmark or monument, a painting, a person, a product, a species, a chemical structure. The bare name of such a thing, with no other words, means the user wants to see it, not read about it. | Browsing many pictures of a category, mood or idea, which wants web results; and questions about why something looks the way it does, which want an explanation. | "dominican flag", "eiffel tower", "starry night painting", "nvidia logo", "what does a capybara look like", "mona lisa", "aston martin db5" |
 | 8 | `site` | Open a website or app by its name. The query is a go-to, open, pull-up or take-me-to verb and a site's name, or the bare name of a well-known site with nothing else; the user wants the site itself, not results about it. | A search for something on a site ("zillow homes in austin"), a question about a site, a page the user saw in this app before ("that youtube page from earlier", which is recall), and an address, which loads directly. | "go to youtube", "pull up zillow", "open insta", "take me to airbnb", "launch netflix", "reddit" |
 | 9 | `video` | A page of videos to watch. The query asks for videos, clips, highlights, a trailer, a music video, a performance, a tutorial to watch, or to watch or play something: the user wants to press play, not read. | A video the user saw in this app before ("the video I was watching"), which is recall; a website or app by its name ("open youtube"), which is site; one still picture of a thing, which is image; and a topic that merely has videos about it, with no ask to watch, which is web results. | "videos of pele", "pele highlights", "dune part 3 trailer", "watch the super bowl halftime show", "show me cat videos", "how to tie a tie video", "lofi music video" |
+| 10 | `remember` | The user asks the app to keep something in mind about them for later, or tells it something lasting about themselves with nothing else asked: a preference, an allergy, a name, where they live. The words are a remember, a keep-in-mind, a don't-forget, a note-that, or a plain statement about the user; nothing is wanted back but the keeping. | Bringing back something seen in this app before ("remember that convo on the dyson pencilvac", "remember that page"), which is recall; a question that mentions a fact on the way to asking something ("I'm allergic to peanuts, what can I snack on" wants the snacks); a fact about the world. | "remember that I'm allergic to peanuts", "keep in mind I'm vegetarian", "don't forget my wife's name is Ana", "note that I don't eat pork", "I live in austin now" |
+| 11 | `forget` | The user asks the app to forget, drop or stop remembering something it knows about them: the fact just noted, or one named by its subject. | Forgetting a page, a search or an answer, which is nothing the app keeps as a fact; a new question; "never mind" about a query just typed. | "forget that", "forget that I'm vegetarian", "stop remembering my peanut allergy", "drop what I told you about my wife", "you can forget where I live" |
 
 Answer: `choice` (one option name), `probabilities` (one per option), `confidence` (0–1).
 
@@ -187,6 +189,19 @@ A yes/no question answered with the probability of yes. Instructions sent with t
 
 Answer: `noul`, the probability of yes (0–1). No confidence field.
 
+### `remember` — type `noul`
+
+A yes/no question answered with the probability of yes. Instructions sent with the question:
+
+> Does the query state a lasting fact about the user, their preferences, people, places, things or situation, or ask the app to remember something for later?
+
+| Means | Description |
+|---|---|
+| yes | The user tells the app something that will still be true next week and could shape a later answer, or asks it to keep something in mind: "remember that I'm allergic to peanuts", "I'm vegetarian", "my wife's name is Ana", "we moved to Austin", "I don't eat pork", "keep in mind I have a nut allergy", "I'm allergic to peanuts, what can I snack on". |
+| no | A question or request with no lasting fact in it; something true only now ("I'm hungry", "I'm at the airport"); a fact about the world rather than the user ("the capital of peru is lima"); and "remember" pointing at something seen before in this app ("remember that convo on the dyson pencilvac", "remember that page"), which is recall. |
+
+Answer: `noul`, the probability of yes (0–1). No confidence field.
+
 ### `reasoning` — type `score`
 
 A position on an ordered scale. Instructions sent with the question:
@@ -207,7 +222,7 @@ Answer: `score` (the levels weighted by their probabilities, so 0 to 2, possibly
 
 From the second query of a session on, the state carries the earlier exchanges and the `format` question's instructions become:
 
-> Which response format best answers this web search query? The state carries the earlier exchanges of this session under `exchanges`, oldest first: each query and what it got (an answer's text, a page's title and address, a search's term, a picture's subject). Judge the query as the exchanges it depends on make it, not as typed on its own; a query that stands on its own is judged as typed. A reply, a reaction or a question that leans on an earlier answer, however short, wants narrative; or one_line when the reply is itself a single short fact, a number, a name, a date, a yes/no, as "and chile?" after a capital is. A correction or narrowing of an earlier search ("wait no I meant brazil") wants web_results, read with the correction applied. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, video, each described below; or web_results for a page to browse.
+> Which response format best answers this web search query? The state carries the earlier exchanges of this session under `exchanges`, oldest first: each query and what it got (an answer's text, a page's title and address, a search's term, a picture's subject). Judge the query as the exchanges it depends on make it, not as typed on its own; a query that stands on its own is judged as typed. A reply, a reaction or a question that leans on an earlier answer, however short, wants narrative; or one_line when the reply is itself a single short fact, a number, a name, a date, a yes/no, as "and chile?" after a capital is. A correction or narrowing of an earlier search ("wait no I meant brazil") wants web_results, read with the correction applied. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, video, remember, forget, each described below; or web_results for a page to browse.
 
 and one question is asked per exchange, `x0` for the oldest sent, `x1` for the next, and so on. For the first of two exchanges:
 
@@ -270,10 +285,13 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 | `one_line` or `narrative` picked below 0.5, but the two together at or above 0.6, and `recent` below 0.5 | The picked answer: Jev was torn between a short and a long answer, not between an answer and a page | `answerSplit` |
 | `confidence` at or above 0.5 and `recent` below 0.5 | The chosen format's card; web results while that module is only `routed` (today: `map`, `stock`) | `jev` |
 | `narrative` or `one_line` picked with confidence, but `recent` at or above 0.5 | Web results (the model's knowledge is months old; see the answer prompts) | `recencyFallback` (the pick is kept as `suggested`) |
-| The chain ends on an answer exchange and a card format (`map`, `stock`, `recall`, `image`, `site`, `video`) was picked with confidence | That card | `jev` |
+| The chain ends on an answer exchange and a card format (`map`, `stock`, `recall`, `image`, `site`, `video`, `remember`, `forget`) was picked with confidence | That card | `jev` |
 | The chain ends on an answer exchange and any other pick, sure or not, with `recent` below 0.5 | The answer on screen grows into a transcript: the query as a line, then a reply written with the earlier turns in view, as one line when `one_line` was picked with confidence and as a narrative otherwise | `continuation` (the pick is kept as `suggested`) |
 | The chain ends on a page, a search or a picture | The chosen format's card, with the chained exchanges as context: a narrative or one-line answer lists them under its context block; web results search what the words say | `jev` with `chain` above 0 |
 | `site` picked with confidence | The site, when the book knows the name; otherwise the choices card (see "After routing: sites") | `jev` |
+| `remember` picked with confidence | The fact is kept in the user's words (the words after the opener, or what a model read out of them) and a mark says so; what was on screen stays | `jev`, with `fact` |
+| `forget` picked with confidence | The facts the words point at are judged (one yes/no each, as a recall's are) and the one asked for is put to the user on the sheet; a tap forgets it | `jev`, with `fact` |
+| `remember` at or above 0.5 on any other pick | The pick runs as usual, and the lasting fact the words state is noted quietly, as a model distils it, with a mark | the pick's own line, with `fact` |
 | Over a site opened by name, `rejects` at or above 0.5, whatever the pick | The name is forgotten and the choices card shown again | `rejection` (the pick is kept as `suggested`) |
 
 Web results, however reached, are for the query with its search verb gone: "google steve jobs" searches "steve jobs" (`SearchQuery`, see "Decided on the device"); the log keeps the spoken words. An `image` pick searches the subject alone (`ImageQuery`, see "After routing: Wikipedia images"). A `video` pick loads Google's video results for the term with the asking gone (`VideoQuery`, see "After routing: videos").
@@ -362,6 +380,31 @@ Earlier in this session (oldest first; the query may lean on them, but answer on
 - Read "<page title>" (<host>)
 ```
 
+### Input with facts
+
+Everything the app knows about the user (`FactStore`: told outright, chosen on the sheet, or inferred from a query that stated something lasting on the way to its ask) goes into every answer, each in the user's own words, after the context and the earlier exchanges. The system instructions say to let them shape the answer when they bear on it and never to repeat them.
+
+```
+Query: <query>
+
+Context (use for "today" and "now"; do not repeat it unless the query asks about it):
+- Date and time: Wednesday 21 October 2026, 11:26 (America/Chicago)
+- Your knowledge ends around January 2025, about 21 months before this date.
+- Locale: en_US
+
+What you know about the user (told earlier; let it shape the answer when it bears on it, never repeat it or say you were told):
+- <fact>
+- <fact>
+```
+
+An inferred fact is distilled by the same small call that reads values ("Values read by Gemini" below) with this instruction and a one-field schema, when Jev's `remember` question says the query states one and the pick is not `remember` itself:
+
+```
+You note what a request made to a phone's browser says about the person making it. Reply with JSON matching the schema and nothing else.
+A fact is something lasting about them, a preference, an allergy, a name, where they live, that will still be true next week and could shape a later answer; state it in one short sentence in their own voice ("I'm allergic to peanuts"). Something true only now, a fact about the world, or a question with nothing lasting in it is null.
+Earlier exchanges of the session may come before the request, oldest first.
+```
+
 ### Input for a narrative that continues
 
 When the relevance chain ends on the answer on screen (`continuation` in the decision), `input` is a list of `user_input` and `model_output` steps instead of a string, Google's stateless shape; `store` stays false. Oldest first: `{"type": "user_input", "content": [{"type": "text", "text": "<earlier query>"}]}`, `{"type": "model_output", "content": [{"type": "text", "text": "<earlier answer, markup included>"}]}`, and so on, then one last `user_input` step holding the block above. Every earlier turn is sent, however long the conversation.
@@ -379,6 +422,7 @@ Rules:
 - Earlier turns of this conversation may come before the query, oldest first; the context block applies to all of them. Then the query is a reply to your last answer: resolve "it", "that", "why" and the like against the conversation, do not repeat what you already said, and answer only the new question.
 - Your knowledge ends around January 2025 and you have no access to the web; the context says how long ago that was. Answer with what you knew then, stated as plain fact. Never say when your knowledge ends, that the answer may be out of date, or that you cannot check: the browser puts a web link under every answer. Do not invent developments after that date.
 - Use the context block for "today" and "now". Do not mention the context unless the query is about it.
+- A block "What you know about the user" may follow the context: facts the user told the app before. Let them shape the answer when they bear on it (a vegetarian gets a vegetarian recipe); ignore them otherwise; never list them back, repeat them or say you were told.
 - If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
 - Write in the language of the query.
 
@@ -402,6 +446,7 @@ Rules:
 - Earlier turns of this conversation may come before the query, oldest first; the query may lean on them ("and chile?", "in km?"): resolve it against your last answer and answer only the new question, still in one line.
 - Your knowledge ends around January 2025 and you have no access to the web. If the question needs live data, such as today's weather, a current price or exchange rate, a live score, or the latest news, or if the answer may have changed since January 2025, such as whether a person is alive or who currently holds a role, reply with exactly: NEEDS_LIVE_DATA
 - You do know the current date and time from the context block. Compute dates, countdowns and the time in other places from it.
+- A block "What you know about the user" may follow the context: facts the user told the app before. Let them shape the line when they bear on it; ignore them otherwise; never repeat them or say you were told.
 - If the honest answer is a range or depends on something, give the typical value in the line, such as "Usually 7 to 10 days".
 - If the question cannot be answered in one line, answer its most direct version in one line anyway.
 - Answer in the language of the query.

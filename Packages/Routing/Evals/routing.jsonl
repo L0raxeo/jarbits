@@ -98,3 +98,13 @@
 {"query": "Flag of North Korea.", "format": "image", "subject": "Flag of North Korea", "note": "screenshot 2026-10-23: spoken as 'there you go. Flag of North Korea.', which dictation now strips before routing; Wikipedia had been asked for the whole sentence"}
 {"query": "Can I use Mr. Cleaner with Clorox", "format": "one_line", "source": "answerSplit", "note": "screenshot 2026-10-24: one_line .50, narrative .29, web .21 fell under the floor and showed web; torn between two answers is still an answer"}
 {"query": "is it safe to mix mr clean and bleach", "format": "narrative", "source": "answerSplit", "note": "narrative .45, one_line .44: either answer is right, a page is not"}
+{"query": "remember that I'm allergic to peanuts", "format": "remember", "note": "told outright: the opener comes off, the fact is kept as typed"}
+{"query": "keep in mind I'm vegetarian", "format": "remember"}
+{"query": "don't forget my wife's name is Ana", "format": "remember"}
+{"query": "note that I don't eat pork", "format": "remember"}
+{"query": "I live in austin now", "format": "remember", "note": "a plain statement about the user with nothing asked: a model reads the fact"}
+{"query": "forget that", "format": "forget", "note": "nothing named: the newest facts are offered"}
+{"query": "forget that I'm vegetarian", "format": "forget"}
+{"query": "stop remembering my peanut allergy", "format": "forget"}
+{"query": "drop what I told you about my wife", "format": "forget"}
+{"query": "you can forget where I live", "format": "forget"}

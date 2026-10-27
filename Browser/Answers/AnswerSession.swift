@@ -24,6 +24,8 @@ final class AnswerSession {
     private(set) var history: [AnswerTurn] = []
     /// What else in this session the query depends on, for the context block.
     private(set) var earlier: [Exchange] = []
+    /// What the app knows about the user, each in their own words.
+    private(set) var facts: [String] = []
     private(set) var text = ""
     private(set) var phase: Phase = .idle
     private(set) var summary: AnswerSummary?
@@ -78,16 +80,17 @@ final class AnswerSession {
         AnswerMarkup.styled(displayText, for: format)
     }
 
-    func start(format: ResponseFormat, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = []) {
+    func start(format: ResponseFormat, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = []) {
         task?.cancel()
         self.format = format
         self.query = query
         self.history = history
         self.earlier = earlier
+        self.facts = facts
         text = ""
         summary = nil
         phase = .waiting
-        task = Task { await run(format: format, query: query, history: history, earlier: earlier) }
+        task = Task { await run(format: format, query: query, history: history, earlier: earlier, facts: facts) }
     }
 
     func cancel() {
@@ -98,12 +101,12 @@ final class AnswerSession {
         }
     }
 
-    private func run(format: ResponseFormat, query: String, history: [AnswerTurn], earlier: [Exchange]) async {
+    private func run(format: ResponseFormat, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String]) async {
         let clock = ContinuousClock()
         let start = clock.now
         let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
         // An explicit ask ("ask AI what GDP means") sends the question alone; `query` keeps the words as typed.
-        let request = AnswerPrompt.request(format: format, query: AnswerQuery.question(for: query), context: context, model: client.model, history: history, earlier: earlier)
+        let request = AnswerPrompt.request(format: format, query: AnswerQuery.question(for: query), context: context, model: client.model, history: history, earlier: earlier, facts: facts)
 
         var usage: AnswerUsage?
         var firstTokenMs: Int?

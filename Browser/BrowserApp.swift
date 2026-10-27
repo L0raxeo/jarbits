@@ -6,7 +6,8 @@ struct BrowserApp: App {
         engine: BrowserSession.makeEngine(),
         answerClient: BrowserSession.makeAnswerClient(),
         recall: BrowserSession.makeRecallResolver(),
-        siteSearch: BrowserSession.makeSiteSearch()
+        siteSearch: BrowserSession.makeSiteSearch(),
+        factResolver: BrowserSession.makeFactResolver()
     )
 
     var body: some Scene {

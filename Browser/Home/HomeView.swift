@@ -228,6 +228,9 @@ struct HomeView: View {
                         .transition(.opacity.animation(.easeInOut(duration: 0.25)))
                     }
                     #endif
+
+                    // "Remembered: …" for a moment after a fact is kept or dropped.
+                    RememberedMarkOverlay(overResult: showsCapsule, clayY: clayY)
                 }
                 .onChange(of: window, initial: true) { _, window in
                     session.window = window

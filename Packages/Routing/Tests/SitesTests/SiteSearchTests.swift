@@ -88,7 +88,7 @@ import Testing
 
     @Test func siteFormatIsBuiltAndLast() {
         #expect(ResponseFormat.site.stage == .built)
-        #expect(ResponseFormat.allCases.suffix(2) == [.site, .video], "appended in order; video came after")
+        #expect(ResponseFormat.allCases.suffix(4) == [.site, .video, .remember, .forget], "appended in order; video, then the fact instincts, came after")
         #expect(ResponseFormat.site.outranksConversation)
         #expect(!ResponseFormat.site.isAnswered)
     }

@@ -142,8 +142,20 @@ final class BrowserSession {
 
     /// Jev judging a recall shortlist; nil shows the shortlist in word order.
     private let recall: RecallResolver?
+    /// What the app knows about the user; every fact goes into every answer.
+    let facts: FactStore
+    /// The facts' words, for the answer prompts; refreshed after every change.
+    private(set) var factTexts: [String] = []
+    /// Jev judging which fact a forget means; nil offers the shortlist in word order.
+    let factResolver: FactResolver?
+    /// The fact kept or dropped a moment ago, shown for `FactMark.linger`.
+    private(set) var remembered: FactMark?
+    private var markTask: Task<Void, Never>?
+    /// Where the screen stood before the query in flight: what an instinct
+    /// that shows nothing hands back to.
+    private var stageBefore: Stage = .idle
 
-    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared) {
+    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared) {
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
@@ -151,9 +163,15 @@ final class BrowserSession {
         self.recall = recall
         self.siteSearch = siteSearch
         self.sites = sites
+        self.facts = facts
+        self.factResolver = factResolver
         self.engine = engine
         self.log = log
         self.answerClient = answerClient
+        Task { [weak self] in
+            let texts = await facts.all().map(\.text)
+            self?.factTexts = texts
+        }
         dictation.mayListen = { [weak self] in
             await self?.audioIsQuiet() ?? true
         }
@@ -177,24 +195,12 @@ final class BrowserSession {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         question?.cancel()
-        #if DEBUG
-        // Raises the sheet with no instinct behind it, until one asks.
-        if trimmed.lowercased() == "ask me something" || trimmed.lowercased() == "ask me for text" {
-            let token = UUID()
-            requestToken = token
-            let input: PendingQuestion.Input = trimmed.lowercased().hasSuffix("text") ? .text(placeholder: "Type a word") : .options(["Tea", "Coffee", "Water"])
-            Task {
-                let answer = await ask("Which one?", input, token: token)
-                print("ask: \(answer.map { "\($0)" } ?? "dismissed")")
-            }
-            return
-        }
-        #endif
         takePicture(reason: "leave")   // before anything moves: the page as last seen
         let exchanges = exchanges   // the session so far, before anything moves
         let opened = openedSite   // and the site opened by name, if one is on screen
         let shown = current
         lastQuery = trimmed
+        if stage == .idle || stage == .ready { stageBefore = stage }
         stage = .routing
         let token = UUID()
         requestToken = token
@@ -237,6 +243,50 @@ final class BrowserSession {
     /// The sheet was swiped away.
     func dismissQuestion() {
         question?.cancel()
+    }
+
+    // MARK: Facts
+
+    /// Keeps `fact`, or refreshes the one already there, and shows the mark.
+    func learn(_ fact: Fact) async -> Fact {
+        let kept = await facts.add(fact)
+        #if DEBUG
+        print("fact \(fact.source.rawValue) \"\(kept.text)\"\(kept.id == fact.id ? "" : " (already known)")")
+        #endif
+        await refreshFacts()
+        note(FactMark(text: kept.text, kind: .remembered))
+        return kept
+    }
+
+    /// Drops `fact` and shows the mark.
+    func unlearn(_ fact: Fact) async {
+        await facts.forget(fact.id)
+        #if DEBUG
+        print("fact forgotten \"\(fact.text)\"")
+        #endif
+        await refreshFacts()
+        note(FactMark(text: fact.text, kind: .forgotten))
+    }
+
+    private func refreshFacts() async {
+        factTexts = await facts.all().map(\.text)
+    }
+
+    /// The mark, for a moment.
+    private func note(_ mark: FactMark) {
+        remembered = mark
+        markTask?.cancel()
+        markTask = Task { [weak self] in
+            try? await Task.sleep(for: FactMark.linger)
+            guard !Task.isCancelled, let self, remembered == mark else { return }
+            remembered = nil
+        }
+    }
+
+    /// `token` names the query in flight or last shown: an instinct that
+    /// waited on something checks it before going on.
+    func isCurrent(_ token: UUID) -> Bool {
+        token == requestToken
     }
 
     /// This session's exchanges up to the layer on screen, oldest first,
@@ -291,6 +341,7 @@ final class BrowserSession {
         guard stage == .idle || stage == .ready, dictation.phase == .listening else { return }
         takePicture(reason: "leave")   // the page as last seen, before the stage moves on
         let before = stage
+        stageBefore = before
         stage = .cleaning
         spokenGeneration += 1
         let generation = spokenGeneration
@@ -604,15 +655,37 @@ final class BrowserSession {
         // mark is read once, whatever the query routed to.
         let replaying = replayingQuery
         replayingQuery = nil
-        switch result.plan {
+        // A lasting fact the words stated on the way to something else is
+        // kept beside the pick, with the mark.
+        var factSummary: FactSummary?
+        if let inferred = result.inferred {
+            factSummary = FactSummary(action: "remembered", source: .inferred, text: inferred.text, remember: decision.remember)
+            Task { await learn(inferred) }
+        }
+        if let action = result.action, let context = result.context {
+            // An instinct that shows nothing: the screen goes back to where
+            // it stood, and the instinct runs over it, asking if it must.
+            stage = stageBefore
+            Task {
+                let outcome = await action.act(context, in: self, token: token)
+                guard token == requestToken else { return }
+                #if DEBUG
+                print("act \(action.spec.id): \(outcome.text)")
+                #endif
+                record(decision, query: query, extraction: result.extraction, fact: outcome.fact ?? factSummary)
+            }
+            return
+        }
+        guard let plan = result.plan else { return }
+        switch plan {
         case let .web(url):
             openPage(url, query: query, decision: decision)
-            record(decision, query: query, extraction: result.extraction)
+            record(decision, query: query, extraction: result.extraction, fact: factSummary)
         case let .answer(format, query, history, earlier):
             guard answerClient != nil else {
                 // Should not happen: the engine only plans answers when a client exists.
                 openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
-                record(decision, query: query, extraction: result.extraction)
+                record(decision, query: query, extraction: result.extraction, fact: factSummary)
                 return
             }
             // A follow-up that continues the conversation on screen grows
@@ -620,26 +693,28 @@ final class BrowserSession {
             let layer: Layer
             if decision.continuesThread, let shown = current, !shown.thread.isEmpty {
                 layer = shown
-                layer.plan = result.plan
+                layer.plan = plan
                 layer.query = query
                 layer.decision = decision
                 layer.lastShown = .now
             } else {
-                layer = Layer(plan: result.plan, query: query, decision: decision)
+                layer = Layer(plan: plan, query: query, decision: decision)
                 open(layer)
             }
             layer.extraction = result.extraction
+            layer.fact = factSummary
             if layer.answer == nil { layer.answer = makeAnswer(for: layer) }
             stage = .loading
-            layer.answer?.start(format: format, query: query, history: history, earlier: earlier)
+            layer.answer?.start(format: format, query: query, history: history, earlier: earlier, facts: factTexts)
             // Recorded when the answer finishes, with its summary attached.
         case let .localAnswer(_, query, _):
-            open(Layer(plan: result.plan, query: query, decision: decision))
+            open(Layer(plan: plan, query: query, decision: decision))
             stage = .ready
-            record(decision, query: query, extraction: result.extraction)
+            record(decision, query: query, extraction: result.extraction, fact: factSummary)
         case let .image(query):
-            let layer = Layer(plan: result.plan, query: query, decision: decision)
+            let layer = Layer(plan: plan, query: query, decision: decision)
             layer.extraction = result.extraction
+            layer.fact = factSummary
             layer.images = makeImages(for: layer)
             open(layer)
             stage = .loading
@@ -722,7 +797,7 @@ final class BrowserSession {
             }
         case .recallPicker, .memory, .siteChoices:
             // Only ever made by the session itself, never by an instinct.
-            assertionFailure("\(result.plan) is not a routed plan")
+            assertionFailure("\(plan) is not a routed plan")
         }
     }
 
@@ -983,11 +1058,13 @@ final class BrowserSession {
     }
 
     #if DEBUG
-    /// Forgets every memory and picture, and every learned site. A Debug control until a real one exists.
+    /// Forgets every memory and picture, every learned site and every fact. A Debug control until a real one exists.
     func clearMemory() {
         Task {
             await memory.clear()
             await sites.clear()
+            await facts.clear()
+            factTexts = []
         }
     }
     #endif
@@ -1013,7 +1090,7 @@ final class BrowserSession {
     private func imageFinished(_ summary: ImageSummary, in layer: Layer) {
         guard let images = layer.images, case .image = layer.plan else { return }
         if let decision = layer.decision {
-            record(decision, query: images.query, image: summary, extraction: layer.extraction)
+            record(decision, query: images.query, image: summary, extraction: layer.extraction, fact: layer.fact)
         }
         if case .fellBackToWeb = summary.outcome {
             // Neither Wikipedia nor Brave had a picture: Google Images for the
@@ -1032,7 +1109,7 @@ final class BrowserSession {
     private func answerFinished(_ summary: AnswerSummary, in layer: Layer) {
         guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
         if let decision = layer.decision {
-            record(decision, query: answer.query, answer: summary, extraction: layer.extraction)
+            record(decision, query: answer.query, answer: summary, extraction: layer.extraction, fact: layer.fact)
         }
         switch summary.outcome {
         case .fellBackToWeb where !answer.history.isEmpty, .needsLiveData where !answer.history.isEmpty:
@@ -1062,8 +1139,8 @@ final class BrowserSession {
         }
     }
 
-    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil) {
-        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image, recall: recall, site: site, extraction: extraction)
+    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil) {
+        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image, recall: recall, site: site, extraction: extraction, fact: fact)
         Task { await log.append(record) }
     }
 

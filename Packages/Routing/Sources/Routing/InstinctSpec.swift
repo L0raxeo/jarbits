@@ -201,12 +201,16 @@ public struct InstinctSpec: Sendable, Identifiable {
     public let questions: @Sendable (RequestContext) -> [(id: String, question: Question)]
     /// A grammar that decides the query with no model, when one exists.
     public let recognise: (@Sendable (String, RecogniseContext) -> Recognised?)?
+    /// A grammar that reads the instinct's values out of the words once it
+    /// has been picked, so no model is asked for what a template can see.
+    public let read: (@Sendable (String) -> Arguments)?
 
     public init(format: ResponseFormat) {
         self.format = format
-        showsLayer = true
-        sideEffects = .none
-        arguments = .none
+        var showsLayer = true
+        var sideEffects = SideEffects.none
+        var arguments = ArgumentSchema.none
+        var read: (@Sendable (String) -> Arguments)?
         switch format {
         case .narrative:
             questions = { _ in [(EngineRouting.recencyQuestionID, .noul(instructions: EngineRouting.recencyInstructions, criteria: EngineRouting.recencyCriteria))] }
@@ -246,10 +250,28 @@ public struct InstinctSpec: Sendable, Identifiable {
                 guard let search = SearchQuery.parse(query), search.isCommand else { return nil }
                 return Recognised(rule: DeviceRouting.searchRule, arguments: ["term": search.term])
             }
+        case .remember:
+            // Asked in every request: a yes on another pick is a fact noted quietly.
+            questions = { _ in [(EngineRouting.rememberQuestionID, .noul(instructions: EngineRouting.rememberInstructions, criteria: EngineRouting.rememberCriteria))] }
+            recognise = nil
+            showsLayer = false
+            arguments = ArgumentSchema(fields: [.init(name: "fact", kind: .text, description: "the lasting fact about the user, in their own words")])
+            // "remember that I'm allergic to peanuts": the words after the opener.
+            read = { query in RememberQuery.parse(query).map { ["fact": $0.fact] } ?? [:] }
+        case .forget:
+            questions = { _ in [] }
+            recognise = nil
+            showsLayer = false
+            sideEffects = .destructive
+            arguments = ArgumentSchema(fields: [.init(name: "about", kind: .text, description: "what the fact to forget is about, when the words say", required: false)])
         case .map, .stock, .image, .video:
             questions = { _ in [] }
             recognise = nil
         }
+        self.showsLayer = showsLayer
+        self.sideEffects = sideEffects
+        self.arguments = arguments
+        self.read = read
     }
 
     /// A spec set by hand: for an instinct whose values or side effects the
@@ -260,7 +282,8 @@ public struct InstinctSpec: Sendable, Identifiable {
         sideEffects: SideEffects = .none,
         arguments: ArgumentSchema = .none,
         questions: @escaping @Sendable (RequestContext) -> [(id: String, question: Question)] = { _ in [] },
-        recognise: (@Sendable (String, RecogniseContext) -> Recognised?)? = nil
+        recognise: (@Sendable (String, RecogniseContext) -> Recognised?)? = nil,
+        read: (@Sendable (String) -> Arguments)? = nil
     ) {
         self.format = format
         self.showsLayer = showsLayer
@@ -268,6 +291,7 @@ public struct InstinctSpec: Sendable, Identifiable {
         self.arguments = arguments
         self.questions = questions
         self.recognise = recognise
+        self.read = read
     }
 
     /// Every instinct, in the order Jev sees the options: `web_results`

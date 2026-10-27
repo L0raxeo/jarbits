@@ -34,7 +34,7 @@ public enum RoutingReport {
         out.append("")
         out.append("## The request")
         out.append("")
-        out.append("One `POST https://api.typesafe.ai/v1/systemone` per query, model `\(request.model)`, timeout \(timeoutText). Every question below goes in that one request and is answered in parallel: which instinct fits, whether the answer may have gone stale, how a recall ask reads, which earlier exchanges the query depends on, and how much working out it needs.")
+        out.append("One `POST https://api.typesafe.ai/v1/systemone` per query, model `\(request.model)`, timeout \(timeoutText). Every question below goes in that one request and is answered in parallel: which instinct fits, whether the answer may have gone stale, how a recall ask reads, whether the query states a lasting fact about the user, which earlier exchanges the query depends on, and how much working out it needs.")
         out.append("")
         out.append("State (what Jev reads):")
         out.append("")
@@ -51,7 +51,7 @@ public enum RoutingReport {
 
         out.append("## The questions")
         out.append("")
-        out.append("The pick (`\(EngineRouting.questionID)`), then the questions the instincts add (`recent` from the two answered ones, the `recall_*` questions from recall), then the reasoning score. With earlier exchanges in the state the relevance questions come between.")
+        out.append("The pick (`\(EngineRouting.questionID)`), then the questions the instincts add (`recent` from the two answered ones, the `recall_*` questions from recall, `remember` from remember), then the reasoning score. With earlier exchanges in the state the relevance questions come between.")
         out.append("")
         for (id, question) in request.questions {
             out += render(id: id, question: question)
@@ -107,6 +107,9 @@ public enum RoutingReport {
         out.append("| The chain ends on an answer exchange and any other pick, sure or not, with `recent` below \(EngineRouting.recencyThreshold.formatted()) | The answer on screen grows into a transcript: the query as a line, then a reply written with the earlier turns in view, as one line when `one_line` was picked with confidence and as a narrative otherwise | `continuation` (the pick is kept as `suggested`) |")
         out.append("| The chain ends on a page, a search or a picture | The chosen format's card, with the chained exchanges as context: a narrative or one-line answer lists them under its context block; web results search what the words say | `jev` with `chain` above 0 |")
         out.append("| `site` picked with confidence | The site, when the book knows the name; otherwise the choices card (see \"After routing: sites\") | `jev` |")
+        out.append("| `remember` picked with confidence | The fact is kept in the user's words (the words after the opener, or what a model read out of them) and a mark says so; what was on screen stays | `jev`, with `fact` |")
+        out.append("| `forget` picked with confidence | The facts the words point at are judged (one yes/no each, as a recall's are) and the one asked for is put to the user on the sheet; a tap forgets it | `jev`, with `fact` |")
+        out.append("| `remember` at or above \(EngineRouting.rememberThreshold.formatted()) on any other pick | The pick runs as usual, and the lasting fact the words state is noted quietly, as a model distils it, with a mark | the pick's own line, with `fact` |")
         out.append("| Over a site opened by name, `rejects` at or above \(EngineRouting.rejectionThreshold.formatted()), whatever the pick | The name is forgotten and the choices card shown again | `rejection` (the pick is kept as `suggested`) |")
         out.append("")
         out.append("Web results, however reached, are for the query with its search verb gone: \"google steve jobs\" searches \"steve jobs\" (`SearchQuery`, see \"Decided on the device\"); the log keeps the spoken words. An `image` pick searches the subject alone (`ImageQuery`, see \"After routing: Wikipedia images\"). A `video` pick loads Google's video results for the term with the asking gone (`VideoQuery`, see \"After routing: videos\").")

@@ -39,10 +39,26 @@ public struct ValueExtractor: Sendable {
         return lines.joined(separator: "\n")
     }
 
-    public static func request(query: String, exchanges: [Exchange], schema: JSONValue, model: String = model) -> InteractionRequest {
+    /// The schema and the instruction that distil a lasting fact about the
+    /// user out of a query that states one on the way to asking something
+    /// else ("I'm allergic to peanuts, what can I snack on").
+    public static let factSchema: JSONValue = [
+        "type": "object",
+        "properties": ["fact": ["type": ["string", "null"], "description": "the lasting fact about the user, in one short sentence in their own voice; null when the request states none"]],
+        "required": [],
+        "additionalProperties": false,
+    ]
+
+    public static let factSystem = """
+        You note what a request made to a phone's browser says about the person making it. Reply with JSON matching the schema and nothing else.
+        A fact is something lasting about them, a preference, an allergy, a name, where they live, that will still be true next week and could shape a later answer; state it in one short sentence in their own voice ("I'm allergic to peanuts"). Something true only now, a fact about the world, or a question with nothing lasting in it is null.
+        Earlier exchanges of the session may come before the request, oldest first.
+        """
+
+    public static func request(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, model: String = model) -> InteractionRequest {
         InteractionRequest(
             model: model,
-            systemInstruction: system,
+            systemInstruction: instructions,
             input: input(query: query, exchanges: exchanges),
             maxOutputTokens: maxOutputTokens,
             stream: false,
@@ -57,14 +73,15 @@ public struct ValueExtractor: Sendable {
         case failed(ExtractionSummary)
     }
 
-    /// One call within `timeout`; never throws.
-    public func extract(query: String, exchanges: [Exchange], schema: JSONValue) async -> Verdict {
+    /// One call within `timeout`; never throws. `instructions` is the
+    /// system instruction, `system` unless a different reading is wanted.
+    public func extract(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system) async -> Verdict {
         let clock = ContinuousClock()
         let start = clock.now
         func summary(_ outcome: ExtractionSummary.Outcome, fields: [String] = [], usage: AnswerUsage? = nil) -> ExtractionSummary {
             ExtractionSummary(model: client.model, latencyMs: Int((clock.now - start) / .milliseconds(1)), usage: usage, fields: fields, outcome: outcome)
         }
-        let request = Self.request(query: query, exchanges: exchanges, schema: schema, model: client.model)
+        let request = Self.request(query: query, exchanges: exchanges, schema: schema, instructions: instructions, model: client.model)
         let interaction: Interaction
         do {
             interaction = try await client.interact(request, timeout: timeout)
@@ -83,5 +100,17 @@ public struct ValueExtractor: Sendable {
             return .failed(summary(.empty, usage: interaction.usage))
         }
         return .values(values, summary(.extracted, fields: values.keys.sorted(), usage: interaction.usage))
+    }
+
+    /// The lasting fact a query states on the way to something else, in one
+    /// sentence; nil when the model found none or the call missed.
+    public func distill(query: String, exchanges: [Exchange]) async -> (fact: String?, summary: ExtractionSummary) {
+        switch await extract(query: query, exchanges: exchanges, schema: Self.factSchema, instructions: Self.factSystem) {
+        case let .values(values, summary):
+            let text = values["fact"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (text?.isEmpty == false ? text : nil, summary)
+        case let .failed(summary):
+            return (nil, summary)
+        }
     }
 }

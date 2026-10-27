@@ -21,6 +21,11 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     /// Appended last, like every format after the first, so the options
     /// Jev already knew keep their order.
     case video
+    /// Something lasting about the user to keep ("remember that I'm
+    /// allergic to peanuts"): a fact, kept on the device; see `FactStore`.
+    case remember
+    /// A fact to drop ("forget that I'm vegetarian"), confirmed on the sheet.
+    case forget
 
     /// What the app shows when the router cannot or should not decide.
     public static let fallback: ResponseFormat = .webResults
@@ -35,16 +40,16 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     public var outranksConversation: Bool {
         switch self {
         case .narrative, .oneLine, .webResults: false
-        case .map, .stock, .recall, .image, .video, .site: true
+        case .map, .stock, .recall, .image, .video, .site, .remember, .forget: true
         }
     }
 
     /// How far along this module is. Flip it in the same change that adds the
-    /// card; `JevRouter.plan(for:query:)` asserts the two agree.
+    /// card; each instinct asserts the stage and its plan agree.
     public var stage: Stage {
         switch self {
         case .webResults: .verified
-        case .narrative, .oneLine, .image, .video, .recall, .site: .built
+        case .narrative, .oneLine, .image, .video, .recall, .site, .remember, .forget: .built
         case .map, .stock: .routed
         }
     }
@@ -61,6 +66,8 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .video: "Videos"
         case .recall: "Recall"
         case .site: "Site"
+        case .remember: "Remember"
+        case .forget: "Forget"
         }
     }
 
@@ -76,6 +83,8 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .video: nil
         case .recall: nil
         case .site: nil
+        case .remember: nil
+        case .forget: nil
         }
     }
 
@@ -168,6 +177,18 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
                 what: "Open a website or app by its name. The query is a go-to, open, pull-up or take-me-to verb and a site's name, or the bare name of a well-known site with nothing else; the user wants the site itself, not results about it.",
                 notFor: "A search for something on a site (\"zillow homes in austin\"), a question about a site, a page the user saw in this app before (\"that youtube page from earlier\", which is recall), and an address, which loads directly.",
                 examples: ["go to youtube", "pull up zillow", "open insta", "take me to airbnb", "launch netflix", "reddit"]
+            )
+        case .remember:
+            Criterion(
+                what: "The user asks the app to keep something in mind about them for later, or tells it something lasting about themselves with nothing else asked: a preference, an allergy, a name, where they live. The words are a remember, a keep-in-mind, a don't-forget, a note-that, or a plain statement about the user; nothing is wanted back but the keeping.",
+                notFor: "Bringing back something seen in this app before (\"remember that convo on the dyson pencilvac\", \"remember that page\"), which is recall; a question that mentions a fact on the way to asking something (\"I'm allergic to peanuts, what can I snack on\" wants the snacks); a fact about the world.",
+                examples: ["remember that I'm allergic to peanuts", "keep in mind I'm vegetarian", "don't forget my wife's name is Ana", "note that I don't eat pork", "I live in austin now"]
+            )
+        case .forget:
+            Criterion(
+                what: "The user asks the app to forget, drop or stop remembering something it knows about them: the fact just noted, or one named by its subject.",
+                notFor: "Forgetting a page, a search or an answer, which is nothing the app keeps as a fact; a new question; \"never mind\" about a query just typed.",
+                examples: ["forget that", "forget that I'm vegetarian", "stop remembering my peanut allergy", "drop what I told you about my wife", "you can forget where I live"]
             )
         }
     }

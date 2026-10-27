@@ -37,6 +37,10 @@ import Testing
         }
         #expect(markdown.contains("### `recent` — type `noul`"))
         #expect(markdown.contains(EngineRouting.recencyCriteria.yes))
+        #expect(markdown.contains("### `remember` — type `noul`"))
+        #expect(markdown.contains(EngineRouting.rememberCriteria.no))
+        #expect(markdown.contains("| `remember` picked with confidence |"))
+        #expect(markdown.contains("| `forget` picked with confidence |"))
         #expect(markdown.contains("### `reasoning` — type `score`"))
         #expect(markdown.contains("| 2 | \(EngineRouting.reasoningLevels[2]) |"))
         #expect(markdown.contains("### `x0` — type `noul`"))
@@ -129,6 +133,10 @@ import Testing
                 format: .video, suggested: .video, confidence: 0.9,
                 probabilities: ["video": 0.9, "web_results": 0.1], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, source: .jev),
                 extraction: ExtractionSummary(model: "gemini-3.1-flash-lite", latencyMs: 400, usage: AnswerUsage(inputTokens: 150, outputTokens: 8, thoughtTokens: 0), fields: ["count"], outcome: .extracted)),
+            DecisionRecord(timestamp: now.addingTimeInterval(780), query: "remember that I'm vegetarian", decision: RouteDecision(
+                format: .remember, suggested: .remember, confidence: 0.9,
+                probabilities: ["remember": 0.9, "recall": 0.1], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, remember: 0.95, source: .jev),
+                fact: FactSummary(action: "remembered", source: .told, text: "I'm vegetarian", remember: 0.95)),
         ]
         let lines = try records.map { String(decoding: try DecisionRecord.encoder.encode($0), as: UTF8.self) }.joined(separator: "\n") + "\n"
         let parsed = try DecisionsReport.parse(Data(lines.utf8))
@@ -136,8 +144,12 @@ import Testing
 
         let oldRecord = #"{"timestamp":"2026-10-01T00:00:00Z","query":"x","decision":{"format":"web_results","probabilities":{},"source":{"noKey":{}}}}"#
         let markdown = DecisionsReport.markdown(records: parsed)
-        #expect(markdown.contains("15 queries: 10 asked Jev, 3 decided on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("16 queries: 11 asked Jev, 3 decided on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
         #expect(markdown.contains("1 asked a model for a value: 1 read one, 0 came back empty, 0 failed. Median latency 400 ms."))
+        #expect(markdown.contains("1 touched the facts: 1 remembered (1 told, 0 chosen, 0 inferred), 0 forgotten, 0 declined, 0 found nothing to keep or drop."))
+        #expect(markdown.contains("Remember gate (threshold 0.5): mean 0.95 where a fact was kept, 0.95 over every query asked."))
+        #expect(markdown.contains("Kept: \"I'm vegetarian\""))
+        #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).fact == nil, "lines without a fact decode")
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).extraction == nil, "lines without an extraction decode")
         #expect(markdown.contains("1 recalls: 1 opened one memory, 0 showed a picker, 0 matched nothing and went to web. Jev judged 1, median 310 ms; 0 fell back to word order."))
         #expect(markdown.contains("4 site requests: 1 opened a remembered site, 1 showed choices, 1 fell back to web results, 1 rejected the site on screen. Median search latency 640 ms."))

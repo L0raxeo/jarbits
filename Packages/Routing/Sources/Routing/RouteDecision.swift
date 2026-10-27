@@ -41,6 +41,9 @@ public struct RouteDecision: Codable, Sendable, Equatable {
     /// name: a choice's option, "true" or "false" for a yes/no. Nil when
     /// the pick declares none or none was stated.
     public var arguments: [String: String]?
+    /// Jev's probability that the query states a lasting fact about the
+    /// user; nil when the question went unanswered.
+    public var remember: Double?
     public var source: Source
 
     public enum Source: Codable, Sendable, Equatable {
@@ -92,6 +95,7 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         reasoning: Double? = nil,
         reasoningConfidence: Double? = nil,
         arguments: [String: String]? = nil,
+        remember: Double? = nil,
         source: Source
     ) {
         self.format = format
@@ -110,7 +114,13 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         self.reasoning = reasoning
         self.reasoningConfidence = reasoningConfidence
         self.arguments = arguments
+        self.remember = remember
         self.source = source
+    }
+
+    /// The query states a lasting fact about the user, by Jev's reading.
+    public var statesFact: Bool {
+        (remember ?? 0) >= EngineRouting.rememberThreshold
     }
 
     /// The follow-up carries on the answer on screen as a new turn.

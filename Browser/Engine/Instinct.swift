@@ -26,12 +26,32 @@ struct InstinctContext {
     var decision: RouteDecision { outcome.decision }
 }
 
-/// One instinct as the app runs it: its spec from the registry, and the
-/// plan it makes for a query the engine decided for it. The session turns
-/// the plan into a layer.
+/// What an instinct that shows nothing came to: how it touched the facts,
+/// and a line for the console.
+struct ActOutcome {
+    var fact: FactSummary?
+    var text: String
+
+    static let nothing = ActOutcome(fact: nil, text: "")
+}
+
+/// One instinct as the app runs it: its spec from the registry, and either
+/// the plan it makes for a query the engine decided for it (the session
+/// turns the plan into a layer) or, for one that shows nothing, what it
+/// does with the session's stores and sheet.
 protocol Instinct {
     var spec: InstinctSpec { get }
+    /// The plan of a showing instinct; an acting one is never asked for it.
     func plan(_ context: InstinctContext) -> CardPlan
+    /// What an acting instinct (`spec.showsLayer == false`) does, under the
+    /// request's token: a wait that outlives the query is answered nothing.
+    func act(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> ActOutcome
+}
+
+extension Instinct {
+    func act(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> ActOutcome {
+        .nothing
+    }
 }
 
 enum InstinctRegistry {
@@ -47,6 +67,8 @@ enum InstinctRegistry {
             ImageInstinct(),
             SiteInstinct(),
             VideoInstinct(),
+            RememberInstinct(),
+            ForgetInstinct(),
         ]
         assert(instincts.map(\.spec.id) == InstinctSpec.all.map(\.id), "every spec in the registry has its conformer, in order")
         return instincts

@@ -106,7 +106,8 @@ import Testing
         streamed.stream = true   // forced off by send
         let data = try await client.send(streamed)
         #expect(data == Data(InteractionResponseTests.planBody.utf8))
-        let sent = try #require(MockGeminiTransport.requests.first)
+        // A slow test's request can land in the list late; this one is the whole-body call.
+        let sent = try #require(MockGeminiTransport.requests.first { $0.value(forHTTPHeaderField: "Accept") == "application/json" })
         #expect(sent.url?.absoluteString == "https://generativelanguage.googleapis.com/v1beta/interactions")
         #expect(sent.value(forHTTPHeaderField: "Accept") == "application/json", "no event stream")
         #expect(sent.value(forHTTPHeaderField: "x-goog-api-key") == "test-key")
@@ -153,7 +154,10 @@ import Testing
         #expect(summary.usage == AnswerUsage(inputTokens: 200, outputTokens: 9, thoughtTokens: 0))
         #expect(summary.model == GeminiClient.defaultModel)
         #expect(summary.latencyMs >= 0)
-        let sent = MockGeminiTransport.requests.first?.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        // A slow test's request can land in the list late; find this one by its schema.
+        let sent = MockGeminiTransport.requests
+            .compactMap { $0.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } }
+            .first { $0["response_format"] != nil }
         #expect(sent?["stream"] as? Bool == false)
         #expect((sent?["response_format"] as? [String: Any])?["mime_type"] as? String == "application/json")
     }

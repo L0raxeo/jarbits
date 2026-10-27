@@ -188,6 +188,18 @@ import Testing
         #expect(((steps?.last?["content"] as? [[String: Any]])?.first?["text"] as? String)?.contains("- Searched \"brasil weather\"") == true, "they ride in the last step")
     }
 
+    @Test func factsFollowTheContextAndTheExchangesAndThePromptsNameTheBlock() throws {
+        let input = AnswerPrompt.input(query: "give me a dinner recipe", context: .example, earlier: [.search(query: "dinner", term: "dinner ideas")], facts: ["I'm vegetarian", "I hate cilantro"])
+        #expect(input.hasSuffix("- Searched \"dinner ideas\"\n\nWhat you know about the user (told earlier; let it shape the answer when it bears on it, never repeat it or say you were told):\n- I'm vegetarian\n- I hate cilantro"))
+        #expect(!AnswerPrompt.input(query: "x", context: .example).contains("What you know about the user"), "nothing added without facts")
+        let request = AnswerPrompt.request(format: .oneLine, query: "q", context: .example, facts: ["I use metric units"])
+        let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
+        #expect((json["input"] as? String)?.hasSuffix("- I use metric units") == true)
+        #expect(AnswerPrompt.system(for: .narrative).contains("What you know about the user"))
+        #expect(AnswerPrompt.system(for: .oneLine).contains("What you know about the user"))
+        #expect(AnswerPrompt.system(for: .narrative).contains("never list them back"))
+    }
+
     @Test func contextCarriesDateZoneAndLocale() {
         let input = AnswerPrompt.input(query: "what's the time in costa rica", context: .example)
         #expect(input.contains("- Date and time: Wednesday 21 October 2026, 11:26 (America/Chicago)"), "got: \(input)")

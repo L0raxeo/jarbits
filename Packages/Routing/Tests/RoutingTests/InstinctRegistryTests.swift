@@ -11,10 +11,23 @@ import Testing
         #expect(InstinctSpec.all.first?.id == "web_results", "the fallback goes first")
         for spec in InstinctSpec.all {
             #expect(spec.criterion == spec.format.criterion)
-            #expect(spec.showsLayer, "\(spec.id) shows a layer today")
-            #expect(spec.sideEffects == .none, "\(spec.id) has no side effects today")
-            #expect(spec.arguments.isEmpty, "\(spec.id) takes no arguments today")
             #expect(InstinctSpec.spec(for: spec.id)?.format == spec.format)
+            switch spec.format {
+            case .remember:
+                #expect(!spec.showsLayer && spec.sideEffects == .none)
+                #expect(spec.arguments.freeForm.map(\.name) == ["fact"] && spec.arguments.closedSet.isEmpty)
+                #expect(spec.read?("remember that I'm allergic to peanuts") == ["fact": "I'm allergic to peanuts"], "the opener comes off on the device")
+                #expect(spec.read?("I'm allergic to peanuts") == [:], "no opener, no reading: a model reads it")
+            case .forget:
+                #expect(!spec.showsLayer && spec.sideEffects == .destructive)
+                #expect(spec.arguments.fields.map(\.name) == ["about"] && spec.arguments.fields[0].required == false)
+                #expect(spec.read == nil)
+            default:
+                #expect(spec.showsLayer, "\(spec.id) shows a layer")
+                #expect(spec.sideEffects == .none, "\(spec.id) has no side effects")
+                #expect(spec.arguments.isEmpty, "\(spec.id) takes no arguments")
+                #expect(spec.read == nil)
+            }
         }
         #expect(InstinctSpec.spec(for: "podcasts") == nil)
     }
@@ -28,7 +41,8 @@ import Testing
         #expect(ids(.recall, plain) == EngineRouting.recallQuestionIDs)
         #expect(ids(.site, plain) == [], "the rejects question needs a site on screen")
         #expect(ids(.site, overSite) == ["rejects"])
-        for format in [ResponseFormat.webResults, .map, .stock, .image, .video] {
+        #expect(ids(.remember, plain) == ["remember"], "asked in every request: a yes on another pick is an inferred fact")
+        for format in [ResponseFormat.webResults, .map, .stock, .image, .video, .forget] {
             #expect(ids(format, overSite).isEmpty, "\(format)")
         }
     }

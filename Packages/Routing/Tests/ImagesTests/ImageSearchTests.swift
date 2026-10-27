@@ -116,7 +116,7 @@ import Testing
 
     @Test func imageFormatIsBuiltAndComesAfterTheOlderOnes() {
         #expect(ResponseFormat.image.stage == .built)
-        #expect(ResponseFormat.allCases.suffix(3) == [.image, .site, .video], "appended in order, so Jev's leanings do not shift")
+        #expect(ResponseFormat.allCases.suffix(5) == [.image, .site, .video, .remember, .forget], "appended in order, so Jev's leanings do not shift")
         #expect(!ResponseFormat.image.isAnswered)
     }
 
