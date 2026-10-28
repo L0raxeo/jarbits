@@ -290,8 +290,9 @@ punctuation and spacing aside), Jev is asked again on the read words and
 that pick wins, and they are what the instinct, the planner, the exchange,
 the layer and the label on screen receive. The subject fills the picked
 instinct's object field. The same substance, a miss, or a reply slower
-than `QueryReader.timeout` (2 s) leaves the first pick standing with no
-subject: the instinct then takes the words as they are. The trade is
+than `QueryReader.timeout` (4 s; the Mac sees 1.0 to 1.4 s, and a miss
+sends a chained search out unresolved) leaves the first pick standing
+with no subject: the instinct then takes the words as they are. The trade is
 latency: a query waits for the slower of the two calls, Jev's few hundred
 milliseconds or the reading's (the first real calls took 0.97 and 1.38 s,
 about five thousandths of a cent each), and a rewritten query pays one

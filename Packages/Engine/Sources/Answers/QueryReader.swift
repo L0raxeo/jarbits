@@ -15,8 +15,11 @@ public struct QueryReader: Sendable {
     public static let model = GeminiClient.defaultModel
     /// A query waits for the slower of Jev and this call, so the cap is
     /// what a query may lose to it; past it the typed words run with no
-    /// subject. The first real calls took 0.97 and 1.38 s (2026-10-27).
-    public static let timeout: Duration = .seconds(2)
+    /// subject, and a chained search goes out unresolved. From the Mac the
+    /// call takes 1.0 to 1.4 s (2026-10-27); a phone's network is slower,
+    /// and a miss here costs more than a wait, so the cap is twice that.
+    /// The console prints each call's time; set this from the phone's.
+    public static let timeout: Duration = .seconds(4)
     public static let maxOutputTokens = 120
     /// The newest exchanges the reading sees, so "it" and "that" resolve.
     public static let exchangesGiven = 3
