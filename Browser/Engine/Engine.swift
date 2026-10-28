@@ -1,6 +1,5 @@
 import Answers
 import Foundation
-import Images
 import Engine
 import Sites
 
@@ -169,12 +168,6 @@ extension BrowserSession {
     /// key is configured; nil shows the Google results page for the name.
     static func makeSiteSearch() -> SiteSearch? {
         Secrets.braveAPIKey.map { SiteSearch(apiKey: $0) }
-    }
-
-    /// Wikipedia first for a picture; Brave's image search behind it when a
-    /// key is configured, else a Wikipedia miss goes to Google Images.
-    static func makeImageLookup() -> ImageLookup {
-        ImageLookup(wikipedia: ImageSearch(), brave: Secrets.braveAPIKey.map { BraveImageSearch(apiKey: $0) })
     }
 
     /// Jev judging a recall shortlist, when a key is configured; nil shows

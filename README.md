@@ -4,7 +4,7 @@ An iOS browser where a query goes through a router that decides what kind of
 card to show. The router is TypeSafe's Jev, a System One model: it picks one of
 nine response formats and reports how sure it is. Five providers exist
 behind it: a Google results web view (`web_results`), Gemini answers for
-`narrative` and `one_line`, a Wikipedia (or Brave) picture for `image`, the phone's
+`narrative` and `one_line`, Google's image results for `image`, the phone's
 own memories for `recall` (something seen before, brought back), and the
 phone's site book for `site` (a website asked for by name, "go to youtube").
 
@@ -371,34 +371,20 @@ outcome. If live answers are wanted later, a search source such as Serper
 (prepaid, about $1 per 1,000 queries) can feed results into the same input
 block without changing the cards.
 
-## Image cards
+## Images
 
 `image` is for one specific, named thing with a definitive look: a flag, a
-logo, a landmark, a painting, a person, a species. `ImageSession` runs an
-`ImageLookup` over two sources in order. Wikipedia first, free and without
-a key: the subject the reading gave ("show me a picture of the eiffel
-tower" → "eiffel tower", "what does a capybara look like" → "capybara";
-the words as typed when it gave none) goes to the REST page search, which turns it into article
-candidates, the page summary of the first three with a thumbnail gives each
-article's lead image, and disambiguation pages and articles without an
-image are skipped. When Wikipedia answers and has nothing (a 2025 product
-has no article yet), and a Brave key is configured, Brave's image search is
-asked for the same subject (`BraveImageSearch`, five results, strict safe
-search, the same key as the site search); the first result whose full-size
-image downloads and decodes is the picture. A Wikipedia error or timeout
-is not a miss and does not reach Brave. Either way the first picture is
-downloaded and decoded before the card fades in, so the wave line lasts
-until it is on screen; the others are alternates, up to two, shown as
-thumbnails under the title and description with a link to the page the
-picture came from, "Wikipedia" for the article (which carries the image's
-licence and author) or the site's host for a Brave result, and the usual
-"Web results". Nothing from either source, or nothing within 10 s per
-source, falls back to Google's image results for the subject alone, never
-web results for the whole sentence. The log records the article or
-result title, the source, the candidate count, the latency and the
-outcome, with what each source did on a miss; if misses turn out to be
-common, the upgrade is to let Gemini turn the query into an article title
-before searching.
+logo, a landmark, a painting, a person, a species, a game item. The
+instinct loads Google's image results (`QueryParser.imageSearchURL`, the
+results page with `tbm=isch`) for the words as they ran, so the search
+engine reads the whole question ("what does green jelly look like in
+Stardew Valley" finds the game item, not the band) and nothing in the app
+has to name the subject. It is a page like any other to the capsule and
+the log, and the memory keeps it as a picture, so "my pictures" and "that
+picture of the pencilvac" bring it back. There is no card: a card needed a
+picture source of its own (Wikipedia, then Brave) and a subject to search
+it for, and the subject was the one place a query could still go wrong
+after Jev; both came out on 2026-10-28.
 
 ## Recall
 
@@ -740,7 +726,7 @@ coming from it. Nothing of this outlives the app.
 
 | Path | Role |
 |---|---|
-| `Packages/Engine/` | Foundation-only Swift package with four libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values, the subject field), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
+| `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values, the subject field), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
 | `Browser/Engine/Engine.swift` | The cognitive engine's first stage: an address as typed, else one Jev request over the registry carrying the session's exchanges with the reading beside it, the subject into the pick's object field, the extractor for a field beyond it, and the instinct to run with what it needs; or the hand-off to the executor when the reasoning score says the query needs several steps. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Browser/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat or a second thing to show, and sending every result back to the planner until `done` or the bounds. |
 | `Browser/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the memories and Jev's judge. |
@@ -748,7 +734,6 @@ coming from it. Nothing of this outlives the app.
 | `Browser/Engine/FactInstincts.swift` | The two instincts that show nothing: `remember` keeps a fact, `forget` judges which one the words mean and asks on the sheet. |
 | `Browser/Engine/PendingQuestion.swift` | One question put to the user on the sheet and the wait on its answer, resumed once by a tap, a return or a cancel. |
 | `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
-| `Browser/Images/ImageSession.swift` | Loads one picture (and its alternates) for an image plan, Wikipedia first and Brave behind it, and the summary for the log. |
 | `Browser/Memory/MemoryStore.swift` | The memories file: load once, append as results appear, refresh a repeat within a day, drop the oldest past the cap, search by words (`MemorySearch` in the package). |
 | `Browser/Memory/SiteStore.swift` | The site book on disk: seeded on first load, written whole on each learn, touch, forget or clear. |
 | `Browser/Home/AskSheet.swift`, `RememberedMark.swift` | The small sheet the app asks with (a question, then up to three buttons or a line to type; sized to its content), and the quiet line shown for a moment after a fact is kept or dropped. |

@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		B10000000000000000000016 /* Engine in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000015 /* Engine */; };
 		B10000000000000000000019 /* Answers in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000018 /* Answers */; };
-		B10000000000000000000021 /* Images in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000020 /* Images */; };
 		B10000000000000000000023 /* Sites in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000022 /* Sites */; };
 /* End PBXBuildFile section */
 
@@ -48,7 +47,6 @@
 			files = (
 				B10000000000000000000016 /* Engine in Frameworks */,
 				B10000000000000000000019 /* Answers in Frameworks */,
-				B10000000000000000000021 /* Images in Frameworks */,
 				B10000000000000000000023 /* Sites in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -105,7 +103,6 @@
 			packageProductDependencies = (
 				B10000000000000000000015 /* Engine */,
 				B10000000000000000000018 /* Answers */,
-				B10000000000000000000020 /* Images */,
 				B10000000000000000000022 /* Sites */,
 			);
 			productName = Browser;
@@ -345,10 +342,6 @@
 		B10000000000000000000018 /* Answers */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Answers;
-		};
-		B10000000000000000000020 /* Images */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Images;
 		};
 		B10000000000000000000022 /* Sites */ = {
 			isa = XCSwiftPackageProductDependency;

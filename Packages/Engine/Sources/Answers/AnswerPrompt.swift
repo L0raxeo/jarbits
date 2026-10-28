@@ -100,7 +100,6 @@ public enum AnswerPrompt {
             else if let title = exchange.title { "Read \"\(title)\"" }
             else { "Read a page for \"\(exchange.query)\"" }
         case .search: "Searched \"\(exchange.text ?? exchange.query)\""
-        case .picture: "Looked at a picture of \"\(exchange.text ?? exchange.query)\""
         case .recall: "Looked through earlier memories for \"\(exchange.query)\""
         case .site: "Chose among sites for \"\(exchange.title ?? exchange.query)\""
         }

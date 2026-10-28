@@ -1,5 +1,4 @@
 import Answers
-import Images
 import Engine
 import Sites
 import SwiftUI
@@ -98,10 +97,6 @@ struct ResultView: View {
             }
         case let .time(_, text):
             AnswerView(spans: AnswerMarkup.styled(text, for: .oneLine), stoppedEarly: false, format: .oneLine, clayY: clayY, barCompact: $barCompact)
-        case .image:
-            if let images = layer.images {
-                ImageCardView(images: images, clayY: clayY)
-            }
         case let .memory(record):
             // A remembered conversation shows its earlier turns and ends on its last.
             let turns = record.turns ?? []
@@ -510,96 +505,6 @@ struct MemoryTile: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 12)
             }
-        }
-    }
-}
-
-/// A picture where the line was: the image large, its title and description
-/// under it, up to two alternates as thumbnails, and links to the page it
-/// came from (the Wikipedia article, or the site Brave found it on) and to
-/// web results.
-private struct ImageCardView: View {
-    @Environment(BrowserSession.self) private var session
-    let images: ImageSession
-    let clayY: CGFloat
-
-    var body: some View {
-        GeometryReader { proxy in
-            VStack(spacing: 12) {
-                if let image = images.primary {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: proxy.size.width - 32, maxHeight: proxy.size.height * 0.45)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
-                }
-                if images.results.indices.contains(images.primaryIndex) {
-                    let result = images.results[images.primaryIndex]
-                    Text(result.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Palette.ink)
-                        .multilineTextAlignment(.center)
-                    if let description = result.description, !description.isEmpty {
-                        Text(description)
-                            .font(.footnote)
-                            .foregroundStyle(Palette.quiet)
-                            .lineLimit(1)
-                    }
-                    alternates
-                    HStack(spacing: 20) {
-                        Button(result.sourceName) { session.open(result.pageURL) }
-                        Button("Web results") { session.showWebResults() }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.subheadline)
-                    .foregroundStyle(Palette.quiet)
-                    .padding(.top, 4)
-                }
-            }
-            .padding(.horizontal, 16)
-            .frame(width: proxy.size.width)
-            // The picture lands about where the clay was; the captions hang below.
-            .position(x: proxy.size.width / 2, y: clayY + 60)
-            .frame(width: proxy.size.width, height: proxy.size.height)
-        }
-    }
-
-    /// Up to two other matches, small; a tap makes one the picture. The
-    /// results are taken here, with their positions, not looked up again in
-    /// each row: a new query empties the session's results, and a row from
-    /// the old list can be asked for before this list is rebuilt. Indexing
-    /// then would crash ("Dominican flag", then "Panamanian flag").
-    @ViewBuilder
-    private var alternates: some View {
-        let others = Array(images.results.enumerated().filter { $0.offset != images.primaryIndex }.prefix(2))
-        if !others.isEmpty {
-            HStack(spacing: 16) {
-                ForEach(others, id: \.offset) { index, result in
-                    Button {
-                        images.select(index)
-                    } label: {
-                        VStack(spacing: 4) {
-                            AsyncImage(url: result.imageURL) { phase in
-                                if let image = phase.image {
-                                    image.resizable().aspectRatio(contentMode: .fit)
-                                } else {
-                                    Color(white: 0.94)
-                                }
-                            }
-                            .frame(height: 72)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            Text(result.title)
-                                .font(.caption)
-                                .foregroundStyle(Palette.quiet)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: 140)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.top, 4)
         }
     }
 }

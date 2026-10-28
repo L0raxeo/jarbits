@@ -34,7 +34,7 @@ public enum EngineRequest {
     public static func contextInstructions(instincts: [InstinctSpec] = InstinctSpec.all) -> String {
         let cards = instincts.filter(\.outranksConversation).map(\.id).joined(separator: ", ")
         return "Which response format best answers this web search query? The state carries the earlier exchanges of this session under `exchanges`, oldest first: "
-            + "each query and what it got (an answer's text, a page's title and address, a search's term, a picture's subject). "
+            + "each query and what it got (an answer's text, a page's title and address, a search's term). "
             + "Judge the query as the exchanges it depends on make it, not as typed on its own; a query that stands on its own is judged as typed. "
             + "A reply, a reaction or a question that leans on an earlier answer, however short, wants narrative; or one_line when the reply is itself a single short fact, "
             + "a number, a name, a date, a yes/no, as \"and chile?\" after a capital is. "

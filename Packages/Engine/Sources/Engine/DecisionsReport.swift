@@ -8,8 +8,6 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     /// Filled in once Gemini has answered (or failed to); absent for web plans
     /// and for lines written before answers existed.
     public var answer: AnswerSummary?
-    /// Filled in once the image card has loaded (or failed to); absent otherwise.
-    public var image: ImageSummary?
     /// How a recall fared: how many memories matched and which was shown.
     public var recall: RecallSummary?
     /// How a site request fared: opened from the book, choices shown, or the results page.
@@ -23,12 +21,11 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     /// How the reading beside Jev went, when one was asked; `query` is the words that ran.
     public var reading: ReadingSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: Pick, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: Pick, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
         self.answer = answer
-        self.image = image
         self.recall = recall
         self.site = site
         self.extraction = extraction
@@ -202,29 +199,6 @@ public enum DecisionsReport {
                     case let .partial(reason): out.append("- \"\(record.query)\": partial, \(reason)")
                     case let .fellBackToWeb(reason): out.append("- \"\(record.query)\": fell back to web, \(reason)")
                     case .completed, .needsLiveData: break
-                    }
-                }
-                out.append("")
-            }
-        }
-
-        let imaged = records.compactMap { record in record.image.map { (record, $0) } }
-        if !imaged.isEmpty {
-            out.append("## Images")
-            out.append("")
-            let shown = imaged.filter { if case .shown = $0.1.outcome { true } else { false } }
-            let withAlternates = shown.filter { if case let .shown(alternates) = $0.1.outcome { alternates > 0 } else { false } }.count
-            let fromBrave = shown.filter { $0.1.source == .brave }.count
-            let braveNote = fromBrave > 0 ? ", \(fromBrave) from Brave" : ""
-            out.append("\(imaged.count) image queries: \(shown.count) shown (\(withAlternates) with alternates\(braveNote)), \(imaged.count - shown.count) fell back to web. Median latency \(median(imaged.compactMap(\.1.latencyMs))).")
-            out.append("")
-            let missed = imaged.filter { if case .fellBackToWeb = $0.1.outcome { true } else { false } }
-            if !missed.isEmpty {
-                out.append("Image misses:")
-                out.append("")
-                for (record, image) in missed.suffix(10) {
-                    if case let .fellBackToWeb(reason) = image.outcome {
-                        out.append("- \"\(record.query)\": \(reason)")
                     }
                 }
                 out.append("")

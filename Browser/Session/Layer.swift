@@ -40,8 +40,6 @@ final class Layer: Identifiable {
     var pageTitle: String?
     /// An answer layer's own stream, so its text and turns survive leaving.
     var answer: AnswerSession?
-    /// A picture layer's own results.
-    var images: ImageSession?
     /// A site this layer opened by name and still shows: routing asks Jev
     /// whether a follow-up rejects it.
     var openedSite: OpenedSite?

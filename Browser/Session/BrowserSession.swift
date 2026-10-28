@@ -1,7 +1,6 @@
 import AVFAudio
 import Answers
 import Foundation
-import Images
 import Observation
 import Engine
 import Sites
@@ -52,8 +51,6 @@ final class BrowserSession {
     /// Gemini, for the answer layers; nil when no key is configured, in
     /// which case the router never produces an answer plan.
     private let answerClient: GeminiClient?
-    /// Pictures for the image layers: Wikipedia, then Brave behind it.
-    private let imageLookup = BrowserSession.makeImageLookup()
     /// The one microphone: its session set once at launch, shared by whoever
     /// listens, never touching what plays.
     let microphone: Microphone
@@ -474,7 +471,6 @@ final class BrowserSession {
         question?.cancel()
         if let layer = current {
             layer.answer?.cancel()
-            layer.images?.cancel()
             layer.page?.stop()
         }
         spokenGeneration += 1
@@ -490,7 +486,6 @@ final class BrowserSession {
     private func open(_ layer: Layer) {
         if let leaving = current {
             leaving.answer?.cancel()
-            leaving.images?.cancel()
             Task { await leaving.page?.pause() }
         }
         if index + 1 < layers.count {
@@ -562,19 +557,6 @@ final class BrowserSession {
         if layer.answer == nil { layer.answer = makeAnswer(for: layer) }
         stage = .loading
         layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: factTexts)
-    }
-
-    /// A picture of `subject`, Wikipedia then Brave. Recorded when it
-    /// loads or fails, with its summary attached.
-    func showImage(subject: String, context: InstinctContext) {
-        let layer = Layer(plan: .image(subject: subject), query: context.query, decision: context.decision)
-        layer.extraction = context.extraction
-        layer.fact = context.fact
-        layer.reading = context.reading
-        layer.images = makeImages(for: layer)
-        open(layer)
-        stage = .loading
-        layer.images?.start(subject: subject)
     }
 
     /// A site the book knew opens, in a new layer, as opened by name.
@@ -659,19 +641,6 @@ final class BrowserSession {
             answerFinished(summary, in: layer)
         }
         return answer
-    }
-
-    private func makeImages(for layer: Layer) -> ImageSession {
-        let images = ImageSession(lookup: imageLookup)
-        images.onReady = { [weak self, weak layer] in
-            guard let self, let layer else { return }
-            imageReady(in: layer)
-        }
-        images.onFinish = { [weak self, weak layer] summary in
-            guard let self, let layer else { return }
-            imageFinished(summary, in: layer)
-        }
-        return images
     }
 
     var canSwipeBack: Bool { stage == .ready && index > 0 }
@@ -1026,27 +995,9 @@ final class BrowserSession {
         // Nor the results page a site request fell through to: "go to lobsters" is not a search.
         guard !layer.query.isEmpty, layer.decision?.instinct != .recall, layer.decision?.instinct != .site else { return }
         let term = QueryParser.searchTerm(in: url)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        remember(MemoryRecord(kind: .search, query: term?.isEmpty == false ? term! : layer.query), in: layer)
-    }
-
-    /// The first picture is decoded: fade the line out, the card in.
-    private func imageReady(in layer: Layer) {
-        guard layer.images != nil, case .image = layer.plan else { return }
-        if layer === current { stage = .ready }
-        remember(MemoryRecord(kind: .image, query: layer.query), in: layer)
-    }
-
-    private func imageFinished(_ summary: ImageSummary, in layer: Layer) {
-        guard let images = layer.images, case .image = layer.plan else { return }
-        if let decision = layer.decision {
-            record(decision, query: layer.query, image: summary, extraction: layer.extraction, fact: layer.fact, reading: layer.reading)
-        }
-        if case .fellBackToWeb = summary.outcome {
-            // Neither Wikipedia nor Brave had a picture: Google Images for the
-            // subject alone, not web results for the whole sentence. The
-            // layer becomes that page.
-            show(QueryParser.imageSearchURL(for: images.subject), in: layer)
-        }
+        // Google's image results are a picture memory, so "my pictures" finds them.
+        let kind: MemoryRecord.Kind = QueryParser.isImageResults(url) ? .image : .search
+        remember(MemoryRecord(kind: kind, query: term?.isEmpty == false ? term! : layer.query), in: layer)
     }
 
     /// First answer text arrived: fade the line out, the text in.
@@ -1088,8 +1039,8 @@ final class BrowserSession {
         }
     }
 
-    private func record(_ decision: Pick, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil) {
-        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image, recall: recall, site: site, extraction: extraction, fact: fact, engine: engine, reading: reading)
+    private func record(_ decision: Pick, query: String, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil) {
+        let record = DecisionRecord(query: query, decision: decision, answer: answer, recall: recall, site: site, extraction: extraction, fact: fact, engine: engine, reading: reading)
         Task { await log.append(record) }
     }
 

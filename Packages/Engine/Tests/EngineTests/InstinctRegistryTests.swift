@@ -25,9 +25,6 @@ import Testing
                 #expect(spec.showsLayer && spec.sideEffects == .none)
                 #expect(spec.arguments.fields.map(\.name) == ["term"] && spec.arguments.fields[0].required == false)
                 #expect(spec.subjectField == "term")
-            case .image:
-                #expect(spec.showsLayer && spec.sideEffects == .none)
-                #expect(spec.arguments.fields.map(\.name) == ["subject"] && spec.subjectField == "subject")
             case .site:
                 #expect(spec.arguments.fields.map(\.name) == ["name"] && spec.subjectField == "name")
             case .time:

@@ -16,8 +16,6 @@ enum CardPlan: Hashable, Sendable {
     /// for the model under its context block; empty for a query that stands
     /// alone.
     case answer(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange])
-    /// A picture of the subject, from Wikipedia or Brave, loaded by `ImageSession`.
-    case image(subject: String)
     /// The time from the device clock; `text` carries the one-line markup.
     case time(query: String, text: String)
     /// Several memories matched; a card lists them and a tap replays one.
@@ -37,7 +35,6 @@ enum CardPlan: Hashable, Sendable {
         switch self {
         case .web: "web"
         case let .answer(_, query, history, _): "answer:" + (history.first?.query ?? query)
-        case .image: "image"
         case let .time(query, _): "answer:" + query   // the thread grown from it is the same card
         case .recallPicker: "picker"
         case let .memory(record): "memory:\(record.id)"

@@ -49,9 +49,6 @@ extension Layer {
             return [SessionExchange(exchange: .page(query: query, title: title, address: address), turn: nil, layerID: id)]
         case .answer, .time, .memory:
             return thread.map { SessionExchange(exchange: .answer(query: $0.query, text: $0.answer), turn: $0, layerID: id) }
-        case let .image(subject):
-            let title = images.flatMap { $0.results.indices.contains($0.primaryIndex) ? $0.results[$0.primaryIndex].title : nil }
-            return [SessionExchange(exchange: .picture(query: query, subject: subject, title: title), turn: nil, layerID: id)]
         case let .recallPicker(records, title):
             return [SessionExchange(exchange: .recall(query: query, title: title, titles: records.map(\.title)), turn: nil, layerID: id)]
         case let .siteChoices(name, candidates):

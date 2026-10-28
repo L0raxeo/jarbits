@@ -1,7 +1,6 @@
 import Answers
 import Evals
 import Foundation
-import Images
 import Engine
 import Sites
 
@@ -57,7 +56,7 @@ func fail(_ message: String) -> Never {
 
 switch arguments.first {
 case "engine":
-    print(EngineReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown() + "\n" + SitesReport.markdown(), terminator: "")
+    print(EngineReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + SitesReport.markdown(), terminator: "")
 case "decisions":
     guard arguments.count == 2 else { fail("usage: report decisions <decisions.jsonl>") }
     do {

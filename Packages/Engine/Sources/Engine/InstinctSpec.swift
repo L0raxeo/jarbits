@@ -232,8 +232,6 @@ public struct InstinctSpec: Sendable, Identifiable {
             subjectField = "about"
         case .image:
             questions = { _ in [] }
-            arguments = ArgumentSchema(fields: [.init(name: "subject", kind: .text, description: "the one thing to picture, named in full, with anything the words point back at folded in", required: false)])
-            subjectField = "subject"
         case .video:
             questions = { _ in [] }
             arguments = ArgumentSchema(fields: [.init(name: "term", kind: .text, description: "what to find videos of, in full, with anything the words point back at folded in", required: false)])

@@ -15,8 +15,6 @@ import Testing
         #expect(page.host == "www.zillow.com")
         #expect(page.address == "https://www.zillow.com/homes")
         #expect(try keys(.search(query: "q", term: "t")) == ["query", "kind", "text"])
-        #expect(try keys(.picture(query: "q", subject: "eiffel tower")) == ["query", "kind", "text"])
-        #expect(try keys(.picture(query: "q", subject: "eiffel tower", title: "Eiffel Tower")) == ["query", "kind", "title", "text"])
         #expect(try keys(.recall(query: "q", title: "Last 5 searches", titles: ["a", "b"])) == ["query", "kind", "title", "text"])
         #expect(try keys(.recall(query: "q", title: nil, titles: [])) == ["query", "kind"])
         #expect(try keys(.site(query: "q", name: "zillow", hosts: ["www.zillow.com"])) == ["query", "kind", "title", "text"])
@@ -34,7 +32,6 @@ import Testing
         #expect(Exchange.answer(query: "q", text: "a").summary == "a written answer")
         #expect(Exchange.page(query: "q", title: "Weather in Brasília", address: URL(string: "https://weather.com/br")!).summary == "the page \"Weather in Brasília\" on weather.com")
         #expect(Exchange.search(query: "q", term: "brasil weather").summary == "web results for \"brasil weather\"")
-        #expect(Exchange.picture(query: "q", subject: "eiffel tower").summary == "a picture of \"eiffel tower\"")
         #expect(Exchange.recall(query: "q", title: nil, titles: []).summary == "a grid of earlier memories")
         #expect(Exchange.site(query: "q", name: "zillow", hosts: []).summary == "a choice of sites for \"zillow\"")
     }

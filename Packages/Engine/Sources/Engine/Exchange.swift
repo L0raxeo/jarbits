@@ -14,8 +14,7 @@ public struct Exchange: Codable, Sendable, Hashable {
         /// A results page, video and image results included; `text` is the term in the search box.
         case search
         /// A picture; `text` is the subject asked for, `title` the article found.
-        case picture
-        /// A grid of memories; `title` is the grid's heading, `text` the titles shown.
+                /// A grid of memories; `title` is the grid's heading, `text` the titles shown.
         case recall
         /// The choices card for a site name; `title` is the name, `text` the hosts offered.
         case site
@@ -49,10 +48,6 @@ public struct Exchange: Codable, Sendable, Hashable {
         Exchange(query: query, kind: .search, text: term)
     }
 
-    public static func picture(query: String, subject: String, title: String? = nil) -> Exchange {
-        Exchange(query: query, kind: .picture, title: title, text: subject)
-    }
-
     public static func recall(query: String, title: String?, titles: [String]) -> Exchange {
         Exchange(query: query, kind: .recall, title: title, text: titles.isEmpty ? nil : titles.joined(separator: "; "))
     }
@@ -77,7 +72,6 @@ public struct Exchange: Codable, Sendable, Hashable {
         case .page:
             if let title, let host { "the page \"\(title)\" on \(host)" } else if let title { "the page \"\(title)\"" } else { "a web page" }
         case .search: text.map { "web results for \"\($0)\"" } ?? "web results"
-        case .picture: text.map { "a picture of \"\($0)\"" } ?? "a picture"
         case .recall: "a grid of earlier memories"
         case .site: title.map { "a choice of sites for \"\($0)\"" } ?? "a choice of sites"
         }

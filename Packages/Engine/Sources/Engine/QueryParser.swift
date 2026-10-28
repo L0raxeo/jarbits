@@ -43,10 +43,10 @@ public enum QueryParser {
         return components.url!
     }
 
-    /// Google's image results for `text`: where an `image` pick goes when
-    /// Wikipedia has no picture of the subject, so a request for a picture
-    /// still ends in pictures. A results page like any other to the
-    /// capsule and the log (`isSearchResults`, `searchTerm`).
+    /// Google's image results for `text`: where an `image` pick goes, with
+    /// the words as they ran, so the search engine reads the whole
+    /// question. A results page like any other to the capsule and the log
+    /// (`isSearchResults`, `searchTerm`); a picture memory.
     public static func imageSearchURL(for text: String) -> URL {
         var components = URLComponents(url: searchURL(for: text), resolvingAgainstBaseURL: false)!
         components.percentEncodedQuery! += "&tbm=isch"
@@ -60,6 +60,11 @@ public enum QueryParser {
         var components = URLComponents(url: searchURL(for: text), resolvingAgainstBaseURL: false)!
         components.percentEncodedQuery! += "&tbm=vid"
         return components.url!
+    }
+
+    /// Google's image results, as opposed to its web results.
+    public static func isImageResults(_ url: URL) -> Bool {
+        isSearchResults(url) && (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains { $0.name == "tbm" && $0.value == "isch" } ?? false)
     }
 
     /// A Google results page, as opposed to a website.

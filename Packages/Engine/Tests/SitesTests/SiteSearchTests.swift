@@ -1,6 +1,5 @@
 import Answers
 import Foundation
-import Images
 import Engine
 import Testing
 @testable import Sites
@@ -82,7 +81,7 @@ import Testing
     /// `ENGINE.md` is all four parts: the Jev contract, the Gemini prompts, the Wikipedia steps, the site steps.
     @Test func committedRoutingFileIsCurrent() throws {
         let committed = try String(contentsOf: Self.repoRoot.appending(path: "ENGINE.md"), encoding: .utf8)
-        let expected = EngineReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown() + "\n" + SitesReport.markdown()
+        let expected = EngineReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + SitesReport.markdown()
         #expect(committed == expected, "ENGINE.md is stale; run: \(EngineReport.regenerateCommand)")
     }
 

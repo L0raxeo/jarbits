@@ -173,14 +173,14 @@ import Testing
             .search(query: "brasil weather", term: "brasil weather"),
             .page(query: "brasil weather", title: "Weather in Brasília", address: URL(string: "https://weather.com/br")!),
             .answer(query: "capital of peru", text: "==Lima=="),
-            .picture(query: "eiffel tower", subject: "eiffel tower"),
+            .search(query: "eiffel tower", term: "eiffel tower"),
         ]
         let request = AnswerPrompt.request(format: .narrative, query: "how big is it", context: .example, earlier: earlier)
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
         let input = try #require(json["input"] as? String, "no history: the input stays a string")
         #expect(input.hasPrefix("Query: how big is it\n"))
         #expect(input.contains("- Locale: en_US\n\nEarlier in this session (oldest first; the query may lean on them, but answer only the query):\n"), "after the context block")
-        #expect(input.hasSuffix("- Searched \"brasil weather\"\n- Read \"Weather in Brasília\" (weather.com)\n- Asked \"capital of peru\" and got: ==Lima==\n- Looked at a picture of \"eiffel tower\""))
+        #expect(input.hasSuffix("- Searched \"brasil weather\"\n- Read \"Weather in Brasília\" (weather.com)\n- Asked \"capital of peru\" and got: ==Lima==\n- Searched \"eiffel tower\""))
         #expect(!AnswerPrompt.input(query: "x", context: .example).contains("Earlier in this session"), "nothing added without exchanges")
         let withHistory = AnswerPrompt.request(format: .narrative, query: "why?", context: .example, history: [AnswerTurn(query: "q", answer: "a")], earlier: Array(earlier.prefix(1)))
         let steps = try #require(JSONSerialization.jsonObject(with: withHistory.jsonData()) as? [String: Any])["input"] as? [[String: Any]]

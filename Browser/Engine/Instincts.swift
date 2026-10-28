@@ -35,12 +35,14 @@ struct AnswerInstinct: InstinctRunner {
     }
 }
 
-/// A picture of the subject; the session loads it, Wikipedia then Brave.
+/// Google's image results for the words as they ran: the search engine
+/// reads the whole question, so nothing here has to. A results page like
+/// any other to the capsule and the log; the memory keeps it as a picture.
 struct ImageInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .image)
 
     func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
-        session.showImage(subject: context.arguments["subject"]?.stringValue ?? context.query, context: context)
+        session.openPage(QueryParser.imageSearchURL(for: context.query), context: context)
         return .nothing
     }
 }
