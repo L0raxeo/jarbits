@@ -46,14 +46,14 @@ public struct ValueExtractor: Sendable {
     /// else ("I'm allergic to peanuts, what can I snack on").
     public static let factSchema: JSONValue = [
         "type": "object",
-        "properties": ["fact": ["type": ["string", "null"], "description": "the lasting fact about the user, in one short sentence in their own voice; null when the request states none"]],
+        "properties": ["fact": ["type": ["string", "null"], "description": "the lasting personal fact, in one short sentence from the person's perspective, about whoever or whatever the words name; null when the request states none"]],
         "required": [],
         "additionalProperties": false,
     ]
 
     public static let factSystem = """
-        You note what a request made to a phone's browser says about the person making it. Reply with JSON matching the schema and nothing else.
-        A fact is something lasting about them, a preference, an allergy, a name, where they live, that will still be true next week and could shape a later answer; state it in one short sentence in their own voice ("I'm allergic to peanuts"). Something true only now, a fact about the world, or a question with nothing lasting in it is null.
+        You note the personal fact a request made to a phone's browser states. Reply with JSON matching the schema and nothing else.
+        A fact is something lasting and personal: about the person, or about anyone or anything in their life, a preference, an allergy, a name, where they live, their job, a coworker, their mother's age. It will still be true next week and could shape a later answer. State it in one short sentence from the person's perspective, keeping who or what it is about as the words name them ("I'm allergic to peanuts", "Jasmine is 50 years old", "my coworker Sam is vegan"). Something true only now, a fact about the world with no one personal in it, or a question with nothing lasting in it is null.
         Earlier exchanges of the session may come before the request, oldest first.
         """
 
