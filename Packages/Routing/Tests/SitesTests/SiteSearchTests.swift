@@ -79,18 +79,17 @@ import Testing
         .deletingLastPathComponent()   // → Packages/
         .deletingLastPathComponent()   // → repo root
 
-    /// `ROUTING.md` is all four parts: the Jev contract, the Gemini prompts, the Wikipedia steps, the site steps.
+    /// `ENGINE.md` is all four parts: the Jev contract, the Gemini prompts, the Wikipedia steps, the site steps.
     @Test func committedRoutingFileIsCurrent() throws {
-        let committed = try String(contentsOf: Self.repoRoot.appending(path: "ROUTING.md"), encoding: .utf8)
-        let expected = RoutingReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown() + "\n" + SitesReport.markdown()
-        #expect(committed == expected, "ROUTING.md is stale; run: \(RoutingReport.regenerateCommand)")
+        let committed = try String(contentsOf: Self.repoRoot.appending(path: "ENGINE.md"), encoding: .utf8)
+        let expected = EngineReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown() + "\n" + SitesReport.markdown()
+        #expect(committed == expected, "ENGINE.md is stale; run: \(EngineReport.regenerateCommand)")
     }
 
     @Test func siteFormatIsBuiltAndLast() {
-        #expect(ResponseFormat.site.stage == .built)
-        #expect(ResponseFormat.allCases.suffix(4) == [.site, .video, .remember, .forget], "appended in order; video, then the fact instincts, came after")
-        #expect(ResponseFormat.site.outranksConversation)
-        #expect(!ResponseFormat.site.isAnswered)
+        #expect(Instinct.allCases.suffix(5) == [.site, .video, .remember, .forget, .time], "appended in order; video, the fact instincts and time came after")
+        #expect(Instinct.site.outranksConversation)
+        #expect(!Instinct.site.isAnswered)
     }
 
     @Test func reportNamesTheEndpointAndTheOutcomes() {

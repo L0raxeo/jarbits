@@ -31,7 +31,7 @@ public enum SiteError: Error, Sendable, Equatable {
 
 /// Finds the sites a name might mean, with Brave's web search: one request,
 /// the first few results one per host. Only an unknown name costs a
-/// request; the site book answers a known one on the device.
+/// request; the site book answers a known name with no search.
 public struct SiteSearch: Sendable {
     public static let defaultBaseURL = URL(string: "https://api.search.brave.com")!
     /// Results asked for; more than are shown, since several may share a host.

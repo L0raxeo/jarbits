@@ -5,15 +5,15 @@ import Foundation
 /// working out it needs, and the questions the instincts add. Built from the
 /// instinct registry and turned into a decision here; no I/O, so every
 /// branch is testable.
-public enum EngineRouting {
-    /// The pick's wire id. "format" from the first version; the options are
-    /// the instincts.
-    public static let questionID = "format"
+public enum EngineRequest {
+    /// The pick's wire id; the options are the instincts.
+    public static let questionID = "instinct"
     public static let recencyQuestionID = "recent"
 
-    /// At or above this, a `narrative` or `one_line` pick is shown as web
-    /// results: the model's knowledge is months old, and a confident wrong
-    /// answer costs more than one extra tap. Revisit from the decision log.
+    /// At or above this, the answer instincts show web results instead of
+    /// an answer: the model's knowledge is months old, and a confident
+    /// wrong answer costs more than one extra tap. The instincts act on
+    /// it; the pick itself stands.
     public static let recencyThreshold = 0.5
 
     /// Below this the answer is treated as "unsure" and the app shows web
@@ -21,13 +21,6 @@ public enum EngineRouting {
     /// Choice; a wrong format here costs the user one extra tap, so it starts
     /// permissive. Revisit once the decision log has a few hundred rows.
     public static let confidenceFloor = 0.5
-
-    /// An unsure pick of `one_line` or `narrative` is still an answer when
-    /// the two together reach this: Jev is torn between a short and a long
-    /// answer, not between an answer and a page ("can I use mr clean with
-    /// clorox": one_line .50, narrative .29, web .21). The higher of the
-    /// two is shown, logged as `answerSplit`; the recency gate still applies.
-    public static let answerMassFloor = 0.6
 
     public static let instructions = """
         Which response format best answers this web search query? Judge the \
@@ -152,8 +145,8 @@ public enum EngineRouting {
 
     /// The closed-set values the pick's questions gave: a stated field's
     /// choice, or "true"/"false" for a yes/no.
-    static func arguments(for pick: ResponseFormat, from response: SystemOneResponse, floor: Double, instincts: [InstinctSpec]) -> [String: String] {
-        guard let spec = instincts.first(where: { $0.format == pick }) else { return [:] }
+    static func arguments(for pick: Instinct, from response: SystemOneResponse, floor: Double, instincts: [InstinctSpec]) -> [String: String] {
+        guard let spec = instincts.first(where: { $0.instinct == pick }) else { return [:] }
         var out: [String: String] = [:]
         for field in spec.arguments.closedSet {
             guard case let .noul(stated)? = response.answers[statedQuestionID(spec, field)], stated >= argumentThreshold else { continue }
@@ -281,12 +274,14 @@ public enum EngineRouting {
         Would the correct answer to this query depend on something that may have \
         changed in the last two years? For example whether a person is alive, who \
         currently holds an office, title or job, a record, a price, a recent event \
-        or its aftermath, or a phrase, slogan or meme that became known recently.
+        or its aftermath, or a phrase, slogan or meme that became known recently. \
+        A question handed to the AI by name ("ask AI ...") never depends on such \
+        a thing: the person wants the AI's own answer, knowing what it is.
         """
 
     public static let recencyCriteria = (
         yes: "The right answer could have changed since early 2025: it depends on someone's current status, the current holder of a position, a recent or ongoing event, or a new phrase.",
-        no: "A settled fact, history, how something works, a definition, a conversion, a place, a date or time, or anything else that does not go stale."
+        no: "A settled fact, history, how something works, a definition, a conversion, a place, a date or time, anything else that does not go stale, or a question handed to the AI by name."
     )
 
     // MARK: The request
@@ -347,10 +342,9 @@ public enum EngineRouting {
         from response: SystemOneResponse,
         latencyMs: Int,
         floor: Double = confidenceFloor,
-        recencyThreshold: Double = recencyThreshold,
         exchanges: [Exchange] = [],
         instincts: [InstinctSpec] = InstinctSpec.all
-    ) -> RouteDecision {
+    ) -> Pick {
         let sent = Array(exchanges.suffix(maxExchanges))
         func noul(_ id: String) -> Double? {
             if case let .noul(value)? = response.answers[id] { value } else { nil }
@@ -370,7 +364,7 @@ public enum EngineRouting {
         // Read only on a recall pick: the questions are framed as a recall
         // ask, so for a stock pick their answers mean nothing. A missing
         // answer is a no.
-        func recallIntent(for pick: ResponseFormat) -> RecallIntent? {
+        func recallIntent(for pick: Instinct) -> RecallIntent? {
             guard pick == .recall, recallQuestionIDs.contains(where: { noul($0) != nil }) else { return nil }
             return RecallIntent(
                 pages: noul(recallKindQuestionID(.pages)) ?? 0, answers: noul(recallKindQuestionID(.answers)) ?? 0,
@@ -379,8 +373,8 @@ public enum EngineRouting {
             )
         }
         guard case let .choice(answer)? = response.answers[questionID] else {
-            return RouteDecision(
-                format: .fallback,
+            return Pick(
+                instinct: .fallback,
                 model: response.model,
                 latencyMs: latencyMs,
                 inputTokens: response.usage.inputTokens,
@@ -393,9 +387,9 @@ public enum EngineRouting {
                 source: .error("no '\(questionID)' choice answer in response")
             )
         }
-        guard let suggested = ResponseFormat(rawValue: answer.choice) else {
-            return RouteDecision(
-                format: .fallback,
+        guard let suggested = Instinct(rawValue: answer.choice) else {
+            return Pick(
+                instinct: .fallback,
                 confidence: answer.confidence,
                 probabilities: answer.probabilities,
                 model: response.model,
@@ -407,45 +401,18 @@ public enum EngineRouting {
                 chain: chain,
                 reasoning: reasoning,
                 reasoningConfidence: reasoningConfidence,
-                source: .error("unknown format '\(answer.choice)'")
+                source: .error("unknown instinct '\(answer.choice)'")
             )
         }
+        // The pick is Jev's. The one fallback is an unsure pick, which the
+        // architecture sends to web results; the instincts act on the rest
+        // (recency, a rejection) themselves.
         let passes = answer.confidence >= floor
-        let stale = (recency ?? 0) >= recencyThreshold
-        // The chain ends on the answer on screen: the query continues it.
-        let continuesAnswer = (chain ?? 0) > 0 && sent.last?.kind == .answer
-        let rejects = (rejection ?? 0) >= rejectionThreshold
-        let (format, source): (ResponseFormat, RouteDecision.Source) = {
-            // Over a site opened by name, "no not this one" is a site request
-            // again, whatever the pick: such a query has no format of its own.
-            if rejects { return (.site, .rejection) }
-            if continuesAnswer {
-                // Over an answer, the chain decides the frame and the pick
-                // decides the card: a confident ask for another kind of
-                // card gets it; a confident one_line is a short reply in the
-                // thread; anything else, however a terse reply looked on its
-                // own, carries the conversation on as a narrative, which is
-                // never wrong inside a thread, only longer.
-                if passes, suggested.outranksConversation { return (suggested, .jev) }
-                if stale { return (.fallback, .recencyFallback) }
-                if passes, suggested == .oneLine { return (.oneLine, .continuation) }
-                return (.narrative, .continuation)
-            }
-            if !passes {
-                // Torn between the two answers, not between an answer and a
-                // page: the answer it leaned to, unless it needs live data.
-                let answerMass = (answer.probabilities[ResponseFormat.oneLine.rawValue] ?? 0)
-                    + (answer.probabilities[ResponseFormat.narrative.rawValue] ?? 0)
-                guard suggested.isAnswered, answerMass >= answerMassFloor else { return (.fallback, .confidenceFallback) }
-                if stale { return (.fallback, .recencyFallback) }
-                return (suggested, .answerSplit)
-            }
-            // Only formats a model answers are gated; web, map and stock show a page anyway.
-            if suggested.isAnswered, stale { return (.fallback, .recencyFallback) }
-            return (suggested, .jev)
-        }()
-        return RouteDecision(
-            format: format,
+        let (format, source): (Instinct, Pick.Source) = passes ? (suggested, .jev) : (.fallback, .confidenceFallback)
+        // The chain ends on the answer on screen: an answer pick grows its thread.
+        let continues = (chain ?? 0) > 0 && sent.last?.kind == .answer
+        return Pick(
+            instinct: format,
             suggested: suggested,
             confidence: answer.confidence,
             probabilities: answer.probabilities,
@@ -457,6 +424,7 @@ public enum EngineRouting {
             recall: recallIntent(for: suggested),
             relevance: relevance,
             chain: chain,
+            continues: continues,
             reasoning: reasoning,
             reasoningConfidence: reasoningConfidence,
             arguments: {
@@ -469,16 +437,16 @@ public enum EngineRouting {
     }
 }
 
-/// Asks Jev about a query: addresses bypass it, everything else is sent as
-/// one request over the registry, and any failure becomes the fallback
-/// format. Never throws.
-public struct EngineRouter: Sendable {
+/// Asks Jev about a query: an address loads as typed and is never asked
+/// about; everything else is one request over the registry, and any
+/// failure becomes web results. Never throws.
+public struct Picker: Sendable {
     public var client: JevClient
     public var locale: Locale
     public var floor: Double
     public var instincts: [InstinctSpec]
 
-    public init(client: JevClient, locale: Locale = .current, floor: Double = EngineRouting.confidenceFloor, instincts: [InstinctSpec] = InstinctSpec.all) {
+    public init(client: JevClient, locale: Locale = .current, floor: Double = EngineRequest.confidenceFloor, instincts: [InstinctSpec] = InstinctSpec.all) {
         self.client = client
         self.locale = locale
         self.floor = floor
@@ -487,20 +455,18 @@ public struct EngineRouter: Sendable {
 
     /// `exchanges` is this session's history, oldest first; `opened` a site
     /// this app opened by name and still shows.
-    public func decide(_ query: String, exchanges: [Exchange] = [], opened: OpenedSite? = nil) async -> RouteDecision {
-        if QueryParser.directURL(from: query) != nil {
-            return .directURL()
-        }
-        let request = EngineRouting.request(for: query, locale: locale, model: client.model, exchanges: exchanges, opened: opened, instincts: instincts)
+    public func decide(_ query: String, exchanges: [Exchange] = [], opened: OpenedSite? = nil) async -> Pick {
+        if QueryParser.directURL(from: query) != nil { return .directURL() }
+        let request = EngineRequest.request(for: query, locale: locale, model: client.model, exchanges: exchanges, opened: opened, instincts: instincts)
         let clock = ContinuousClock()
         let start = clock.now
         do {
             let response = try await client.systemOne(request)
             let latency = Int((clock.now - start) / .milliseconds(1))
-            return EngineRouting.decision(from: response, latencyMs: latency, floor: floor, exchanges: exchanges, instincts: instincts)
+            return EngineRequest.decision(from: response, latencyMs: latency, floor: floor, exchanges: exchanges, instincts: instincts)
         } catch {
             let latency = Int((clock.now - start) / .milliseconds(1))
-            return RouteDecision(format: .fallback, latencyMs: latency, source: .error(error.summary))
+            return Pick(instinct: .fallback, latencyMs: latency, source: .error(error.summary))
         }
     }
 }

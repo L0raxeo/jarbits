@@ -40,7 +40,7 @@ public struct SystemOneRequest: Sendable, Equatable {
 public struct RouteState: Codable, Sendable, Equatable {
     public var query: String
     public var locale: String
-    /// The newest `EngineRouting.maxExchanges` exchanges of this session,
+    /// The newest `EngineRequest.maxExchanges` exchanges of this session,
     /// oldest first, each answer whole. Left out of the JSON when nil, so a
     /// first query's request carries only the query and the locale.
     public var exchanges: [Exchange]?

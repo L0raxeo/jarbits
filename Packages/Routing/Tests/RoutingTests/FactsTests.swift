@@ -2,27 +2,6 @@ import Foundation
 import Testing
 @testable import Routing
 
-@Suite struct RememberQueryTests {
-    @Test(arguments: [
-        ("remember that I'm allergic to peanuts", "I'm allergic to peanuts"),
-        ("please remember my wife's name is Ana, thanks", "my wife's name is Ana"),
-        ("Hey, keep in mind that I'm vegetarian", "I'm vegetarian"),
-        ("don't forget I live in austin now", "I live in austin now"),
-        ("note that I don't eat pork please", "I don't eat pork"),
-        ("remember that convo on the dyson pencilvac", "convo on the dyson pencilvac"),
-    ])
-    func theOpenerComesOffAndTheFactStaysAsTyped(query: String, fact: String) {
-        #expect(RememberQuery.parse(query)?.fact == fact, "a recall phrased with the opener parses too; the engine's pick decides, not the grammar")
-    }
-
-    @Test func noOpenerOrNothingAfterItIsNil() {
-        #expect(RememberQuery.parse("I'm allergic to peanuts") == nil, "a plain statement is the gate's to judge, and a model's to read")
-        #expect(RememberQuery.parse("remember") == nil)
-        #expect(RememberQuery.parse("please remember") == nil)
-        #expect(RememberQuery.parse("") == nil)
-    }
-}
-
 @Suite struct FactsTests {
     @Test func aFactRoundTripsAndOldLinesRead() throws {
         let fact = Fact(text: "I'm vegetarian", source: .told, madeBy: "remember that I'm vegetarian", date: Date(timeIntervalSince1970: 1_792_600_000))

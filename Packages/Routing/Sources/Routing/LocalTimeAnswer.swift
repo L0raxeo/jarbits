@@ -1,26 +1,27 @@
 import Foundation
 
-/// The one-line text for a `TimeQuery`, computed from the device clock. The
-/// time is wrapped in `==…==`, the highlight marker the one-line answer
-/// prompt in `Answers` uses, so the card styles it like a model's answer.
-/// Shapes: `==7:56 PM==`, `==7:56 PM== in Mexico City`, `==9:56 AM== tomorrow`,
-/// `==9:56 AM== tomorrow in Sydney`.
+/// The time instinct's answer, computed from the device clock: the time
+/// here, or in the place the reading named. The time is wrapped in `==…==`,
+/// the highlight marker the one-line answer prompt in `Answers` uses, so
+/// the card styles it like a model's answer. Shapes: `==7:56 PM==`,
+/// `==7:56 PM== in Mexico City`, `==9:56 AM== tomorrow`, `==9:56 AM==
+/// tomorrow in Sydney`. No grammar: the place is a value the reading read.
 public enum LocalTimeAnswer {
-    /// Nil when the place is not one `PlaceTimeZones` knows.
-    public static func text(for query: TimeQuery, now: Date, locale: Locale, homeZone: TimeZone) -> String? {
-        let place: PlaceZone
-        if let name = query.place {
+    /// Nil when the place is not one `PlaceTimeZones` knows; a nil place is here.
+    public static func text(place: String?, now: Date, locale: Locale, homeZone: TimeZone) -> String? {
+        let zone: PlaceZone
+        if let name = place, !name.isEmpty {
             guard let found = PlaceTimeZones.resolve(name, locale: locale) else { return nil }
-            place = found
+            zone = found
         } else {
-            place = PlaceZone(timeZone: homeZone, label: nil)
+            zone = PlaceZone(timeZone: homeZone, label: nil)
         }
-        let time = now.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, timeZone: place.timeZone))
+        let time = now.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, timeZone: zone.timeZone))
         var parts = ["==\(time)=="]
-        if let shift = dayShift(at: now, from: homeZone, to: place.timeZone, locale: locale) {
+        if let shift = dayShift(at: now, from: homeZone, to: zone.timeZone, locale: locale) {
             parts.append(shift)
         }
-        if let label = place.label {
+        if let label = zone.label {
             parts.append("in \(label)")
         }
         return parts.joined(separator: " ")

@@ -35,11 +35,13 @@ import Testing
         let all = [video, recipe, microwave, water]
         let query = "Can you pull up the videos I was watching yesterday"
         #expect(MemorySearch.terms(from: query).isEmpty, "\"can\" is phrasing, not a thing to find")
-        #expect(MemorySearch.shortlist(all, query: query, now: now) == [video])
-        #expect(MemorySearch.shortlist(all, query: "that chocolate thing", now: now) == [microwave, recipe], "no filter: word matches, newest first")
-        #expect(MemorySearch.shortlist(all, query: "pull up what I was looking at", now: now).isEmpty, "no filter and no content word")
-        #expect(MemorySearch.shortlist(all, query: "the answers from today", now: now) == [recipe], "a filter alone: the filtered set, newest first")
-        #expect(MemorySearch.shortlist(all, query: "that chocolate search from today", now: now) == [microwave, water], "words first, then the rest of the filtered set")
+        let today = DateInterval(start: now.addingTimeInterval(-4_000), end: now)
+        let yesterday = DateInterval(start: now.addingTimeInterval(-90_000), end: now.addingTimeInterval(-4_000))
+        #expect(MemorySearch.shortlist(all, query: query, ask: RecallAsk(intent: RecallIntent(kinds: [.videos], named: false, all: false), window: yesterday)) == [video])
+        #expect(MemorySearch.shortlist(all, query: "that chocolate thing") == [microwave, recipe], "no ask: word matches, newest first")
+        #expect(MemorySearch.shortlist(all, query: "pull up what I was looking at").isEmpty, "no ask and no content word")
+        #expect(MemorySearch.shortlist(all, query: "the answers from today", ask: RecallAsk(intent: RecallIntent(kinds: [.answers], named: false, all: false), window: today)) == [recipe], "an ask alone: the allowed set, newest first")
+        #expect(MemorySearch.shortlist(all, query: "that chocolate search from today", ask: RecallAsk(intent: RecallIntent(kinds: [.searches], named: true, all: false), window: today)) == [microwave, water], "words first, then the rest of the allowed set")
     }
 
     @Test func theKindWordIsAPreferenceNotAWall() {
@@ -48,9 +50,12 @@ import Testing
         let page = MemoryRecord(date: now.addingTimeInterval(-300), kind: .page, query: "dyson pencilvac", title: "Dyson PencilVac | Dyson", url: URL(string: "https://www.dyson.com/pencilvac"))
         let search = MemoryRecord(date: now.addingTimeInterval(-600), kind: .search, query: "Can you show me a picture of the Dyson PencilVac")
         let all = [answer, page, search]
-        #expect(MemorySearch.shortlist(all, query: "pull up everything we talked about with the dyson pencilvac", now: now) == [page, search], "no answer holds the words: the pages and searches that do")
-        #expect(MemorySearch.shortlist(all, query: "what you told me about gingivitis", now: now) == [answer], "an answer that holds the words is still preferred")
-        #expect(MemorySearch.shortlist(all, query: "the answer about the dyson from last week", now: now).isEmpty, "the time window is never relaxed")
+        let everything = RecallAsk(intent: RecallIntent(kinds: [], named: true, all: true))
+        #expect(MemorySearch.shortlist(all, query: "pull up everything we talked about with the dyson pencilvac", ask: everything) == [page, search], "no answer holds the words: the pages and searches that do")
+        let answers = RecallAsk(intent: RecallIntent(kinds: [.answers], named: true, all: false))
+        #expect(MemorySearch.shortlist(all, query: "what you told me about gingivitis", ask: answers) == [answer], "an answer that holds the words is still preferred")
+        let lastWeek = DateInterval(start: now.addingTimeInterval(-14 * 86_400), end: now.addingTimeInterval(-7 * 86_400))
+        #expect(MemorySearch.shortlist(all, query: "the answer about the dyson from last week", ask: RecallAsk(intent: RecallIntent(kinds: [.answers], named: true, all: false), window: lastWeek)).isEmpty, "the span is never relaxed")
     }
 
     @Test func everythingAboutSomethingIgnoresTheKindWords() {
@@ -61,9 +66,11 @@ import Testing
         let old = MemoryRecord(date: now.addingTimeInterval(-10 * 86_400), kind: .page, query: "dyson v15", title: "Dyson V15 review", url: URL(string: "https://example.com/v15"))
         let other = MemoryRecord(date: now.addingTimeInterval(-100), kind: .narrative, query: "capital of peru", text: "Lima")
         let all = [answer, page, search, old, other]
-        #expect(MemorySearch.shortlist(all, query: "pull up everything we talked about with the dyson", now: now) == [page, search, answer, old], "every kind, word matches, newest first")
-        #expect(MemorySearch.shortlist(all, query: "everything about the dyson from today", now: now) == [page, search, answer], "the time window still holds")
-        #expect(MemorySearch.shortlist(all, query: "pull up everything", now: now).isEmpty, "nothing to go on")
+        let everything = RecallAsk(intent: RecallIntent(kinds: [], named: true, all: true))
+        #expect(MemorySearch.shortlist(all, query: "pull up everything we talked about with the dyson", ask: everything) == [page, search, answer, old], "every kind, word matches, newest first")
+        let today = DateInterval(start: now.addingTimeInterval(-86_400), end: now)
+        #expect(MemorySearch.shortlist(all, query: "everything about the dyson from today", ask: RecallAsk(intent: RecallIntent(kinds: [], named: true, all: true), window: today)) == [page, search, answer], "the span still holds")
+        #expect(MemorySearch.shortlist(all, query: "pull up everything").isEmpty, "nothing to go on")
     }
 
     @Test func aCountIsTheNewestSoManyOfTheKindsNamed() {
@@ -77,16 +84,19 @@ import Testing
         let a1 = record(.narrative, "how is gingivitis healed", minutesAgo: 200)
         let p1 = record(.page, "reddit", minutesAgo: 10)
         let all = [s1, s2, s3, a1, p1]
-        #expect(MemorySearch.shortlist(all, query: "pull up my last two searches", now: now) == [s2, s1], "newest first, that many, searches only")
-        #expect(MemorySearch.shortlist(all, query: "the last 5 things I asked you, including google searches and ai stuff", now: now) == [s2, s1, a1, s3], "searches and answers, no pages")
-        #expect(MemorySearch.shortlist(all, query: "my last 3 things", now: now) == [s2, p1, s1], "no kind: everything")
-        #expect(MemorySearch.shortlist(all, query: "my last 2 dyson searches", now: now) == [s2, s1], "a topic narrows the pool")
-        #expect(MemorySearch.shortlist(all, query: "my last 2 lima searches", now: now) == [s3])
-        #expect(MemorySearch.shortlist(all, query: "my last five pictures", now: now).isEmpty)
+        func ask(_ kinds: Set<RecallIntent.Kind>, named: Bool, count: Int) -> RecallAsk {
+            RecallAsk(intent: RecallIntent(kinds: kinds, named: named, all: false), count: count)
+        }
+        #expect(MemorySearch.shortlist(all, query: "pull up my last two searches", ask: ask([.searches], named: false, count: 2)) == [s2, s1], "newest first, that many, searches only")
+        #expect(MemorySearch.shortlist(all, query: "the last 5 things I asked you, including google searches and ai stuff", ask: ask([.searches, .answers], named: false, count: 5)) == [s2, s1, a1, s3], "searches and answers, no pages")
+        #expect(MemorySearch.shortlist(all, query: "my last 3 things", ask: ask([], named: false, count: 3)) == [s2, p1, s1], "no kind: everything")
+        #expect(MemorySearch.shortlist(all, query: "my last 2 dyson searches", ask: ask([.searches], named: true, count: 2)) == [s2, s1], "a topic narrows the pool")
+        #expect(MemorySearch.shortlist(all, query: "my last 2 lima searches", ask: ask([.searches], named: true, count: 2)) == [s3])
+        #expect(MemorySearch.shortlist(all, query: "my last five pictures", ask: ask([.pictures], named: false, count: 5)).isEmpty)
         let insta = record(.page, "open insta", minutesAgo: 2000)
         let withInsta = all + [insta]
         #expect(MemorySearch.terms(from: "Can you pull up the last 5 things we were looking at").isEmpty, "all of it is asking")
-        #expect(MemorySearch.shortlist(withInsta, query: "Can you pull up the last 5 things we were looking at", now: now) == [s2, p1, s1, a1, s3], "no topic: the newest five, not whatever holds a word like \"were\"")
+        #expect(MemorySearch.shortlist(withInsta, query: "Can you pull up the last 5 things we were looking at", ask: ask([], named: false, count: 5)) == [s2, p1, s1, a1, s3], "no topic: the newest five, not whatever holds a word like \"were\"")
     }
 
     @Test func theTopicIsTheContentWordsAsTyped() {

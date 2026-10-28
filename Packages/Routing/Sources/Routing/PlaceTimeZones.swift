@@ -31,7 +31,8 @@ struct CountryZone: Hashable, Sendable {
 /// compound like "mexico vs spain" never resolves.
 public enum PlaceTimeZones {
     public static func resolve(_ place: String, locale: Locale = .current) -> PlaceZone? {
-        let words = TimeQuery.normalized(place)
+        // "L.A." and "U.S." are one word each: a period inside a word is dropped, not a split.
+        let words = Words.split(place.replacingOccurrences(of: ".", with: ""))
         guard !words.isEmpty else { return nil }
         if let found = lookup(words.joined(separator: " "), locale: locale) { return found }
         if words.first == "the", words.count > 1 {
@@ -470,7 +471,7 @@ public enum PlaceTimeZones {
             raw.append(String(name[..<open]))
             raw.append(String(name[name.index(after: open)..<close]))
         }
-        return raw.map { TimeQuery.normalized($0).joined(separator: " ") }.filter { !$0.isEmpty }
+        return raw.map { Words.key($0) }.filter { !$0.isEmpty }
     }
 
     /// Every city in the device's zone database by its normalised name:
@@ -479,7 +480,7 @@ public enum PlaceTimeZones {
         var cities: [String: String] = [:]
         for identifier in TimeZone.knownTimeZoneIdentifiers {
             guard let last = identifier.split(separator: "/").last else { continue }
-            let name = TimeQuery.normalized(last.replacingOccurrences(of: "_", with: " ")).joined(separator: " ")
+            let name = Words.key(last.replacingOccurrences(of: "_", with: " "))
             if cities[name] == nil { cities[name] = identifier }
         }
         return cities

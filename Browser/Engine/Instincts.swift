@@ -1,99 +1,92 @@
 import Foundation
 import Routing
 
-/// The nine instincts the app has today, one per `ResponseFormat`. Each
-/// turns the engine's decision into the plan the session renders; the
-/// grammars, the gates and the questions live in the spec.
+/// The instincts that show a page or a card, one per `Instinct` the
+/// session does not own a store for. Each runs itself: the subject the
+/// reading gave is its object, the words as typed stand in when there is
+/// none, and the layer it opens records its line.
 
-/// A Google results page, or the address typed.
-struct WebResultsInstinct: Instinct {
+/// A Google results page for the term.
+struct WebResultsInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .webResults)
 
-    func plan(_ context: InstinctContext) -> CardPlan {
-        if context.decision.source == .directURL, let url = QueryParser.directURL(from: context.query) {
-            return .web(url)
-        }
-        // The verb that asked for the search ("google steve jobs") stays out of the box.
-        return .web(QueryParser.searchURL(for: context.arguments["term"]?.stringValue ?? context.outcome.searchTerm ?? context.query))
+    func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
+        let term = context.arguments["term"]?.stringValue ?? context.query
+        session.openPage(QueryParser.searchURL(for: term), context: context)
+        return .nothing
     }
 }
 
-/// A narrative or a one-line answer: the device's own when a rule computed
-/// it (the time in a place), Gemini's otherwise, growing the thread when
-/// the query continues it. Without a Gemini key, web results.
-struct AnswerInstinct: Instinct {
-    let format: ResponseFormat
+/// A narrative or a one-line answer from Gemini, growing the thread when
+/// the query continues it. Jev's recency answer is the instinct's to act
+/// on: a reply that may have gone stale is web results instead, since the
+/// model's knowledge is months old. Without a Gemini key, web results.
+struct AnswerInstinct: InstinctRunner {
+    let format: Instinct
     var spec: InstinctSpec { InstinctSpec.spec(for: format) }
 
-    func plan(_ context: InstinctContext) -> CardPlan {
-        assert(format.stage >= .built, "\(format) has a card but is marked \(format.stage)")
-        if let text = context.outcome.localText {
-            return .localAnswer(format: format, query: context.query, text: text)
+    func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
+        guard context.canAnswer, !context.decision.recent else {
+            session.openPage(QueryParser.searchURL(for: context.query), context: context)
+            return .nothing
         }
-        guard context.canAnswer else { return .web(QueryParser.searchURL(for: context.query)) }
-        // The plan keeps the words as typed (an explicit ask included; the
-        // answer session sends the question alone).
-        return .answer(format: format, query: context.query, history: context.thread, earlier: context.earlier)
+        session.showAnswer(format: format, context: context)
+        return .nothing
     }
 }
 
-/// A picture of the thing named; the session loads it.
-struct ImageInstinct: Instinct {
+/// A picture of the subject; the session loads it, Wikipedia then Brave.
+struct ImageInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .image)
 
-    func plan(_ context: InstinctContext) -> CardPlan {
-        assert(spec.stage == .built, "image is marked \(spec.stage)")
-        return .image(query: context.arguments["subject"]?.stringValue ?? context.query)
+    func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
+        session.showImage(subject: context.arguments["subject"]?.stringValue ?? context.query, context: context)
+        return .nothing
     }
 }
 
-/// Google's video results for the term, with the asking gone.
-struct VideoInstinct: Instinct {
+/// Google's video results for the subject.
+struct VideoInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .video)
 
-    func plan(_ context: InstinctContext) -> CardPlan {
-        assert(spec.stage == .built, "video is marked \(spec.stage)")
-        return .web(QueryParser.videoSearchURL(for: context.arguments["term"]?.stringValue ?? context.outcome.searchTerm ?? VideoQuery.term(for: context.query)))
+    func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
+        let term = context.arguments["term"]?.stringValue ?? context.query
+        session.openPage(QueryParser.videoSearchURL(for: term), context: context)
+        return .nothing
     }
 }
 
-/// Something seen before; the session resolves it from the memories.
-struct RecallInstinct: Instinct {
-    let spec = InstinctSpec.spec(for: .recall)
+/// The time or date now, from the device clock, here or in the place the
+/// reading named. A place the zone tables do not know goes to the web.
+struct TimeInstinct: InstinctRunner {
+    let spec = InstinctSpec.spec(for: .time)
 
-    func plan(_ context: InstinctContext) -> CardPlan {
-        assert(spec.stage == .built, "recall is marked \(spec.stage)")
-        return .recall(query: context.query)
+    func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
+        let place = context.arguments["place"]?.stringValue
+        guard let text = LocalTimeAnswer.text(place: place, now: .now, locale: .current, homeZone: .current) else {
+            session.openPage(QueryParser.searchURL(for: context.query), context: context)
+            return .nothing
+        }
+        session.showCard(.time(query: context.query, text: text), context: context)
+        return .nothing
     }
 }
 
-/// A website by name; the session resolves it from the site book or a
-/// search. A rejection names the site on screen again.
-struct SiteInstinct: Instinct {
-    let spec = InstinctSpec.spec(for: .site)
-
-    func plan(_ context: InstinctContext) -> CardPlan {
-        assert(spec.stage == .built, "site is marked \(spec.stage)")
-        return .site(name: context.outcome.siteName ?? context.query)
-    }
-}
-
-/// Not built yet: web results stand in. Moving a format out of this file
-/// and flipping its `stage` happen in the same change.
-struct MapInstinct: Instinct {
+/// Not built yet: web results stand in until the card exists.
+struct MapInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .map)
 
-    func plan(_ context: InstinctContext) -> CardPlan {
-        assert(spec.stage == .routed, "map is marked \(spec.stage) but has no card")
-        return .web(QueryParser.searchURL(for: context.query))
+    func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
+        session.openPage(QueryParser.searchURL(for: context.query), context: context)
+        return .nothing
     }
 }
 
-struct StockInstinct: Instinct {
+struct StockInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .stock)
 
-    func plan(_ context: InstinctContext) -> CardPlan {
-        assert(spec.stage == .routed, "stock is marked \(spec.stage) but has no card")
-        return .web(QueryParser.searchURL(for: context.query))
+    func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
+        session.openPage(QueryParser.searchURL(for: context.query), context: context)
+        return .nothing
     }
 }

@@ -49,17 +49,16 @@ public struct SeededGenerator: RandomNumberGenerator, Sendable {
 public struct TriageRow: Equatable, Sendable {
     /// Why a row is worth a human's eye. A threshold the value came close
     /// to is a label that could flip on the next model or criterion edit;
-    /// a gate that fired hid Jev's pick; a device rule never asked Jev.
+    /// an unsure pick hid Jev's choice.
     public enum Doubt: Equatable, Sendable {
         /// Confidence passed the floor by this little.
         case nearFloor(by: Double)
-        /// Confidence missed the floor by this much: web results were shown.
+        /// Confidence missed the floor by this much: web results stand in.
         case confidenceFallback(by: Double)
-        /// Recency stayed under the threshold by this little on an answered pick.
+        /// Recency stayed under the threshold by this little on an answer pick.
         case nearRecency(by: Double)
-        /// Recency reached the threshold by this much: web results were shown.
-        case recencyFallback(by: Double)
-        case deviceRule(String)
+        /// Recency reached the threshold by this much on an answer pick: the instinct shows web results.
+        case recent(by: Double)
         case error(String)
         /// Jev was not asked and the cache had no answer.
         case uncached
@@ -68,8 +67,8 @@ public struct TriageRow: Equatable, Sendable {
         /// threshold was involved.
         public var margin: Double? {
             switch self {
-            case let .nearFloor(by), let .confidenceFallback(by), let .nearRecency(by), let .recencyFallback(by): by
-            case .deviceRule, .error, .uncached: nil
+            case let .nearFloor(by), let .confidenceFallback(by), let .nearRecency(by), let .recent(by): by
+            case .error, .uncached: nil
             }
         }
     }
@@ -90,13 +89,13 @@ public struct TriageRow: Equatable, Sendable {
     /// The second most likely format, behind the pick.
     public var runnerUp: RunnerUp?
 
-    public var decision: RouteDecision { result.decision }
+    public var decision: Pick { result.decision }
 
     /// A doubt about the routing itself, as opposed to a run that failed.
     public var isDoubtful: Bool {
         doubts.contains { doubt in
             switch doubt {
-            case .nearFloor, .confidenceFallback, .nearRecency, .recencyFallback, .deviceRule: true
+            case .nearFloor, .confidenceFallback, .nearRecency, .recent: true
             case .error, .uncached: false
             }
         }
@@ -107,7 +106,7 @@ public struct TriageRow: Equatable, Sendable {
         doubts.contains { doubt in
             switch doubt {
             case .error, .uncached: true
-            case .nearFloor, .confidenceFallback, .nearRecency, .recencyFallback, .deviceRule: false
+            case .nearFloor, .confidenceFallback, .nearRecency, .recent: false
             }
         }
     }
@@ -154,7 +153,7 @@ public enum EvalSample {
     /// The unlabelled case the runner takes: the expected format is a
     /// placeholder and the pass/fail it produces is ignored.
     public static func evalCase(for query: String) -> EvalCase {
-        EvalCase(query: query, format: .fallback)
+        EvalCase(query: query, instinct: .fallback)
     }
 
     /// Routes the queries in order through the runner, then sorts the rows
@@ -175,23 +174,23 @@ public enum EvalSample {
             doubts.append(.uncached)
         } else {
             switch decision.source {
-            case let .local(rule): doubts.append(.deviceRule(rule))
             case let .error(message): doubts.append(.error(message))
             case .confidenceFallback:
                 if let confidence = decision.confidence { doubts.append(.confidenceFallback(by: floor - confidence)) }
-            case .recencyFallback:
-                if let recency = decision.recency { doubts.append(.recencyFallback(by: recency - recencyThreshold)) }
-            case .jev, .answerSplit, .continuation, .rejection, .directURL, .noKey, .plan:
+            case .jev, .directURL, .noKey, .plan:
                 break
             }
             if decision.source != .confidenceFallback, let confidence = decision.confidence, confidence >= floor, confidence - floor < band {
                 doubts.append(.nearFloor(by: confidence - floor))
             }
-            // Recency only gates the formats a model answers; on a page or a
-            // picture it is moot, however close it came.
-            if decision.source != .recencyFallback, let recency = decision.recency, decision.suggested?.isAnswered == true,
-               recency < recencyThreshold, recencyThreshold - recency < band {
-                doubts.append(.nearRecency(by: recencyThreshold - recency))
+            // Recency matters only to the answer instincts; on a page or a
+            // picture it is moot, however it came out.
+            if decision.source == .jev, let recency = decision.recency, decision.instinct.isAnswered {
+                if recency >= recencyThreshold {
+                    doubts.append(.recent(by: recency - recencyThreshold))
+                } else if recencyThreshold - recency < band {
+                    doubts.append(.nearRecency(by: recencyThreshold - recency))
+                }
             }
         }
         let ranked = decision.probabilities.sorted { $0.value > $1.value || ($0.value == $1.value && $0.key < $1.key) }
@@ -199,14 +198,13 @@ public enum EvalSample {
         return TriageRow(query: result.query, result: result, doubts: doubts, runnerUp: runnerUp)
     }
 
-    /// Most doubtful first: a value close to a threshold or a gate that
-    /// fired, the closest call first; then the device rules; then the rows
-    /// that did not route (errors, then not cached); then the sure rows,
-    /// least sure first. Ties keep the query order.
+    /// Most doubtful first: a value close to a threshold or an unsure
+    /// pick, the closest call first; then the rows that did not route
+    /// (errors, then not cached); then the sure rows, least sure first.
+    /// Ties keep the query order.
     public static func sorted(_ rows: [TriageRow]) -> [TriageRow] {
         func rank(_ row: TriageRow) -> (Int, Double, String) {
             if let margin = row.margin { return (0, margin, row.query) }
-            if row.doubts.contains(where: { if case .deviceRule = $0 { true } else { false } }) { return (1, 0, row.query) }
             if row.doubts.contains(where: { if case .error = $0 { true } else { false } }) { return (2, 0, row.query) }
             if row.doubts.contains(.uncached) { return (3, 0, row.query) }
             return (4, row.decision.confidence ?? 1, row.query)
@@ -220,28 +218,19 @@ public enum EvalSample {
     }
 
     /// The row as a golden-set line, labelled with what the app did: paste
-    /// it into `routing.jsonl` as is when that was right, or with the
-    /// format corrected when it was not. A device rule is pinned as its
-    /// source, as the golden set does.
+    /// it into the golden set as is when that was right, or with the
+    /// format corrected when it was not.
     public static func goldenLine(_ row: TriageRow) -> String {
         let query = String(decoding: (try? OrderedJSON.encode(row.query)) ?? Data("\"\"".utf8), as: UTF8.self)
-        var line = "{\"query\": \(query), \"format\": \"\(row.decision.format.rawValue)\""
-        if case .local = row.decision.source {
-            line += ", \"source\": \"\(row.decision.source.kind)\""
-        }
-        return line + "}"
+        return "{\"query\": \(query), \"instinct\": \"\(row.decision.instinct.rawValue)\"}"
     }
 
     /// What was done and what to doubt about it, in one line each.
     public static func describe(_ row: TriageRow, floor: Double, recencyThreshold: Double) -> (acted: String, why: String) {
         func number(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(2))) }
         let decision = row.decision
-        var acted = "acted \(decision.format.rawValue) (\(decision.source.kind))"
-        if let text = row.result.localText { acted += ": \"\(text)\"" }
-        if let term = row.result.searchTerm, term != row.query { acted += ", term \"\(term)\"" }
-        if let subject = row.result.imageSubject, subject != row.query { acted += ", subject \"\(subject)\"" }
-        if let site = row.result.siteName, site != row.query { acted += ", site \"\(site)\"" }
-        if let suggested = decision.suggested, suggested != decision.format { acted += ", picked \(suggested.rawValue)" }
+        var acted = "acted \(decision.instinct.rawValue) (\(decision.source.kind))"
+        if let suggested = decision.suggested, suggested != decision.instinct { acted += ", picked \(suggested.rawValue)" }
         if let confidence = decision.confidence { acted += ", confidence \(number(confidence))" }
         if let recency = decision.recency { acted += ", recency \(number(recency))" }
         if let runnerUp = row.runnerUp { acted += ", runner-up \(runnerUp.format) \(short(runnerUp.probability))" }
@@ -252,8 +241,7 @@ public enum EvalSample {
             case let .nearFloor(by): reasons.append("confidence \(number(by)) over the floor \(floor.formatted())")
             case let .confidenceFallback(by): reasons.append("confidence \(number(by)) under the floor \(floor.formatted()): web results")
             case let .nearRecency(by): reasons.append("recency \(number(by)) under the threshold \(recencyThreshold.formatted())")
-            case let .recencyFallback(by): reasons.append("recency \(number(by)) over the threshold \(recencyThreshold.formatted()): web results")
-            case let .deviceRule(rule): reasons.append("device rule \(rule): Jev not asked")
+            case let .recent(by): reasons.append("recency \(number(by)) over the threshold \(recencyThreshold.formatted()): the instinct shows web results")
             case let .error(message): reasons.append("error: \(message)")
             case .uncached: reasons.append("not cached (set TYPESAFE_API_KEY to ask Jev)")
             }
@@ -278,17 +266,16 @@ public enum EvalSample {
         let unrouted = rows.filter { !$0.isDoubtful && $0.isUnrouted }
         let sure = rows.filter { !$0.isDoubtful && !$0.isUnrouted }
         // Each row in one bucket: how it was answered, or why it was not.
-        var device = 0, addresses = 0, fromCache = 0, uncached = 0, errors = 0, asked = 0
+        var addresses = 0, fromCache = 0, uncached = 0, errors = 0, asked = 0
         for row in rows {
             if row.result.status == .uncached { uncached += 1; continue }
             switch row.decision.source {
-            case .local: device += 1
             case .directURL: addresses += 1
             case .error: errors += 1
             default: if row.result.cached { fromCache += 1 } else { asked += 1 }
             }
         }
-        var counts = "\(device) on the device, \(addresses) \(addresses == 1 ? "address" : "addresses"), \(fromCache) from cache, \(asked) asked Jev"
+        var counts = "\(addresses) \(addresses == 1 ? "address" : "addresses"), \(fromCache) from cache, \(asked) asked Jev"
         if errors > 0 { counts += ", \(errors) \(errors == 1 ? "error" : "errors")" }
         if uncached > 0 { counts += ", \(uncached) not cached" }
         out.append("sample \(source): \(rows.count) of \(poolSize) queries, seed \(seed), \(doubtful.count) doubtful (floor \(floor.formatted()), recency \(recencyThreshold.formatted()), \(model); \(counts))")

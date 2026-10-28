@@ -1,9 +1,11 @@
 import Foundation
 
-/// The response formats the router chooses between. Declaration order is the
-/// order the options reach Jev, and Jev leans toward the first option when it
-/// is unsure, so the safe fallback comes first.
-public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
+/// The instincts Jev picks between, one per thing the app can do for a
+/// query. Declaration order is the order the options reach Jev, and Jev
+/// leans toward the first option when it is unsure, so web results come
+/// first; a new instinct is appended, so the options Jev knows keep their
+/// order.
+public enum Instinct: String, CaseIterable, Codable, Sendable {
     case webResults = "web_results"
     case narrative
     case map
@@ -26,9 +28,12 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     case remember
     /// A fact to drop ("forget that I'm vegetarian"), confirmed on the sheet.
     case forget
+    /// The time or date now, here or in a named place, from the device
+    /// clock; the reading names the place. See `LocalTimeAnswer`.
+    case time
 
     /// What the app shows when the router cannot or should not decide.
-    public static let fallback: ResponseFormat = .webResults
+    public static let fallback: Instinct = .webResults
 
     /// Formats a model answers, as opposed to a page or a picture the app loads.
     public var isAnswered: Bool { self == .narrative || self == .oneLine }
@@ -40,17 +45,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
     public var outranksConversation: Bool {
         switch self {
         case .narrative, .oneLine, .webResults: false
-        case .map, .stock, .recall, .image, .video, .site, .remember, .forget: true
-        }
-    }
-
-    /// How far along this module is. Flip it in the same change that adds the
-    /// card; each instinct asserts the stage and its plan agree.
-    public var stage: Stage {
-        switch self {
-        case .webResults: .verified
-        case .narrative, .oneLine, .image, .video, .recall, .site, .remember, .forget: .built
-        case .map, .stock: .routed
+        case .map, .stock, .recall, .image, .video, .site, .remember, .forget, .time: true
         }
     }
 
@@ -68,6 +63,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .site: "Site"
         case .remember: "Remember"
         case .forget: "Forget"
+        case .time: "Time"
         }
     }
 
@@ -85,6 +81,7 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .site: nil
         case .remember: nil
         case .forget: nil
+        case .time: nil
         }
     }
 
@@ -100,10 +97,11 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
             )
         case .narrative:
             Criterion(
-                what: "A written explanation. The query asks why or how something happened or works, what something is or means (a definition, or the expansion of an acronym or term within a field, which needs the full name and a sentence or two of context), for the story behind something, where a phrase, slogan, name or meme came from, or for a judgement that needs context, such as whether somewhere is safe.",
+                what: "A written explanation. The query asks why or how something happened or works, what something is or means (a definition, or the expansion of an acronym or term within a field, which needs the full name and a sentence or two of context), for the story behind something, where a phrase, slogan, name or meme came from, or for a judgement that needs context, such as whether somewhere is safe. Also any question handed to the AI by name (\"ask AI what GDP means\", \"ask the AI about Dyson alternatives\"): the person wants the model's own answer, whatever the question.",
                 notFor: "Questions answered by one line, such as a time, a date, a number or a yes/no, and queries that only want a price chart.",
                 examples: [
                     "at the end of attack on titan why is levi in a wheelchair",
+                    "ask ai about dyson alternatives",
                     "how did simon cowell get famous",
                     "why are highschool students protesting france?",
                     "how is gingivitis healed",
@@ -130,9 +128,8 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
         case .oneLine:
             Criterion(
                 what: "A single short answer that fits on one line: a time, a date, a number, a duration, a yes/no, a conversion, or a quick fact that is itself a name, number or date, including live ones like the weather.",
-                notFor: "Questions that ask why or how and need a few paragraphs; definitions and what-is questions, which need the full name and some context rather than one value; and anything that wants a price chart.",
+                notFor: "The time or date right now, here or somewhere, which is time; questions that ask why or how and need a few paragraphs; definitions and what-is questions, which need the full name and some context rather than one value; and anything that wants a price chart.",
                 examples: [
-                    "what's the time in costa rica",
                     "will it rain today",
                     "how long do cold sores last",
                     "capital of peru",
@@ -174,8 +171,8 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
             )
         case .site:
             Criterion(
-                what: "Open a website or app by its name. The query is a go-to, open, pull-up or take-me-to verb and a site's name, or the bare name of a well-known site with nothing else; the user wants the site itself, not results about it.",
-                notFor: "A search for something on a site (\"zillow homes in austin\"), a question about a site, a page the user saw in this app before (\"that youtube page from earlier\", which is recall), and an address, which loads directly.",
+                what: "Open a website or app by its name. The query is a go-to, open, pull-up or take-me-to verb and a site's name, or the bare name of a well-known site with nothing else; the user wants the site itself, not results about it. Over a site this app opened by name, a complaint that it is the wrong one is a request for the same name again.",
+                notFor: "A search for something on a site (\"zillow homes in austin\"), a question about a site, and a page the user saw in this app before (\"that youtube page from earlier\", which is recall).",
                 examples: ["go to youtube", "pull up zillow", "open insta", "take me to airbnb", "launch netflix", "reddit"]
             )
         case .remember:
@@ -190,21 +187,13 @@ public enum ResponseFormat: String, CaseIterable, Codable, Sendable {
                 notFor: "Forgetting a page, a search or an answer, which is nothing the app keeps as a fact; a new question; \"never mind\" about a query just typed.",
                 examples: ["forget that", "forget that I'm vegetarian", "stop remembering my peanut allergy", "drop what I told you about my wife", "you can forget where I live"]
             )
+        case .time:
+            Criterion(
+                what: "The time or date right now, here or in a named place: what time it is, the time in Tokyo, today's date, what day it is. The device clock answers it.",
+                notFor: "Time zones as a topic, how long something takes, a date in history, the weather, and when an event starts, which are answers; and a place to find, which is map.",
+                examples: ["what time is it in tokyo", "what's the time in costa rica", "What time is it in Mexico?", "what's the time", "what day is it today"]
+            )
         }
-    }
-}
-
-/// A module's maturity, in order.
-public enum Stage: String, Codable, Sendable, CaseIterable, Comparable {
-    /// Jev can pick it; the app shows web results in its place.
-    case routed
-    /// A real card renders for it.
-    case built
-    /// Used on a device and accepted.
-    case verified
-
-    public static func < (lhs: Stage, rhs: Stage) -> Bool {
-        allCases.firstIndex(of: lhs)! < allCases.firstIndex(of: rhs)!
     }
 }
 

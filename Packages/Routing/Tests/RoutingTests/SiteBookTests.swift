@@ -11,7 +11,8 @@ import Testing
         #expect(book.lookup("yt")?.url.absoluteString == "https://www.youtube.com")
         #expect(book.lookup("insta")?.url.absoluteString == "https://www.instagram.com")
         #expect(book.lookup("fb")?.host == "www.facebook.com")
-        #expect(book.lookup("The Zillow website")?.host == "www.zillow.com")
+        #expect(book.lookup("Zillow")?.host == "www.zillow.com", "case and punctuation aside, the words are the key")
+        #expect(book.lookup("The Zillow website") == nil, "no article or trailer list: the reading beside Jev gives the bare name")
         #expect(book.lookup("hacker news") == nil)
         #expect(book.lookup("google docs")?.host == "docs.google.com", "Google's own products are sites, so a bare name is never a search that loses the \"google\"")
         #expect(book.lookup("docs")?.host == "docs.google.com")
@@ -34,7 +35,7 @@ import Testing
         #expect(entry.learned == now)
 
         book.learn("hacker news", url: try #require(URL(string: "https://news.ycombinator.com/news")), now: now)
-        #expect(book.lookup("the hacker news site")?.host == "news.ycombinator.com")
+        #expect(book.lookup("Hacker News")?.host == "news.ycombinator.com")
     }
 
     @Test func touchCountsUsesAndForgetDrops() throws {

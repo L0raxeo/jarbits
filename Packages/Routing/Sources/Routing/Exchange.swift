@@ -2,7 +2,7 @@ import Foundation
 
 /// One earlier query of this session and what it got, as Jev reads it: the
 /// words typed and the thing shown for them. The state carries the newest
-/// `EngineRouting.maxExchanges` of them, oldest first; one relevance
+/// `EngineRequest.maxExchanges` of them, oldest first; one relevance
 /// question is asked per exchange, and the instinct chosen gets the ones
 /// the query depends on as context. An answer's text goes whole.
 public struct Exchange: Codable, Sendable, Hashable {

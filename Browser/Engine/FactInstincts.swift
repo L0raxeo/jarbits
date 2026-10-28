@@ -1,29 +1,24 @@
 import Foundation
 import Routing
 
-/// Keeps a fact the user asked the app to keep: the words after the opener
-/// when the grammar read them, else what a model read out of the words.
+/// Keeps a fact the user asked the app to keep: the reading's subject, or
+/// what the extractor read out of the words when the reading gave none.
 /// Shows nothing; the mark says what was kept.
-struct RememberInstinct: Instinct {
+struct RememberInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .remember)
-
-    func plan(_ context: InstinctContext) -> CardPlan {
-        // Never asked: an acting instinct. Web results would stand in.
-        .web(QueryParser.searchURL(for: context.query))
-    }
 
     /// Set by the executor, never by the model: the fact came off the sheet.
     static let sourceField = "source"
 
-    func act(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> ActOutcome {
+    func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
         let gate = context.decision.remember
         guard let text = context.arguments["fact"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-            return ActOutcome(fact: FactSummary(action: "none", remember: gate), text: "nothing to remember")
+            return InstinctOutcome(fact: FactSummary(action: "none", remember: gate), text: "nothing to remember")
         }
         // Told in the words; chosen when a plan asked on the sheet and the answer is being kept.
         let source: Fact.Source = context.arguments[Self.sourceField]?.stringValue == Fact.Source.chosen.rawValue ? .chosen : .told
         let kept = await session.learn(Fact(text: text, source: source, madeBy: context.query))
-        return ActOutcome(fact: FactSummary(action: "remembered", source: kept.source, text: kept.text, remember: gate), text: "remembered \"\(kept.text)\"")
+        return InstinctOutcome(fact: FactSummary(action: "remembered", source: kept.source, text: kept.text, remember: gate), text: "remembered \"\(kept.text)\"")
     }
 }
 
@@ -31,18 +26,14 @@ struct RememberInstinct: Instinct {
 /// as a recall's are, and the one asked for is put to the user on the
 /// sheet; a tap forgets it, a swipe keeps it. Several plausible ones are
 /// offered as the choices, and choosing is the confirmation.
-struct ForgetInstinct: Instinct {
+struct ForgetInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .forget)
 
-    func plan(_ context: InstinctContext) -> CardPlan {
-        .web(QueryParser.searchURL(for: context.query))
-    }
-
-    func act(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> ActOutcome {
+    func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
         let candidates = await session.facts.shortlist(context.query)
         guard session.isCurrent(token) else { return .nothing }
         guard !candidates.isEmpty else {
-            return ActOutcome(fact: FactSummary(action: "none", candidates: 0), text: "nothing to forget")
+            return InstinctOutcome(fact: FactSummary(action: "none", candidates: 0), text: "nothing to forget")
         }
         var offered = candidates
         var judged: Int?
@@ -66,8 +57,8 @@ struct ForgetInstinct: Instinct {
             }
             guard session.isCurrent(token) else { return .nothing }
         }
-        func declined() -> ActOutcome {
-            ActOutcome(fact: FactSummary(action: "declined", candidates: candidates.count, judged: judged, latencyMs: latency), text: "kept")
+        func declined() -> InstinctOutcome {
+            InstinctOutcome(fact: FactSummary(action: "declined", candidates: candidates.count, judged: judged, latencyMs: latency), text: "kept")
         }
         let chosen: Fact
         if offered.count == 1 {
@@ -81,7 +72,7 @@ struct ForgetInstinct: Instinct {
             chosen = shown[index]
         }
         await session.unlearn(chosen)
-        return ActOutcome(
+        return InstinctOutcome(
             fact: FactSummary(action: "forgotten", source: chosen.source, text: chosen.text, candidates: candidates.count, judged: judged, latencyMs: latency),
             text: "forgot \"\(chosen.text)\""
         )

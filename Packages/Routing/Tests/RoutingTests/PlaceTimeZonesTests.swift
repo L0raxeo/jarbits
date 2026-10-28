@@ -94,11 +94,11 @@ import Testing
     @Test func everyTableRowIsAValidZoneWithANormalisedKey() {
         for (name, row) in PlaceTimeZones.aliases {
             #expect(TimeZone(identifier: row.zone) != nil, "\(name): \(row.zone)")
-            #expect(TimeQuery.normalized(name).joined(separator: " ") == name, "\(name)")
+            #expect(Words.key(name) == name, "\(name)")
         }
         for (name, row) in PlaceTimeZones.states {
             #expect(TimeZone(identifier: row.zone) != nil, "\(name): \(row.zone)")
-            #expect(TimeQuery.normalized(name).joined(separator: " ") == name, "\(name)")
+            #expect(Words.key(name) == name, "\(name)")
         }
         for (code, row) in PlaceTimeZones.countries {
             #expect(TimeZone(identifier: row.zone) != nil, "\(code): \(row.zone)")
@@ -107,10 +107,10 @@ import Testing
         }
         for (name, code) in PlaceTimeZones.countryAliases {
             #expect(PlaceTimeZones.countries[code] != nil, "\(name) → \(code)")
-            #expect(TimeQuery.normalized(name).joined(separator: " ") == name, "\(name)")
+            #expect(Words.key(name) == name, "\(name)")
         }
         for name in PlaceTimeZones.denylist {
-            #expect(TimeQuery.normalized(name).joined(separator: " ") == name, "\(name)")
+            #expect(Words.key(name) == name, "\(name)")
         }
     }
 

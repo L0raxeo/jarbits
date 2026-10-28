@@ -14,40 +14,30 @@ public enum EvalStatus: String, Codable, Sendable {
 public struct EvalResult: Codable, Equatable, Sendable {
     public var name: String
     public var query: String
-    public var expected: ResponseFormat
-    public var expectedPick: ResponseFormat?
+    public var expected: Instinct
+    public var expectedPick: Instinct?
     public var expectedSource: String?
-    public var decision: RouteDecision
-    public var localText: String?
-    public var searchTerm: String?
-    public var imageSubject: String?
-    public var siteName: String?
-    public var question: String?
+    public var decision: Pick
     /// Jev's answer came from the cache rather than a request.
     public var cached: Bool
     public var status: EvalStatus
     public var failures: [String]
 
-    public init(_ evalCase: EvalCase, outcome: RouteOutcome, cached: Bool) {
+    public init(_ evalCase: EvalCase, decision: Pick, cached: Bool) {
         name = evalCase.name
         query = evalCase.query
-        expected = evalCase.format
+        expected = evalCase.instinct
         expectedPick = evalCase.pick
         expectedSource = evalCase.source
-        decision = outcome.decision
-        localText = outcome.localText
-        searchTerm = outcome.searchTerm
-        imageSubject = outcome.imageSubject
-        siteName = outcome.siteName
-        question = outcome.question
+        self.decision = decision
         self.cached = cached
-        failures = EvalCheck.failures(evalCase, outcome)
+        failures = EvalCheck.failures(evalCase, decision)
         status = failures.isEmpty ? .pass : .fail
     }
 
     /// Jev was needed and not available.
     public static func uncached(_ evalCase: EvalCase) -> EvalResult {
-        var result = EvalResult(evalCase, outcome: RouteOutcome(query: evalCase.query, decision: RouteDecision(format: .fallback, source: .error("not cached"))), cached: false)
+        var result = EvalResult(evalCase, decision: Pick(instinct: .fallback, source: .error("not cached")), cached: false)
         result.status = .uncached
         result.failures = ["not cached: set TYPESAFE_API_KEY to ask Jev"]
         return result
@@ -71,20 +61,19 @@ public struct EvalResult: Codable, Equatable, Sendable {
 
 /// What a case checks, and in which order. Pure, so every rule is testable.
 public enum EvalCheck {
-    /// Empty means the case passed. The format is what the app shows, so an
-    /// expected `web_results` passes whether Jev picked it or fell back;
-    /// `source` pins the path. The term, subject and site are only checked
-    /// once the format is right: a wrong format explains them already.
-    public static func failures(_ evalCase: EvalCase, _ outcome: RouteOutcome) -> [String] {
-        let decision = outcome.decision
+    /// Empty means the case passed. The format is the instinct the app
+    /// runs, so an expected `web_results` passes whether Jev picked it or
+    /// was unsure; `source` pins the path. The reading is not in the eval,
+    /// so what an instinct did with its subject is not checked here.
+    public static func failures(_ evalCase: EvalCase, _ decision: Pick) -> [String] {
         switch decision.source {
         case let .error(message): return ["error: \(message)"]
         case .noKey: return ["no key: Jev was not asked"]
         default: break
         }
         var failures: [String] = []
-        if decision.format != evalCase.format {
-            failures.append("format: expected \(evalCase.format.rawValue), got \(decision.format.rawValue) (\(decision.source.kind))")
+        if decision.instinct != evalCase.instinct {
+            failures.append("instinct: expected \(evalCase.instinct.rawValue), got \(decision.instinct.rawValue) (\(decision.source.kind))")
         }
         if let pick = evalCase.pick, decision.suggested != pick {
             failures.append("pick: expected \(pick.rawValue), got \(decision.suggested?.rawValue ?? "none")")
@@ -92,22 +81,10 @@ public enum EvalCheck {
         if let expected = evalCase.source, decision.source.kind != expected {
             failures.append("source: expected \(expected), got \(decision.source.kind)")
         }
-        guard decision.format == evalCase.format else { return failures }
+        guard decision.instinct == evalCase.instinct else { return failures }
         if let chain = evalCase.chain, decision.chainedCount != chain {
             let newest = decision.relevance?.last.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? "none"
             failures.append("chain: expected \(chain), got \(decision.chainedCount) (newest relevance \(newest))")
-        }
-        if let term = evalCase.term, outcome.searchTerm != term {
-            failures.append("term: expected \"\(term)\", got \(outcome.searchTerm.map { "\"\($0)\"" } ?? "none")")
-        }
-        if let subject = evalCase.subject, outcome.imageSubject != subject {
-            failures.append("subject: expected \"\(subject)\", got \(outcome.imageSubject.map { "\"\($0)\"" } ?? "none")")
-        }
-        if let site = evalCase.site, outcome.siteName != site {
-            failures.append("site: expected \"\(site)\", got \(outcome.siteName.map { "\"\($0)\"" } ?? "none")")
-        }
-        if let question = evalCase.question, outcome.question != question {
-            failures.append("question: expected \"\(question)\", got \(outcome.question.map { "\"\($0)\"" } ?? "none")")
         }
         if let expected = evalCase.recall {
             guard let intent = decision.recall else {

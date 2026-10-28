@@ -5,10 +5,10 @@ import Testing
 
 /// These share one `URLProtocol` handler, so they run one at a time.
 @Suite(.serialized) struct EvalRunnerTests {
-    private let peru = EvalCase(query: "capital of peru", format: .oneLine, source: "jev")
+    private let peru = EvalCase(query: "capital of peru", instinct: .oneLine, source: "jev")
 
-    private func runner(client: JevClient?, directory: URL, floor: Double = EngineRouting.confidenceFloor) -> EvalRunner {
-        EvalRunner(client: client, cache: JevCache(directory: directory), floor: floor, now: Date(timeIntervalSince1970: 1_792_600_000), homeZone: TimeZone(identifier: "America/Chicago")!)
+    private func runner(client: JevClient?, directory: URL, floor: Double = EngineRequest.confidenceFloor) -> EvalRunner {
+        EvalRunner(client: client, cache: JevCache(directory: directory), floor: floor)
     }
 
     @Test func theFirstRunAsksOnceAndTheSecondReadsTheCache() async throws {
@@ -20,7 +20,7 @@ import Testing
         #expect(MockJevTransport.requests.count == 1)
         #expect(first.status == .pass)
         #expect(!first.cached)
-        #expect(first.decision.format == .oneLine)
+        #expect(first.decision.instinct == .oneLine)
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path(percentEncoded: false)).count == 1)
 
         MockJevTransport.requests = []
@@ -45,20 +45,18 @@ import Testing
         #expect(swept.cached)
         #expect(swept.decision.source == .confidenceFallback)
         #expect(swept.status == .fail)
-        #expect(swept.failures == ["format: expected one_line, got web_results (confidenceFallback)", "source: expected jev, got confidenceFallback"])
+        #expect(swept.failures == ["instinct: expected one_line, got web_results (confidenceFallback)", "source: expected jev, got confidenceFallback"])
     }
 
-    @Test func theDeviceAndAnAddressNeverAskJev() async {
+    @Test func anAddressNeverAsksJev() async {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let client = MockJevTransport.client(status: 200, body: "{}")
         let results = await runner(client: client, directory: directory).run([
-            EvalCase(query: "look up steve jobs", format: .webResults, source: "local:search", term: "steve jobs"),
-            EvalCase(query: "apple.com", format: .webResults, source: "directURL"),
+            EvalCase(query: "apple.com", instinct: .webResults, source: "directURL"),
         ])
         #expect(MockJevTransport.requests.isEmpty)
-        #expect(results.map(\.status) == [.pass, .pass])
-        #expect(results[0].searchTerm == "steve jobs")
+        #expect(results.map(\.status) == [.pass])
         #expect(!FileManager.default.fileExists(atPath: directory.path(percentEncoded: false)))
     }
 
@@ -84,14 +82,14 @@ import Testing
         #expect(retried.status == .pass)
     }
 
-    @Test func aRejectionNamesTheOpenedSite() async {
+    @Test func theOpenedSiteReachesJevAndTheRejectionIsLogged() async {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let client = MockJevTransport.client(status: 200, body: jevResponse(choice: "recall", confidence: 0.6, probabilities: ["recall": 0.7, "web_results": 0.3], recency: 0.1, rejects: 0.93))
-        let evalCase = EvalCase(query: "no not this one", opened: OpenedSite(name: "zillow", host: "www.zillow.com"), format: .site, source: "rejection", site: "zillow")
+        let client = MockJevTransport.client(status: 200, body: jevResponse(choice: "site", confidence: 0.8, probabilities: ["site": 0.8, "web_results": 0.2], recency: 0.1, rejects: 0.93))
+        let evalCase = EvalCase(query: "no not this one", opened: OpenedSite(name: "zillow", host: "www.zillow.com"), instinct: .site, source: "jev")
         let result = await runner(client: client, directory: directory).run(evalCase)
         #expect(result.status == .pass)
-        #expect(result.siteName == "zillow")
+        #expect(result.decision.rejectsSite)
         let body = MockJevTransport.requests.first?.httpBody.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         #expect(body.contains("\"opened_site_name\":\"zillow\""), "the opened site reaches Jev")
     }

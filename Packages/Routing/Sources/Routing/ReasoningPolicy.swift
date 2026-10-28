@@ -24,7 +24,7 @@ public enum ReasoningPolicy {
     /// The most memories a plan is shown.
     public static let memoriesGiven = 5
 
-    public static func entersReasoning(_ decision: RouteDecision) -> Bool {
+    public static func entersReasoning(_ decision: Pick) -> Bool {
         guard let reasoning = decision.reasoning else { return false }
         if reasoning >= threshold { return true }
         return decision.source == .confidenceFallback && reasoning >= leanThreshold

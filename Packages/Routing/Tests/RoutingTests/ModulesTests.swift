@@ -3,33 +3,30 @@ import Testing
 @testable import Routing
 
 @Suite struct ModulesTests {
-    @Test func stagesAreOrdered() {
-        #expect(Stage.routed < Stage.built)
-        #expect(Stage.built < Stage.verified)
-        #expect(Stage.allCases == [.routed, .built, .verified])
-    }
-
-    @Test func webResultsIsTheOnlyVerifiedModuleToday() {
-        #expect(ResponseFormat.webResults.stage == .verified)
-        #expect(ResponseFormat.fallback.stage >= .built, "the fallback must always render")
-    }
-
     @Test func onlyTheConversationalFormatsYieldToAThread() {
-        for format in ResponseFormat.allCases {
-            let conversational: Set<ResponseFormat> = [.narrative, .oneLine, .webResults]
+        for format in Instinct.allCases {
+            let conversational: Set<Instinct> = [.narrative, .oneLine, .webResults]
             #expect(format.outranksConversation == !conversational.contains(format), "\(format)")
         }
-        #expect(ResponseFormat.allCases.contains { $0.outranksConversation }, "there is always some other card to ask for")
+        #expect(Instinct.allCases.contains { $0.outranksConversation }, "there is always some other card to ask for")
     }
 
-    @Test func needsMatchesStage() {
-        for format in ResponseFormat.allCases {
-            if format.stage == .routed {
-                #expect(format.needs?.isEmpty == false, "\(format) is routed and must say what it needs")
+    @Test func onlyTheUnbuiltFormatsSayWhatTheyNeed() {
+        for format in Instinct.allCases {
+            if format == .map || format == .stock {
+                #expect(format.needs?.isEmpty == false, "\(format) shows web results until built and must say what it needs")
             } else {
                 #expect(format.needs == nil, "\(format) renders, so it needs nothing")
             }
             #expect(!format.title.isEmpty)
         }
+    }
+
+    @Test func timeIsAnInstinctOfItsOwn() {
+        #expect(Instinct.allCases.last == .time, "appended last, so the options Jev knew keep their order")
+        #expect(Instinct.time.outranksConversation)
+        #expect(!Instinct.time.isAnswered, "the clock answers it, not a model")
+        #expect(Instinct.time.criterion.examples.contains("what time is it in tokyo"))
+        #expect(!Instinct.oneLine.criterion.examples.contains { $0.contains("time") }, "the time left one_line")
     }
 }

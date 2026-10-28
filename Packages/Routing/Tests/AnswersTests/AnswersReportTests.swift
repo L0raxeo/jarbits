@@ -34,20 +34,20 @@ import Testing
 
     /// The Gemini half must be in the file; `ImagesTests` checks the whole file.
     @Test func committedRoutingFileHasTheGeminiPrompts() throws {
-        let committed = try String(contentsOf: Self.repoRoot.appending(path: "ROUTING.md"), encoding: .utf8)
-        #expect(committed.contains(AnswersReport.markdown()), "ROUTING.md is stale; run: \(RoutingReport.regenerateCommand)")
+        let committed = try String(contentsOf: Self.repoRoot.appending(path: "ENGINE.md"), encoding: .utf8)
+        #expect(committed.contains(AnswersReport.markdown()), "ENGINE.md is stale; run: \(EngineReport.regenerateCommand)")
     }
 
     @Test func oldLogLinesWithoutAnswersStillDecode() throws {
-        let line = #"{"timestamp":"2026-10-21T10:00:00Z","query":"nasdaq","decision":{"format":"stock","probabilities":{},"source":{"jev":{}}}}"#
+        let line = #"{"timestamp":"2026-10-21T10:00:00Z","query":"nasdaq","decision":{"instinct":"stock","probabilities":{},"source":{"jev":{}}}}"#
         let record = try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(line.utf8))
         #expect(record.answer == nil)
-        #expect(record.decision.format == .stock)
+        #expect(record.decision.instinct == .stock)
     }
 
     @Test func decisionsReportSummarisesAnswers() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let decision = RouteDecision(format: .oneLine, suggested: .oneLine, confidence: 0.9, probabilities: ["one_line": 0.9], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, source: .jev)
+        let decision = Pick(instinct: .oneLine, suggested: .oneLine, confidence: 0.9, probabilities: ["one_line": 0.9], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, source: .jev)
         let records = [
             DecisionRecord(timestamp: now, query: "time in lima", decision: decision, answer: AnswerSummary(
                 model: GeminiClient.defaultModel, format: .oneLine,

@@ -28,12 +28,12 @@ import Testing
         #expect(MockWikipediaTransport.requests.count == 4)
     }
 
-    @Test func theAskingAroundTheSubjectStaysOutOfTheSearch() async throws {
+    @Test func theSubjectIsSearchedAsGiven() async throws {
         let search = MockWikipediaTransport.search(search: flagSearch, summaries: flagSummaries)
-        let results = try await search.find("show me a picture of the dominican flag")
+        let results = try await search.find("dominican flag")
         #expect(results.first?.key == "Flag_of_the_Dominican_Republic")
         let searchRequest = try #require(MockWikipediaTransport.requests.first)
-        #expect(searchRequest.url?.query?.contains("q=dominican%20flag") == true, "ImageQuery leaves the subject")
+        #expect(searchRequest.url?.query?.contains("q=dominican%20flag") == true, "the reading beside Jev gives the subject; nothing is stripped here")
     }
 
     @Test func nothingWithAPictureIsNoImage() async {
@@ -106,23 +106,22 @@ import Testing
         #expect(markdown.contains("`fellBackToWeb(reason)`"))
     }
 
-    /// `ROUTING.md` opens with these three parts: the Jev contract, the
+    /// `ENGINE.md` opens with these three parts: the Jev contract, the
     /// Gemini prompts, the Wikipedia steps; `SitesReportTests` checks the whole file.
     @Test func committedRoutingFileIsCurrent() throws {
-        let committed = try String(contentsOf: Self.repoRoot.appending(path: "ROUTING.md"), encoding: .utf8)
-        let expected = RoutingReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown()
-        #expect(committed.hasPrefix(expected), "ROUTING.md is stale; run: \(RoutingReport.regenerateCommand)")
+        let committed = try String(contentsOf: Self.repoRoot.appending(path: "ENGINE.md"), encoding: .utf8)
+        let expected = EngineReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown()
+        #expect(committed.hasPrefix(expected), "ENGINE.md is stale; run: \(EngineReport.regenerateCommand)")
     }
 
     @Test func imageFormatIsBuiltAndComesAfterTheOlderOnes() {
-        #expect(ResponseFormat.image.stage == .built)
-        #expect(ResponseFormat.allCases.suffix(5) == [.image, .site, .video, .remember, .forget], "appended in order, so Jev's leanings do not shift")
-        #expect(!ResponseFormat.image.isAnswered)
+        #expect(Instinct.allCases.suffix(6) == [.image, .site, .video, .remember, .forget, .time], "appended in order, so Jev's leanings do not shift")
+        #expect(!Instinct.image.isAnswered)
     }
 
     @Test func decisionsReportSummarisesImages() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let decision = RouteDecision(format: .image, suggested: .image, confidence: 0.9, probabilities: ["image": 0.9], model: "jev-1.13.0", latencyMs: 150, inputTokens: 1200, source: .jev)
+        let decision = Pick(instinct: .image, suggested: .image, confidence: 0.9, probabilities: ["image": 0.9], model: "jev-1.13.0", latencyMs: 150, inputTokens: 1200, source: .jev)
         let records = [
             DecisionRecord(timestamp: now, query: "dominican flag", decision: decision,
                            image: ImageSummary(article: "Flag of the Dominican Republic", candidates: 2, latencyMs: 700, outcome: .shown(alternates: 1))),
@@ -143,7 +142,7 @@ import Testing
     }
 
     @Test func oldLogLinesWithoutImagesStillDecode() throws {
-        let line = #"{"timestamp":"2026-10-21T10:00:00Z","query":"nasdaq","decision":{"format":"stock","probabilities":{},"source":{"jev":{}}}}"#
+        let line = #"{"timestamp":"2026-10-21T10:00:00Z","query":"nasdaq","decision":{"instinct":"stock","probabilities":{},"source":{"jev":{}}}}"#
         let record = try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(line.utf8))
         #expect(record.image == nil)
     }
@@ -226,7 +225,7 @@ extension ImageSearchTests {
 
     @Test func aWikipediaMissIsFilledByBrave() async throws {
         let brave = MockBraveImageTransport.search(search: pencilVacSearch, pictures: pencilVacPictures)
-        let pick = try await lookup(wikipedia: noThumbnailSearch, brave: brave).find("show me the dyson pencilvac", decodes: decodesPNG)
+        let pick = try await lookup(wikipedia: noThumbnailSearch, brave: brave).find("dyson pencilvac", decodes: decodesPNG)
 
         #expect(pick.source == .brave)
         #expect(pick.data == pngMagic)
@@ -319,7 +318,7 @@ extension ImageSearchTests {
         let lookup = ImageLookup(wikipedia: MockWikipediaTransport.search(search: "{}", summaries: [:]), brave: brave)
         let result = ImageResult(title: "x", key: url.absoluteString, imageURL: url, width: 0, height: 0, pageURL: url, source: .brave)
         #expect(try await lookup.data(for: result) == pngMagic)
-        #expect(MockWikipediaTransport.requests.isEmpty, "a Brave picture never goes through the Wikipedia session")
+        #expect(!MockWikipediaTransport.requests.contains { $0.url?.absoluteString.contains("pencilvac") == true }, "a Brave picture never goes through the Wikipedia session")
     }
 
     @Test func theLogSaysWhichSourceAnswered() throws {

@@ -10,21 +10,21 @@ import Testing
         return calendar
     }
 
-    private func decision(choice: String, confidence: Double = 0.9, nouls: [String: Double]) throws -> RouteDecision {
+    private func decision(choice: String, confidence: Double = 0.9, nouls: [String: Double]) throws -> Pick {
         let json = jevResponse(choice: choice, confidence: confidence, probabilities: [choice: confidence], recency: 0.1, nouls: nouls)
-        return EngineRouting.decision(from: try JSONDecoder().decode(SystemOneResponse.self, from: Data(json.utf8)), latencyMs: 1)
+        return EngineRequest.decision(from: try JSONDecoder().decode(SystemOneResponse.self, from: Data(json.utf8)), latencyMs: 1)
     }
 
     @Test func theSevenQuestionsAreNoulsAfterRecent() throws {
-        let request = EngineRouting.request(for: "x", locale: Locale(identifier: "en_US"))
-        #expect(EngineRouting.recallQuestionIDs == ["recall_pages", "recall_answers", "recall_pictures", "recall_searches", "recall_videos", "recall_named", "recall_all"])
+        let request = EngineRequest.request(for: "x", locale: Locale(identifier: "en_US"))
+        #expect(EngineRequest.recallQuestionIDs == ["recall_pages", "recall_answers", "recall_pictures", "recall_searches", "recall_videos", "recall_named", "recall_all"])
         let json = try #require(JSONSerialization.jsonObject(with: try request.jsonData()) as? [String: Any])
         let questions = try #require(json["questions"] as? [String: Any])
-        for id in EngineRouting.recallQuestionIDs {
+        for id in EngineRequest.recallQuestionIDs {
             let question = try #require(questions[id] as? [String: Any], Comment(rawValue: id))
             #expect(question["type"] as? String == "noul")
             let text = try #require(question["instructions"] as? String)
-            #expect(text.hasPrefix(EngineRouting.recallLead), "every question carries the recall framing")
+            #expect(text.hasPrefix(EngineRequest.recallLead), "every question carries the recall framing")
             #expect(Set((question["criteria"] as? [String: String])?.keys.map { $0 } ?? []) == ["true", "false"])
         }
     }
@@ -57,33 +57,35 @@ import Testing
     }
 
     @Test func theIntentRoundTripsThroughTheLog() throws {
-        let with = RouteDecision(format: .recall, suggested: .recall, confidence: 0.9, recall: RecallIntent(kinds: [.answers, .searches], named: false, all: true), source: .jev)
+        let with = Pick(instinct: .recall, suggested: .recall, confidence: 0.9, recall: RecallIntent(kinds: [.answers, .searches], named: false, all: true), source: .jev)
         let record = DecisionRecord(query: "the last 5 things", decision: with)
         let decoded = try DecisionRecord.decoder.decode(DecisionRecord.self, from: try DecisionRecord.encoder.encode(record))
         #expect(decoded.decision.recall == with.recall)
         #expect(decoded.decision.recall?.description == "answers and searches")
-        let without = RouteDecision(format: .recall, suggested: .recall, confidence: 0.9, source: .jev)
+        let without = Pick(instinct: .recall, suggested: .recall, confidence: 0.9, source: .jev)
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: try DecisionRecord.encoder.encode(DecisionRecord(query: "x", decision: without))).decision.recall == nil)
     }
 
-    @Test func withAnIntentTheWordListsAreNotConsulted() {
+    @Test func theAskIsJevsIntentPlusTheExtractorsCountAndSpan() {
         let intent = RecallIntent(kinds: [], named: true, all: true)
-        let filters = RecallFilters.parse("everything we talked about with the dyson", now: now, calendar: calendar, intent: intent)
-        #expect(filters.kinds == nil, "'talked' no longer means answers")
-        #expect(filters.named == true)
-        #expect(filters.all)
-        #expect(filters.collection)
-        let videos = RecallFilters.parse("the stuff from yesterday", now: now, calendar: calendar, intent: RecallIntent(kinds: [.videos, .pages], named: false, all: true))
+        let ask = RecallAsk(intent: intent)
+        #expect(ask.kinds == nil, "no kind named means any")
+        #expect(ask.named == true)
+        #expect(ask.all)
+        #expect(ask.collection)
+        let yesterday = DateInterval(start: now.addingTimeInterval(-86_400), duration: 86_400)
+        let videos = RecallAsk(intent: RecallIntent(kinds: [.videos, .pages], named: false, all: true), window: yesterday)
         #expect(videos.video && videos.kinds == [.page])
-        #expect(videos.window != nil, "the time is still read from the words")
+        #expect(videos.window == yesterday)
         #expect(!videos.collection, "a set with nothing named is not a collection")
         #expect(videos.allTitle == "All videos")
-        let counted = RecallFilters.parse("the last 5 things we were looking at", now: now, calendar: calendar, intent: RecallIntent(named: false, all: true))
+        let counted = RecallAsk(intent: RecallIntent(named: false, all: true), count: 5)
         #expect(counted.count == 5)
         #expect(!counted.all && !counted.collection, "a count says how many")
         #expect(counted.countTitle == "Last 5 memories")
-        let fallback = RecallFilters.parse("everything we talked about with the dyson", now: now, calendar: calendar)
-        #expect(fallback.kinds == [.narrative, .oneLine] && fallback.named == nil && fallback.collection, "no intent: the word lists, as before")
+        #expect(RecallAsk(count: 100).count == RecallAsk.maxCount, "a count is clamped")
+        let none = RecallAsk()
+        #expect(none.kinds == nil && none.named == nil && !none.all && none.isEmpty, "no intent, no count, no span: the words alone decide")
     }
 
     @Test func anUnnamedAskIgnoresEveryWord() {
@@ -97,14 +99,14 @@ import Testing
         let v1 = record(.page, "muse", minutesAgo: 30, title: "Muse - Hysteria", url: "https://m.youtube.com/watch?v=1")
         let all = [peeking, s1, p1, a1, v1]
         let unnamed = RecallIntent(named: false, all: true)
-        #expect(MemorySearch.shortlist(all, query: "Can you pull up the last 5 things we were peeking at", now: now, calendar: calendar, intent: unnamed) == [s1, p1, a1, v1, peeking], "'peeking' is not filler, and it does not matter")
-        #expect(MemorySearch.shortlist(all, query: "pull up what I was peeking at", now: now, calendar: calendar, intent: unnamed) == [s1, p1, a1, v1, peeking], "no filter and nothing named: the newest, for the judge")
-        #expect(MemorySearch.shortlist(all, query: "pull up what I was peeking at", now: now, calendar: calendar) == [peeking], "the fallback still matches words: this is the bug the intent prevents")
-        #expect(MemorySearch.shortlist(all, query: "pull up what I was looking at", now: now, calendar: calendar).isEmpty, "the fallback with only filler has nothing to go on")
+        #expect(MemorySearch.shortlist(all, query: "Can you pull up the last 5 things we were peeking at", ask: RecallAsk(intent: unnamed)) == [s1, p1, a1, v1, peeking], "'peeking' is not filler, and it does not matter")
+        #expect(MemorySearch.shortlist(all, query: "pull up what I was peeking at", ask: RecallAsk(intent: unnamed)) == [s1, p1, a1, v1, peeking], "no filter and nothing named: the newest, for the judge")
+        #expect(MemorySearch.shortlist(all, query: "pull up what I was peeking at") == [peeking], "with no intent the words still match: this is the bug the intent prevents")
+        #expect(MemorySearch.shortlist(all, query: "pull up what I was looking at").isEmpty, "with no intent and only filler there is nothing to go on")
         let videos = RecallIntent(kinds: [.videos], named: false, all: true)
-        #expect(MemorySearch.shortlist(all, query: "all the videos I watched", now: now, calendar: calendar, intent: videos) == [v1], "a set of a kind keeps the kind")
+        #expect(MemorySearch.shortlist(all, query: "all the videos I watched", ask: RecallAsk(intent: videos)) == [v1], "a set of a kind keeps the kind")
         let named = RecallIntent(kinds: [.answers], named: true, all: false)
-        #expect(MemorySearch.shortlist(all, query: "what you told me about the dyson", now: now, calendar: calendar, intent: named) == [s1, p1], "named: word matches; the kind is a preference, not a wall")
-        #expect(MemorySearch.shortlist(all, query: "the thing you told me", now: now, calendar: calendar, intent: named) == [a1], "named but only filler left: the allowed set, newest first")
+        #expect(MemorySearch.shortlist(all, query: "what you told me about the dyson", ask: RecallAsk(intent: named)) == [s1, p1], "named: word matches; the kind is a preference, not a wall")
+        #expect(MemorySearch.shortlist(all, query: "the thing you told me", ask: RecallAsk(intent: named)) == [a1], "named but only filler left: the allowed set, newest first")
     }
 }

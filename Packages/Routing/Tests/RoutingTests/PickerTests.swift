@@ -6,11 +6,11 @@ import Testing
 @Suite(.serialized) struct EngineRouterTests {
     @Test func asksJevAndActsOnAConfidentAnswer() async throws {
         let client = MockTransport.client(status: 200, body: jevResponse(choice: "one_line", confidence: 0.88, probabilities: ["one_line": 0.89, "narrative": 0.08, "web_results": 0.03]))
-        let router = EngineRouter(client: client, locale: Locale(identifier: "en_US"))
+        let router = Picker(client: client, locale: Locale(identifier: "en_US"))
 
         let decision = await router.decide("what's the time in costa rica")
 
-        #expect(decision.format == .oneLine)
+        #expect(decision.instinct == .oneLine)
         #expect(decision.source == .jev)
         #expect(decision.latencyMs != nil)
 
@@ -30,8 +30,8 @@ import Testing
         let client = MockTransport.client(status: 200, body: jevResponse(
             choice: "recall", confidence: 0.95, probabilities: ["recall": 0.96, "web_results": 0.04], recency: 0.1,
             nouls: recallNouls(kinds: [.searches, .answers], named: false, all: true)))
-        let decision = await EngineRouter(client: client, locale: Locale(identifier: "en_US")).decide("the last 5 things I asked you, including google searches and AI stuff")
-        #expect(decision.format == .recall)
+        let decision = await Picker(client: client, locale: Locale(identifier: "en_US")).decide("the last 5 things I asked you, including google searches and AI stuff")
+        #expect(decision.instinct == .recall)
         #expect(decision.recall?.wanted == [.searches, .answers])
         #expect(decision.recall?.namesThing == false)
         #expect(MockTransport.requests.count == 1, "the intent rides in the routing request; no second call")
@@ -43,7 +43,7 @@ import Testing
     @Test func exchangesReachJevAndTheChainComesBack() async throws {
         let client = MockTransport.client(status: 200, body: jevResponse(
             choice: "narrative", confidence: 0.9, probabilities: ["narrative": 0.9, "web_results": 0.1], recency: 0.1, relevance: [0.2, 0.85], reasoning: (score: 0.1, confidence: 0.9)))
-        let router = EngineRouter(client: client, locale: Locale(identifier: "en_US"))
+        let router = Picker(client: client, locale: Locale(identifier: "en_US"))
 
         let decision = await router.decide("why?", exchanges: answerExchanges([
             (query: "how do you make hot chocolate", answer: "Heat milk, whisk in cocoa."),
@@ -70,7 +70,7 @@ import Testing
             return (500, Data())
         }
         MockTransport.requests = []
-        let router = EngineRouter(client: JevClient(apiKey: "sk-test", session: MockTransport.session()))
+        let router = Picker(client: JevClient(apiKey: "sk-test", session: MockTransport.session()))
 
         let decision = await router.decide("nasdaq.com")
 
@@ -80,9 +80,9 @@ import Testing
 
     @Test func httpErrorFallsBackToWeb() async {
         let client = MockTransport.client(status: 401, body: #"{"detail":"invalid api key"}"#)
-        let decision = await EngineRouter(client: client).decide("tesla stock")
+        let decision = await Picker(client: client).decide("tesla stock")
 
-        #expect(decision.format == .webResults)
+        #expect(decision.instinct == .webResults)
         #expect(decision.suggested == nil)
         guard case let .error(message) = decision.source else {
             Issue.record("expected an error source, got \(decision.source)")
@@ -93,8 +93,8 @@ import Testing
 
     @Test func malformedBodyFallsBackToWeb() async {
         let client = MockTransport.client(status: 200, body: "not json")
-        let decision = await EngineRouter(client: client).decide("tesla stock")
-        #expect(decision.format == .webResults)
+        let decision = await Picker(client: client).decide("tesla stock")
+        #expect(decision.instinct == .webResults)
         guard case let .error(message) = decision.source else {
             Issue.record("expected an error source")
             return
@@ -139,8 +139,8 @@ import Testing
         }
         MockTransport.requests = []
         let client = JevClient(apiKey: "sk-test", timeout: .milliseconds(50), session: MockTransport.session())
-        let decision = await EngineRouter(client: client).decide("tesla stock")
-        #expect(decision.format == .webResults)
+        let decision = await Picker(client: client).decide("tesla stock")
+        #expect(decision.instinct == .webResults)
         #expect(decision.source == .error("timeout"))
     }
 }

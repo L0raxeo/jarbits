@@ -12,7 +12,7 @@ struct SessionExchange {
 extension Layer {
     /// The conversation this layer shows, oldest first: an answer card,
     /// narrative or one-line, whose answer is in (or stopped with some
-    /// text), a one-line answer the device computed, or a remembered
+    /// text), the time from the clock, or a remembered
     /// conversation. What a follow-up typed over it may continue. Empty for
     /// anything else, including an answer still streaming.
     var thread: [AnswerTurn] {
@@ -23,10 +23,10 @@ extension Layer {
             case .done, .failed: return history + [AnswerTurn(query: query, answer: answer.text, format: format)]
             case .idle, .waiting, .streaming: return []
             }
-        case let .localAnswer(format, query, text):
-            return [AnswerTurn(query: query, answer: text, format: format)]
+        case let .time(query, text):
+            return [AnswerTurn(query: query, answer: text, format: .oneLine)]
         case let .memory(record) where record.kind == .narrative || record.turns != nil:
-            let kind: ResponseFormat = record.kind == .oneLine ? .oneLine : .narrative
+            let kind: Instinct = record.kind == .oneLine ? .oneLine : .narrative
             return record.turns ?? record.text.map { [AnswerTurn(query: record.query, answer: $0, format: kind)] } ?? []
         default:
             return []
@@ -47,18 +47,15 @@ extension Layer {
             }
             let title = pageTitle ?? QueryParser.displayText(for: address)
             return [SessionExchange(exchange: .page(query: query, title: title, address: address), turn: nil, layerID: id)]
-        case .answer, .localAnswer, .memory:
+        case .answer, .time, .memory:
             return thread.map { SessionExchange(exchange: .answer(query: $0.query, text: $0.answer), turn: $0, layerID: id) }
-        case let .image(query):
+        case let .image(subject):
             let title = images.flatMap { $0.results.indices.contains($0.primaryIndex) ? $0.results[$0.primaryIndex].title : nil }
-            return [SessionExchange(exchange: .picture(query: query, subject: ImageQuery.subject(for: query), title: title), turn: nil, layerID: id)]
+            return [SessionExchange(exchange: .picture(query: query, subject: subject, title: title), turn: nil, layerID: id)]
         case let .recallPicker(records, title):
             return [SessionExchange(exchange: .recall(query: query, title: title, titles: records.map(\.title)), turn: nil, layerID: id)]
         case let .siteChoices(name, candidates):
             return [SessionExchange(exchange: .site(query: query, name: name, hosts: candidates.map(\.host)), turn: nil, layerID: id)]
-        case .recall, .site:
-            // Resolved by the session before a layer holds them.
-            return []
         }
     }
 }

@@ -6,7 +6,7 @@ import Routing
 import Sites
 
 // Usage:
-//   swift run --package-path Packages/Routing report routing > ROUTING.md
+//   swift run --package-path Packages/Routing report engine > ENGINE.md
 //   swift run --package-path Packages/Routing report decisions path/to/decisions.jsonl
 //   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Routing report recall path/to/memories.jsonl "the videos from yesterday"
 //     (with the key, Jev's reading of the ask from one routing call; then the filters, the shortlist and
@@ -31,10 +31,14 @@ import Sites
 //     (advanced reasoning's first request, with every instinct as a tool; with the key and no --dry-run,
 //      one metered round on the planner's model, printing the calls the model asks for, the tokens and the cost;
 //      --timeout lifts the app's round budget of ReasoningPolicy.roundTimeout to measure a slow round)
+//   [GEMINI_API_KEY=…] swift run --package-path Packages/Routing report read "Which oh can you pull up youtube?" [--after <q> <a>]... [--dry-run]
+//     (the reading the engine makes beside Jev: the request with its substance isolated and what it is
+//      about; with the key and no --dry-run, one small metered call, printing both, the latency, the
+//      tokens and the cost)
 //   [BRAVE_API_KEY=…] swift run --package-path Packages/Routing report sites "go to hacker news"
-//     (what SiteQuery makes of the query, what the seeded book says, and with the key Brave's candidates)
+//     (what the seeded book says of a name, and with the key Brave's candidates)
 //   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Routing report eval [--out results.jsonl]
-//     (every case of Evals/routing.jsonl through the device rules and Jev; misses with the gate and the
+//     (every case of Evals/engine.jsonl through the device rules and Jev; misses with the gate and the
 //     spread, a pass count per format; Jev's answers cached under .evalcache/ by the request body, so
 //     without a key it runs from the cache)
 //   swift run --package-path Packages/Routing report eval --floor 0.6 --no-network --baseline results.jsonl
@@ -52,13 +56,14 @@ func fail(_ message: String) -> Never {
 }
 
 switch arguments.first {
-case "routing":
-    print(RoutingReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown() + "\n" + SitesReport.markdown(), terminator: "")
+case "engine":
+    print(EngineReport.markdown() + "\n" + AnswersReport.markdown() + "\n" + ImagesReport.markdown() + "\n" + SitesReport.markdown(), terminator: "")
 case "decisions":
     guard arguments.count == 2 else { fail("usage: report decisions <decisions.jsonl>") }
     do {
         let data = try Data(contentsOf: URL(fileURLWithPath: arguments[1]))
-        let records = try DecisionsReport.parse(data)
+        let (records, skipped) = DecisionsReport.parseLenient(data)
+        if skipped > 0 { FileHandle.standardError.write(Data("skipped \(skipped) line\(skipped == 1 ? "" : "s") the engine's record no longer describes (version 1)\n".utf8)) }
         print(DecisionsReport.markdown(records: records), terminator: "")
     } catch {
         fail("could not read \(arguments[1]): \(error)")
@@ -80,21 +85,21 @@ case "recall":
     // Jev's reading of the ask rides in the routing request; one real call here, as the app makes.
     var intent: RecallIntent?
     if let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty {
-        let decision = await EngineRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query)
+        let decision = await Picker(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query)
         if let read = decision.recall {
             intent = read
             print("jev intent (\(decision.latencyMs ?? 0) ms): kinds \(read.description), named \(read.namesThing ? "yes" : "no"), all \(read.wantsAll ? "yes" : "no")")
         } else {
-            print("jev picked \(decision.suggested?.rawValue ?? decision.format.rawValue), not recall: filters from the word lists")
+            print("jev picked \(decision.suggested?.rawValue ?? decision.instinct.rawValue), not recall: the words alone decide")
         }
     } else {
-        print("no TYPESAFE_API_KEY: filters from the word lists")
+        print("no TYPESAFE_API_KEY: the words alone decide")
     }
-    let filters = RecallFilters.parse(query, now: now, intent: intent)
+    // The count and the span are the extractor's values in the app; here the ask carries none.
+    let filters = RecallAsk(intent: intent)
     let kinds = filters.kinds.map { $0.map(\.rawValue).sorted().joined(separator: ",") } ?? "any"
-    let window = filters.window.map { "\($0.start.formatted(date: .abbreviated, time: .shortened)) to \($0.end.formatted(date: .abbreviated, time: .shortened))" } ?? "any"
-    print("filters: kinds \(kinds), video \(filters.video), when \(window)\(filters.collection ? ", everything about \"\(MemorySearch.topic(of: query))\"" : "")\(filters.countTitle.map { ", \($0.lowercased())" } ?? "")")
-    let shortlist = MemorySearch.shortlist(records, query: query, now: now, intent: intent)
+    print("ask: kinds \(kinds), video \(filters.video)\(filters.collection ? ", everything about \"\(MemorySearch.topic(of: query))\"" : "")")
+    let shortlist = MemorySearch.shortlist(records, query: query, ask: filters)
     print("shortlist: \(shortlist.count) of \(records.count)")
     for (index, record) in shortlist.enumerated() {
         print("  m\(index) \(record.kind.rawValue) \(record.date.formatted(date: .abbreviated, time: .omitted)) \"\(record.title)\"")
@@ -163,58 +168,37 @@ case "route":
         default: fail(usage)
         }
     }
-    if let device = DeviceRouting.decide(query, locale: Locale(identifier: "en_US"), book: .seeded()), case let .local(rule) = device.decision.source {
-        print("query: \"\(query)\"")
-        switch rule {
-        case DeviceRouting.siteRule:
-            print("decided on the device by rule site: opens \"\(device.siteName ?? query)\" from the seeded book (the app's book may know more names)")
-        case DeviceRouting.searchRule:
-            print("decided on the device by rule search: web results for \"\(device.searchTerm ?? query)\"")
-        default:
-            print("decided on the device by rule \(rule): \(device.localText ?? "")")
-        }
-        exit(0)
-    }
     guard let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty else {
         fail("set TYPESAFE_API_KEY in the environment (never paste it on the command line)")
     }
-    let decision = await EngineRouter(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query, exchanges: exchanges, opened: opened)
+    let decision = await Picker(client: JevClient(apiKey: key), locale: Locale(identifier: "en_US")).decide(query, exchanges: exchanges, opened: opened)
     print("query: \"\(query)\"")
-    let outcome = RouteOutcome(query: query, decision: decision, opened: opened)
-    if let name = outcome.siteName, let site = SiteQuery.parse(query) {
-        print("site name: \"\(name)\"\(site.hasOpener ? " (with an opener)" : "")")
-    }
-    if let term = outcome.searchTerm, term != query {
-        print("search term: \"\(term)\"")
-    }
-    if let subject = outcome.imageSubject, subject != query {
-        print("image subject: \"\(subject)\"")
-    }
-    print("format: \(decision.format.rawValue)  source: \(decision.source)")
+    print("format: \(decision.instinct.rawValue)  source: \(decision.source)")
+    if decision.instinct.isAnswered, decision.recent { print("recency says the answer may be stale: the instinct shows web results") }
+    if decision.rejectsSite { print("rejects the site on screen: the site instinct forgets the name and shows the choices") }
     if let confidence = decision.confidence { print("confidence: \(confidence.formatted(.number.precision(.fractionLength(2))))") }
     if let suggested = decision.suggested { print("suggested: \(suggested.rawValue)") }
     if let recency = decision.recency {
-        print("recency: \(recency.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRouting.recencyThreshold.formatted()))")
+        print("recency: \(recency.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRequest.recencyThreshold.formatted()))")
     }
     if let relevance = decision.relevance {
         let values = relevance.map { $0.formatted(.number.precision(.fractionLength(2))) }.joined(separator: ", ")
         let chain = decision.chainedCount
-        let verdict = decision.continuesThread ? "the chain ends on an answer: grows it as \(decision.format.rawValue)"
-            : chain > 0 && decision.source == .recencyFallback ? "the chain ends on an answer, but the reply needs live data: web results"
+        let verdict = decision.continuesThread ? "the chain ends on an answer: grows it as \(decision.instinct.rawValue)"
             : chain > 0 ? "the chain ends on \(exchanges.last?.summary ?? "an exchange"): a new layer with \(chain) exchange\(chain == 1 ? "" : "s") as context"
             : "fresh: no exchange matters"
-        print("relevance: [\(values)] (threshold \(EngineRouting.relevanceThreshold.formatted())), chain \(chain) of \(relevance.count), \(verdict)")
+        print("relevance: [\(values)] (threshold \(EngineRequest.relevanceThreshold.formatted())), chain \(chain) of \(relevance.count), \(verdict)")
     }
     if let reasoning = decision.reasoning {
-        let level = reasoning < 0.5 ? "direct" : reasoning < EngineRouting.reasoningThreshold ? "needs a value" : "several steps"
+        let level = reasoning < 0.5 ? "direct" : reasoning < EngineRequest.reasoningThreshold ? "needs a value" : "several steps"
         let confidence = (decision.reasoningConfidence ?? 0).formatted(.number.precision(.fractionLength(2)))
-        print("reasoning: \(reasoning.formatted(.number.precision(.fractionLength(2)))) (confidence \(confidence), top level at \(EngineRouting.reasoningThreshold.formatted())), \(level)\(decision.reasoningWanted ? "; an unsure pick that wanted reasoning" : "")")
+        print("reasoning: \(reasoning.formatted(.number.precision(.fractionLength(2)))) (confidence \(confidence), top level at \(EngineRequest.reasoningThreshold.formatted())), \(level)\(decision.reasoningWanted ? "; an unsure pick that wanted reasoning" : "")")
     }
     if let rejection = decision.rejection {
-        print("rejection: \(rejection.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRouting.rejectionThreshold.formatted())), \(decision.rejectsSite ? "rejects the site on screen" : "keeps it")")
+        print("rejection: \(rejection.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRequest.rejectionThreshold.formatted())), \(decision.rejectsSite ? "rejects the site on screen" : "keeps it")")
     }
     if let remember = decision.remember {
-        print("remember: \(remember.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRouting.rememberThreshold.formatted())), \(decision.statesFact ? "states a lasting fact about the user" : "no fact to keep")")
+        print("remember: \(remember.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRequest.rememberThreshold.formatted())), \(decision.statesFact ? "states a lasting fact about the user" : "no fact to keep")")
     }
     if let intent = decision.recall {
         func p(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(2))) }
@@ -345,19 +329,50 @@ case "plan":
     case let .failed(reason, latencyMs):
         print("round 1 failed (\(latencyMs) ms): \(reason)")
     }
-case "sites":
-    guard arguments.count == 2 else { fail("usage: report sites <query>") }
-    let query = arguments[1]
-    print("query: \"\(query)\"")
-    guard let site = SiteQuery.parse(query) else {
-        print("no name left after the openers and trailers")
+case "read":
+    let usage = "usage: report read <query> [--after <earlier query> <earlier answer>]... [--dry-run]"
+    var rest = Array(arguments.dropFirst())
+    guard let query = rest.first else { fail(usage) }
+    rest.removeFirst()
+    var exchanges: [Exchange] = []
+    var dryRun = false
+    while let flag = rest.first {
+        switch flag {
+        case "--after":
+            guard rest.count >= 3 else { fail(usage) }
+            exchanges.append(.answer(query: rest[1], text: rest[2]))
+            rest.removeFirst(3)
+        case "--dry-run":
+            dryRun = true
+            rest.removeFirst()
+        default: fail(usage)
+        }
+    }
+    let request = QueryReader.request(query: query, exchanges: exchanges)
+    print("request body (\(QueryReader.model), \(QueryReader.timeout.components.seconds) s to answer):")
+    print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
+    guard !dryRun, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
+        print(dryRun ? "dry run: no call made" : "set GEMINI_API_KEY to make the call (one small metered call, a few hundredths of a cent)")
         exit(0)
     }
-    print("name: \"\(site.name)\"\(site.hasOpener ? " (with an opener: a known name opens with no model asked)" : " (no opener: Jev decides)")")
-    if let entry = SiteBook.seeded().lookup(site.name) {
+    let summary = await QueryReader(client: GeminiClient(apiKey: key)).read(query, exchanges: exchanges)
+    let tokens = summary.usage.map { "\($0.inputTokens) in, \($0.outputTokens + $0.thoughtTokens) out; about $\(GeminiPricing.cost($0, model: summary.model).formatted(.number.precision(.fractionLength(5))))" } ?? "no usage"
+    switch summary.outcome {
+    case .rewritten:
+        print("rewritten (\(summary.latencyMs) ms, \(tokens)): \"\(query)\" → \"\(summary.query ?? "")\"; subject \(summary.subject.map { "\"\($0)\"" } ?? "none")")
+    case .unchanged:
+        print("unchanged (\(summary.latencyMs) ms, \(tokens)): \"\(summary.query ?? query)\"; subject \(summary.subject.map { "\"\($0)\"" } ?? "none")")
+    case let .failed(reason):
+        print("failed (\(summary.latencyMs) ms): \(reason)")
+    }
+case "sites":
+    guard arguments.count == 2 else { fail("usage: report sites <name>") }
+    let name = arguments[1]
+    print("name: \"\(name)\" (what the reading gives the site instinct as its subject)")
+    if let entry = SiteBook.seeded().lookup(name) {
         print("seeded book: \(entry.url.absoluteString)")
     } else {
-        print("seeded book: unknown")
+        print("seeded book: unknown (the app's book may know it from a tap)")
     }
     guard let key = ProcessInfo.processInfo.environment["BRAVE_API_KEY"], !key.isEmpty else {
         print("set BRAVE_API_KEY to search")
@@ -366,7 +381,7 @@ case "sites":
     let clock = ContinuousClock()
     let start = clock.now
     do {
-        let found = try await SiteSearch(apiKey: key).find(site.name)
+        let found = try await SiteSearch(apiKey: key).find(name)
         print("brave (\(Int((clock.now - start) / .milliseconds(1))) ms): \(found.count) candidates")
         for candidate in found {
             print("  \(candidate.host.padding(toLength: 28, withPad: " ", startingAt: 0)) \(candidate.title)")
@@ -375,17 +390,17 @@ case "sites":
         print("brave failed: \(error)")
     }
 case "eval":
-    let usage = "usage: report eval [cases.jsonl] [--only <format>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network]"
+    let usage = "usage: report eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network]"
     let packageRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()   // main.swift → ReportCLI/
         .deletingLastPathComponent()   // → Sources/
         .deletingLastPathComponent()   // → Routing/
-    var file = packageRoot.appending(path: "Evals/routing.jsonl")
+    var file = packageRoot.appending(path: "Evals/engine.jsonl")
     var out = packageRoot.appending(path: ".evalcache/results.jsonl")
     var baseline: URL?
-    var only: ResponseFormat?
-    var floor = EngineRouting.confidenceFloor
-    var recency = EngineRouting.recencyThreshold
+    var only: Instinct?
+    var floor = EngineRequest.confidenceFloor
+    var recency = EngineRequest.recencyThreshold
     var network = true
     var rest = Array(arguments.dropFirst())
     while let argument = rest.first {
@@ -398,7 +413,7 @@ case "eval":
         switch argument {
         case "--only":
             let raw = value()
-            guard let format = ResponseFormat(rawValue: raw) else { fail("unknown format \"\(raw)\"; one of \(ResponseFormat.allCases.map(\.rawValue).joined(separator: ", "))") }
+            guard let format = Instinct(rawValue: raw) else { fail("unknown instinct \"\(raw)\"; one of \(Instinct.allCases.map(\.rawValue).joined(separator: ", "))") }
             only = format
         case "--baseline": baseline = URL(fileURLWithPath: value())
         case "--out": out = URL(fileURLWithPath: value())
@@ -420,7 +435,7 @@ case "eval":
     } catch {
         fail("could not read \(file.path(percentEncoded: false)): \(error)")
     }
-    if let only { cases = cases.filter { $0.format == only } }
+    if let only { cases = cases.filter { $0.instinct == only } }
     var client: JevClient?
     if network {
         if let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty {
@@ -429,12 +444,7 @@ case "eval":
             FileHandle.standardError.write(Data("no TYPESAFE_API_KEY: running from the cache only\n".utf8))
         }
     }
-    let runner = EvalRunner(
-        client: client,
-        cache: JevCache(directory: packageRoot.appending(path: ".evalcache/jev")),
-        floor: floor,
-        recencyThreshold: recency
-    )
+    let runner = EvalRunner(client: client, cache: JevCache(directory: packageRoot.appending(path: ".evalcache/jev")), floor: floor, recencyThreshold: recency)
     let results = await runner.run(cases)
     let rootPath = packageRoot.path(percentEncoded: false)
     let filePath = file.path(percentEncoded: false)
@@ -472,8 +482,8 @@ case "sample":
     var log: URL?
     var count = EvalSample.defaultCount
     var seed = EvalSample.seed(for: .now, zone: .current)
-    var floor = EngineRouting.confidenceFloor
-    var recency = EngineRouting.recencyThreshold
+    var floor = EngineRequest.confidenceFloor
+    var recency = EngineRequest.recencyThreshold
     var network = true
     var rest = Array(arguments.dropFirst())
     while let argument = rest.first {
@@ -518,14 +528,9 @@ case "sample":
             FileHandle.standardError.write(Data("no TYPESAFE_API_KEY: running from the cache only\n".utf8))
         }
     }
-    let runner = EvalRunner(
-        client: client,
-        cache: JevCache(directory: packageRoot.appending(path: ".evalcache/jev")),
-        floor: floor,
-        recencyThreshold: recency
-    )
+    let runner = EvalRunner(client: client, cache: JevCache(directory: packageRoot.appending(path: ".evalcache/jev")), floor: floor, recencyThreshold: recency)
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report routing | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | plan <query> [--after <q> <a>]... [--fact <text>]... [--timeout <seconds>] [--dry-run] | sites <query> | eval [cases.jsonl] [--only <format>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report engine | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--fact <text>]... [--timeout <seconds>] [--dry-run] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }

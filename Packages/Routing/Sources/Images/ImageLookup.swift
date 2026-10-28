@@ -38,13 +38,13 @@ public struct ImageLookup: Sendable {
     /// Wikipedia first; on a miss, Brave. Throws `nothingFound` with what
     /// each source did when neither gives a picture, and Wikipedia's own
     /// error when it failed before Brave could be asked.
-    public func find(_ query: String, decodes: @Sendable @escaping (Data) -> Bool) async throws(ImageError) -> ImagePick {
+    public func find(_ subject: String, decodes: @Sendable @escaping (Data) -> Bool) async throws(ImageError) -> ImagePick {
         do {
-            return try await step { try await fromWikipedia(query, decodes: decodes) }
+            return try await step { try await fromWikipedia(subject, decodes: decodes) }
         } catch .noImage {
             guard let brave else { throw .nothingFound("Wikipedia: no image; Brave: no key") }
             do {
-                return try await step { try await fromBrave(brave, ImageQuery.subject(for: query), decodes: decodes) }
+                return try await step { try await fromBrave(brave, subject, decodes: decodes) }
             } catch {
                 throw .nothingFound("Wikipedia: no image; Brave: \(error.reason)")
             }

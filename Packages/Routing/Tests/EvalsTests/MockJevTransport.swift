@@ -67,17 +67,17 @@ func jevResponse(
         + nouls.sorted { $0.key < $1.key }.map { ", \"\($0.key)\": { \"type\": \"noul\", \"noul\": \($0.value) }" }.joined()
         + choices.sorted { $0.key < $1.key }.map { ", \"\($0.key)\": { \"type\": \"choice\", \"choice\": \"\($0.value.choice)\", \"confidence\": \($0.value.confidence), \"probabilities\": { \"\($0.value.choice)\": \($0.value.confidence) } }" }.joined()
     for (index, value) in (relevance ?? []).enumerated() {
-        extra += ", \"\(EngineRouting.relevanceQuestionID(index))\": { \"type\": \"noul\", \"noul\": \(value) }"
+        extra += ", \"\(EngineRequest.relevanceQuestionID(index))\": { \"type\": \"noul\", \"noul\": \(value) }"
     }
     if let reasoning {
         let level = Int(reasoning.score.rounded())
-        extra += ", \"\(EngineRouting.reasoningQuestionID)\": { \"type\": \"score\", \"score\": \(reasoning.score), \"confidence\": \(reasoning.confidence), \"probabilities\": { \"\(level)\": \(reasoning.confidence) } }"
+        extra += ", \"\(EngineRequest.reasoningQuestionID)\": { \"type\": \"score\", \"score\": \(reasoning.score), \"confidence\": \(reasoning.confidence), \"probabilities\": { \"\(level)\": \(reasoning.confidence) } }"
     }
     return """
     {
       "model": "\(model)",
       "answers": {
-        "format": {
+        "instinct": {
           "type": "choice",
           "choice": "\(choice)",
           "confidence": \(confidence),
@@ -95,11 +95,11 @@ func decision(
     choice: String, confidence: Double, probabilities: [String: Double],
     recency: Double? = nil, rejects: Double? = nil, relevance: [Double]? = nil,
     reasoning: (score: Double, confidence: Double)? = nil, exchanges: [Exchange] = [],
-    nouls: [String: Double] = [:], floor: Double = EngineRouting.confidenceFloor
-) throws -> RouteDecision {
+    nouls: [String: Double] = [:], floor: Double = EngineRequest.confidenceFloor
+) throws -> Pick {
     let json = jevResponse(choice: choice, confidence: confidence, probabilities: probabilities, recency: recency, rejects: rejects, relevance: relevance, reasoning: reasoning, nouls: nouls)
     let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(json.utf8))
-    return EngineRouting.decision(from: response, latencyMs: 150, floor: floor, exchanges: exchanges)
+    return EngineRequest.decision(from: response, latencyMs: 150, floor: floor, exchanges: exchanges)
 }
 
 func temporaryDirectory() -> URL {
@@ -109,8 +109,8 @@ func temporaryDirectory() -> URL {
 /// The seven recall answers, yes as 1 and no as 0, keyed by question id.
 func recallNouls(kinds: Set<RecallIntent.Kind> = [], named: Bool, all: Bool) -> [String: Double] {
     var answers: [String: Double] = [:]
-    for kind in RecallIntent.Kind.allCases { answers[EngineRouting.recallKindQuestionID(kind)] = kinds.contains(kind) ? 1 : 0 }
-    answers[EngineRouting.recallNamedQuestionID] = named ? 1 : 0
-    answers[EngineRouting.recallAllQuestionID] = all ? 1 : 0
+    for kind in RecallIntent.Kind.allCases { answers[EngineRequest.recallKindQuestionID(kind)] = kinds.contains(kind) ? 1 : 0 }
+    answers[EngineRequest.recallNamedQuestionID] = named ? 1 : 0
+    answers[EngineRequest.recallAllQuestionID] = all ? 1 : 0
     return answers
 }

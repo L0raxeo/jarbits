@@ -13,10 +13,10 @@ import Routing
 final class Executor {
     private let planner: Planner
     private unowned let session: BrowserSession
-    private let instincts: [any Instinct]
+    private let instincts: [any InstinctRunner]
     private let recall: RecallResolver?
 
-    init(planner: Planner, session: BrowserSession, instincts: [any Instinct], recall: RecallResolver?) {
+    init(planner: Planner, session: BrowserSession, instincts: [any InstinctRunner], recall: RecallResolver?) {
         self.planner = planner
         self.session = session
         self.instincts = instincts
@@ -24,7 +24,7 @@ final class Executor {
     }
 
     /// `exchanges` are the ones the query depends on, oldest first.
-    func run(query: String, decision: RouteDecision, exchanges: [Exchange], token: UUID) async -> EngineSummary {
+    func run(query: String, decision: Pick, exchanges: [Exchange], token: UUID) async -> EngineSummary {
         let clock = ContinuousClock()
         let start = clock.now
         var steps: [EngineSummary.Step] = []
@@ -46,7 +46,7 @@ final class Executor {
 
         // The memories the words point at, judged when Jev can; in word
         // order when it cannot.
-        var memories = await session.memory.shortlist(query, intent: nil)
+        var memories = await session.memory.shortlist(query)
         if let recall, !memories.isEmpty, case let .picked(picks, _) = await recall.resolve(query, candidates: memories, threshold: RecallRouting.maybeThreshold) {
             memories = picks.map(\.record)
         }
@@ -119,7 +119,7 @@ final class Executor {
                     let key = ReasoningPolicy.stepKey(name: call.name, arguments: call.arguments)
                     var values = ArgumentSchema(fields: [Planner.queryField] + spec.arguments.fields).validate(call.arguments.objectValue ?? [:])
                     let stepQuery = values["query"]?.stringValue ?? query
-                    if spec.format == .remember, answered { values[RememberInstinct.sourceField] = .string(Fact.Source.chosen.rawValue) }
+                    if spec.instinct == .remember, answered { values[RememberInstinct.sourceField] = .string(Fact.Source.chosen.rawValue) }
                     answered = false
                     if ran.contains(key) {
                         result = "already done"
@@ -136,8 +136,8 @@ final class Executor {
                     } else {
                         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                         let context = InstinctContext(
-                            query: stepQuery,
-                            outcome: RouteOutcome(query: stepQuery, decision: RouteDecision(format: spec.format, suggested: nil, confidence: 1, source: .plan)),
+                            query: stepQuery, subject: nil,
+                            decision: Pick(instinct: spec.instinct, suggested: nil, confidence: 1, source: .plan),
                             opened: nil, canAnswer: session.canAnswer, thread: [], earlier: exchanges,
                             arguments: values.filter { $0.key != Planner.queryField.name }
                         )
@@ -149,7 +149,7 @@ final class Executor {
                             outcome = didShow ? "shown" : "failed: not shown"
                             if !didShow { failures += 1 }
                         } else {
-                            let act = await instinct.act(context, in: session, token: token)
+                            let act = await instinct.run(context, in: session, token: token)
                             guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                             result = act.text.isEmpty ? "done" : act.text
                             outcome = "ran"
@@ -175,7 +175,7 @@ final class Executor {
 
     /// "Go ahead: …?" on the sheet, for a paid or destructive step.
     private func confirmed(_ spec: InstinctSpec, _ stepQuery: String, token: UUID) async -> Bool {
-        let answer = await session.ask("Go ahead: \(spec.format.title.lowercased()) \u{201C}\(stepQuery)\u{201D}?", .options(["Yes", "No"]), token: token)
+        let answer = await session.ask("Go ahead: \(spec.instinct.title.lowercased()) \u{201C}\(stepQuery)\u{201D}?", .options(["Yes", "No"]), token: token)
         if case .option(0, _)? = answer { return true }
         return false
     }

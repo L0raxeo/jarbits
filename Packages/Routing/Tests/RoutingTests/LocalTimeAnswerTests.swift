@@ -14,41 +14,41 @@ import Testing
     }
 
     @Test func aCityOnTheSameDayIsJustTheTime() {
-        let text = LocalTimeAnswer.text(for: TimeQuery(place: "london"), now: now, locale: us, homeZone: chicago)
+        let text = LocalTimeAnswer.text(place: "london", now: now, locale: us, homeZone: chicago)
         #expect(text == "==\(time(in: "Europe/London", locale: us))==")
         #expect(text?.contains("PM") == true)
     }
 
     @Test func aCountryThatSpansZonesNamesTheCity() {
-        let text = LocalTimeAnswer.text(for: TimeQuery(place: "mexico"), now: now, locale: us, homeZone: chicago)
+        let text = LocalTimeAnswer.text(place: "mexico", now: now, locale: us, homeZone: chicago)
         #expect(text == "==\(time(in: "America/Mexico_City", locale: us))== in Mexico City")
     }
 
     @Test func aPlaceAlreadyOnTomorrowSaysSo() {
-        let text = LocalTimeAnswer.text(for: TimeQuery(place: "tokyo"), now: now, locale: us, homeZone: chicago)
+        let text = LocalTimeAnswer.text(place: "tokyo", now: now, locale: us, homeZone: chicago)
         #expect(text == "==\(time(in: "Asia/Tokyo", locale: us))== tomorrow")
-        let australia = LocalTimeAnswer.text(for: TimeQuery(place: "australia"), now: now, locale: us, homeZone: chicago)
+        let australia = LocalTimeAnswer.text(place: "australia", now: now, locale: us, homeZone: chicago)
         #expect(australia == "==\(time(in: "Australia/Sydney", locale: us))== tomorrow in Sydney")
     }
 
     @Test func aPlaceStillOnYesterdaySaysSo() {
-        let text = LocalTimeAnswer.text(for: TimeQuery(place: "honolulu"), now: now, locale: us, homeZone: tokyo)
+        let text = LocalTimeAnswer.text(place: "honolulu", now: now, locale: us, homeZone: tokyo)
         #expect(text == "==\(time(in: "Pacific/Honolulu", locale: us))== yesterday")
     }
 
     @Test func theBareQuestionUsesTheHomeZone() {
-        let text = LocalTimeAnswer.text(for: TimeQuery(place: nil), now: now, locale: us, homeZone: tokyo)
+        let text = LocalTimeAnswer.text(place: nil, now: now, locale: us, homeZone: tokyo)
         #expect(text == "==\(time(in: "Asia/Tokyo", locale: us))==")
     }
 
     @Test func theLocaleDecidesTheClock() {
         let uk = Locale(identifier: "en_GB")
-        let text = LocalTimeAnswer.text(for: TimeQuery(place: "tokyo"), now: now, locale: uk, homeZone: chicago)
+        let text = LocalTimeAnswer.text(place: "tokyo", now: now, locale: uk, homeZone: chicago)
         #expect(text?.hasSuffix(":26== tomorrow") == true)
         #expect(text?.contains("AM") == false)
     }
 
     @Test func anUnknownPlaceIsNoAnswer() {
-        #expect(LocalTimeAnswer.text(for: TimeQuery(place: "narnia"), now: now, locale: us, homeZone: chicago) == nil)
+        #expect(LocalTimeAnswer.text(place: "narnia", now: now, locale: us, homeZone: chicago) == nil)
     }
 }

@@ -96,8 +96,8 @@ struct ResultView: View {
                     history: history, query: query, failed: answer.failedBeforeText, needsLiveData: answer.needsLiveData
                 )
             }
-        case let .localAnswer(format, _, text):
-            AnswerView(spans: AnswerMarkup.styled(text, for: format), stoppedEarly: false, format: format, clayY: clayY, barCompact: $barCompact)
+        case let .time(_, text):
+            AnswerView(spans: AnswerMarkup.styled(text, for: .oneLine), stoppedEarly: false, format: .oneLine, clayY: clayY, barCompact: $barCompact)
         case .image:
             if let images = layer.images {
                 ImageCardView(images: images, clayY: clayY)
@@ -115,9 +115,6 @@ struct ResultView: View {
             RecallGridView(records: records, title: title, topInset: topInset, barCompact: $barCompact)
         case let .siteChoices(name, candidates):
             SiteChoicesView(name: name, candidates: candidates, clayY: clayY)
-        case .recall, .site:
-            // Resolved by the session before it reaches a card.
-            EmptyView()
         }
     }
 
@@ -242,7 +239,7 @@ private struct AnswerView: View {
     let spans: [StyledSpan]
     /// The stream failed after some text had arrived.
     let stoppedEarly: Bool
-    let format: ResponseFormat
+    let format: Instinct
     let clayY: CGFloat
     @Binding var barCompact: Bool
     /// A remembered answer: when it was given, so a stale one reads as old.
@@ -329,7 +326,7 @@ private struct AnswerView: View {
     private static let latestTurn = "latest-turn"
 
     /// A narrative as prose; a one-line turn as the short fact it is.
-    private func prose(_ spans: [StyledSpan], as format: ResponseFormat) -> some View {
+    private func prose(_ spans: [StyledSpan], as format: Instinct) -> some View {
         Text(AttributedString(spans: spans, ink: ink))
             .font(format == .oneLine ? .title3.weight(.semibold) : .body)
             .textSelection(.enabled)

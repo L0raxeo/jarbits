@@ -258,7 +258,7 @@ public struct MemoryPart: Codable, Sendable, Hashable, Identifiable {
         /// A results page, by what was searched.
         case search(query: String)
         /// One exchange: a question and its answer, narrative or one-line.
-        case answer(question: String, text: String, format: ResponseFormat)
+        case answer(question: String, text: String, format: Instinct)
         /// A picture result, by what was asked for.
         case picture(query: String)
         /// Words the user attached. Not produced yet.
@@ -337,6 +337,96 @@ public struct RecallSummary: Codable, Sendable, Equatable {
     }
 }
 
+/// What a recall asks for besides its words: Jev's reading of the kinds,
+/// the name and the set (`RecallIntent`), and the count and the span the
+/// extractor read out of the words. Applied to what every memory record
+/// already stores: its kind, its date and, for a page, its host.
+public struct RecallAsk: Equatable, Sendable {
+    public var intent: RecallIntent?
+    /// Kinds the memory may be; nil when none is named, which means any.
+    public var kinds: Set<MemoryRecord.Kind>?
+    /// The ask is for a video: a page on a video host, or titled as one.
+    public var video: Bool
+    /// The ask names a particular thing to find; nil without an intent,
+    /// where the words that are left decide.
+    public var named: Bool?
+    /// The ask is for a set, not one thing; a count says how many instead.
+    public var all: Bool
+    /// "my last five searches": that many, newest first, no judge asked.
+    public var count: Int?
+    /// When it was seen, as the extractor read the words against today.
+    public var window: DateInterval?
+
+    /// The most a count may ask for; "my last hundred searches" is a scroll, not a recall.
+    public static let maxCount = 20
+
+    public init(intent: RecallIntent? = nil, count: Int? = nil, window: DateInterval? = nil) {
+        self.intent = intent
+        kinds = intent?.kinds
+        video = intent?.video ?? false
+        named = intent?.namesThing
+        self.count = count.map { min(max($0, 1), Self.maxCount) }
+        all = count == nil && (intent?.wantsAll ?? false)
+        self.window = window
+    }
+
+    /// Everything about a named thing: the kinds become no bar, every
+    /// memory about it is wanted, and Jev is asked whether each is about it
+    /// rather than whether it is the one. Needs a name and no count.
+    public var collection: Bool { all && named != false && count == nil }
+
+    /// No kind, video or time constraint. A set or a count is not one: it
+    /// says how many, not which.
+    public var isEmpty: Bool { kinds == nil && !video && window == nil }
+
+    /// The kinds in words, for a picker's title: "searches and answers".
+    public var kindsTitle: String {
+        guard let kinds, !kinds.isEmpty else { return video ? "videos" : "memories" }
+        var names: [String] = []
+        if video { names.append("videos") } else if kinds.contains(.page) { names.append("pages") }
+        if kinds.contains(.narrative) || kinds.contains(.oneLine) { names.append("answers") }
+        if kinds.contains(.image) { names.append("pictures") }
+        if kinds.contains(.search) { names.append("searches") }
+        return names.joined(separator: " and ")
+    }
+
+    /// "Last 5 searches and answers", for a count ask; nil otherwise.
+    public var countTitle: String? {
+        count.map { "Last \($0) \(kindsTitle)" }
+    }
+
+    /// "All videos", for a set of a kind with nothing named; nil otherwise.
+    public var allTitle: String? {
+        all && named == false && count == nil ? "All \(kindsTitle)" : nil
+    }
+
+    public func allows(_ record: MemoryRecord) -> Bool {
+        if let kinds, !kinds.contains(record.kind) { return false }
+        if video, !record.isVideo { return false }
+        if let window, !window.contains(record.date) { return false }
+        return true
+    }
+}
+
+extension MemoryRecord {
+    /// Hosts whose pages are videos. Short and visible; grow it from the log.
+    static let videoHosts = ["youtube.com", "youtu.be", "vimeo.com", "tiktok.com", "twitch.tv", "dailymotion.com", "netflix.com"]
+
+    /// A page on a video host, or a page whose title says it is a video. A
+    /// video host's front page (no path, as "go to youtube" opens it) is not
+    /// one: it is the site, not something watched, and it would otherwise
+    /// be the newest "video" every time.
+    public var isVideo: Bool {
+        guard kind == .page else { return false }
+        if let url, let host = url.host()?.lowercased(),
+           Self.videoHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }),
+           url.path().trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty == false {
+            return true
+        }
+        return title.lowercased().contains("video")
+    }
+}
+
 /// Word matching over the memories. The query's recall phrasing is dropped
 /// ("remember that convo on the dyson pencilvac" → "dyson", "pencilvac");
 /// a record matches a term when one of its words contains it, or is a near
@@ -358,11 +448,11 @@ public enum MemorySearch {
         "opened", "searched", "asked", "told", "said", "talking", "talked", "mentioned", "earlier",
         "before", "ago", "last", "time", "other", "day", "days", "night", "week", "weeks", "recently", "just",
         "this", "today", "tonight", "morning", "afternoon", "evening", "hours",
-        // The kind of thing, which its title rarely says. These and the time
-        // words above are read by `RecallFilters` before they are dropped.
+        // The kind of thing, which its title rarely says: Jev's recall
+        // questions read the kind, so the word is noise here.
         "video", "videos", "clip", "clips", "article", "articles", "post", "link", "website",
         "answer", "answers", "question", "picture", "pictures", "photo", "photos", "image", "images",
-        // How many: a collection or a count, read by `RecallFilters` too.
+        // How many: a collection (Jev's question) or a count (the extractor's value).
         "everything", "all", "anything", "every", "latest", "past", "few", "couple", "most",
         "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
         // Vague nouns and glue a spoken recall is padded with.
@@ -399,21 +489,20 @@ public enum MemorySearch {
             .joined(separator: " ")
     }
 
-    /// The candidates for a recall: the records the query's kind and time
-    /// words allow (`RecallFilters`), ranked by word matches, then the rest
-    /// of the filtered set newest first, so a judge still sees "the videos
-    /// from yesterday" when no word matches a title.
+    /// The candidates for a recall: the records the ask allows (the kinds
+    /// Jev read, the span and the count the extractor read), ranked by word
+    /// matches, then the rest of the allowed set newest first, so a judge
+    /// still sees "the videos from yesterday" when no word matches a title.
     ///
-    /// With `intent`, Jev's reading decides the kinds, whether a thing is
-    /// named and whether a set is wanted; the words only supply the terms.
-    /// Nothing named means no word matching at all, so "the last 5 things
-    /// we were looking at" is immune to any word in it: the newest of the
-    /// allowed set, as many as the count or the limit. Without an intent
-    /// the word lists decide, as the fallback: the kind is a preference,
-    /// not a wall, and with no filter and no content word there is nothing
-    /// to go on.
-    public static func shortlist(_ records: [MemoryRecord], query: String, now: Date, calendar: Calendar = .current, limit: Int = limit, intent: RecallIntent? = nil) -> [MemoryRecord] {
-        var filters = RecallFilters.parse(query, now: now, calendar: calendar, intent: intent)
+    /// Jev's intent decides the kinds, whether a thing is named and whether
+    /// a set is wanted; the words only supply the terms. Nothing named means
+    /// no word matching at all, so "the last 5 things we were looking at"
+    /// is immune to any word in it: the newest of the allowed set, as many
+    /// as the count or the limit. Without an intent (no key, an error) the
+    /// words alone decide: the kind is no bar, and with no span, no count
+    /// and no content word there is nothing to go on.
+    public static func shortlist(_ records: [MemoryRecord], query: String, ask: RecallAsk = RecallAsk(), limit: Int = limit) -> [MemoryRecord] {
+        var filters = ask
         let terms = terms(from: query)
         let named = filters.named ?? !terms.isEmpty
         let hasTerms = named && !terms.isEmpty
@@ -430,7 +519,7 @@ public enum MemorySearch {
         guard hasTerms else {
             // Nothing named: the newest of what the filters allow. In the
             // fallback, with no filter either, there is nothing to go on.
-            return intent != nil || !filters.isEmpty ? newest(limit) : []
+            return filters.intent != nil || !filters.isEmpty ? newest(limit) : []
         }
         // A collection takes every record that holds any of the words, not
         // only those holding all: Jev then judges which are about the topic.

@@ -45,7 +45,7 @@ public struct AnswerUsage: Codable, Sendable, Equatable {
 /// `DecisionRecord` line as the routing decision.
 public struct AnswerSummary: Codable, Sendable, Equatable {
     public var model: String
-    public var format: ResponseFormat
+    public var format: Instinct
     public var usage: AnswerUsage?
     public var firstTokenMs: Int?
     public var latencyMs: Int?
@@ -64,7 +64,7 @@ public struct AnswerSummary: Codable, Sendable, Equatable {
 
     public init(
         model: String,
-        format: ResponseFormat,
+        format: Instinct,
         usage: AnswerUsage? = nil,
         firstTokenMs: Int? = nil,
         latencyMs: Int? = nil,

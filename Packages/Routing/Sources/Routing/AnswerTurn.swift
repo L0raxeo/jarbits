@@ -10,9 +10,9 @@ public struct AnswerTurn: Hashable, Codable, Sendable {
     public var query: String
     public var answer: String
     /// `narrative` or `one_line`. Turns kept before formats were recorded read as narrative.
-    public var format: ResponseFormat
+    public var format: Instinct
 
-    public init(query: String, answer: String, format: ResponseFormat = .narrative) {
+    public init(query: String, answer: String, format: Instinct = .narrative) {
         self.query = query
         self.answer = answer
         self.format = format
@@ -26,6 +26,6 @@ public struct AnswerTurn: Hashable, Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         query = try container.decode(String.self, forKey: .query)
         answer = try container.decode(String.self, forKey: .answer)
-        format = try container.decodeIfPresent(ResponseFormat.self, forKey: .format) ?? .narrative
+        format = try container.decodeIfPresent(Instinct.self, forKey: .format) ?? .narrative
     }
 }

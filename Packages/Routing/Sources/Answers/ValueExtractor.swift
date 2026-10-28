@@ -20,7 +20,7 @@ public struct ValueExtractor: Sendable {
     public static let system = """
         You read values out of a request made to a phone's browser. Reply with JSON matching the schema and nothing else.
         A value is what the request says: a number as a number, words as the words used. Anything the request does not state is null.
-        Never guess, never add fields. Earlier exchanges of the session may come before the request, oldest first; "it", "that" and the like resolve against them.
+        Never guess, never add fields. Earlier exchanges of the session may come before the request, oldest first; "it", "that" and the like resolve against them. Today's date may come too: a day the request names ("yesterday", "last week") is read against it.
         """
 
     public var client: GeminiClient
@@ -32,9 +32,11 @@ public struct ValueExtractor: Sendable {
         self.timeout = timeout
     }
 
-    /// "Earlier: …" lines for the chained exchanges, then the request.
-    public static func input(query: String, exchanges: [Exchange]) -> String {
+    /// "Earlier: …" lines for the chained exchanges, today's date when a
+    /// value may be relative to it, then the request.
+    public static func input(query: String, exchanges: [Exchange], now: Date? = nil) -> String {
         var lines = exchanges.map { "Earlier: " + AnswerPrompt.describe($0) }
+        if let now { lines.append("Today: " + now.formatted(Date.FormatStyle(date: .complete, time: .shortened, locale: Locale(identifier: "en_US")))) }
         lines.append("Request: \(query)")
         return lines.joined(separator: "\n")
     }
@@ -55,11 +57,11 @@ public struct ValueExtractor: Sendable {
         Earlier exchanges of the session may come before the request, oldest first.
         """
 
-    public static func request(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, model: String = model) -> InteractionRequest {
+    public static func request(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, model: String = model, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil) -> InteractionRequest {
         InteractionRequest(
             model: model,
             systemInstruction: instructions,
-            input: input(query: query, exchanges: exchanges),
+            input: input(query: query, exchanges: exchanges, now: now),
             maxOutputTokens: maxOutputTokens,
             stream: false,
             outputSchema: schema
@@ -75,13 +77,13 @@ public struct ValueExtractor: Sendable {
 
     /// One call within `timeout`; never throws. `instructions` is the
     /// system instruction, `system` unless a different reading is wanted.
-    public func extract(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system) async -> Verdict {
+    public func extract(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil) async -> Verdict {
         let clock = ContinuousClock()
         let start = clock.now
         func summary(_ outcome: ExtractionSummary.Outcome, fields: [String] = [], usage: AnswerUsage? = nil) -> ExtractionSummary {
             ExtractionSummary(model: client.model, latencyMs: Int((clock.now - start) / .milliseconds(1)), usage: usage, fields: fields, outcome: outcome)
         }
-        let request = Self.request(query: query, exchanges: exchanges, schema: schema, instructions: instructions, model: client.model)
+        let request = Self.request(query: query, exchanges: exchanges, schema: schema, instructions: instructions, model: client.model, maxOutputTokens: maxOutputTokens, now: now)
         let interaction: Interaction
         do {
             interaction = try await client.interact(request, timeout: timeout)

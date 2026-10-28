@@ -56,7 +56,7 @@ public struct Fact: Codable, Sendable, Hashable, Identifiable {
     /// The words, folded: what makes two statements the same fact. "I'm
     /// Vegetarian." and "im vegetarian" are one.
     public static func key(_ text: String) -> String {
-        SiteQuery.words(text).joined(separator: " ")
+        Words.key(text)
     }
 }
 

@@ -1,15 +1,17 @@
 import Foundation
 import Routing
 
-/// What an instinct makes its plan from: the query, the engine's outcome
-/// (the decision, and what the grammars read out of the words: the search
-/// term, the picture's subject, the site's name, the device's own answer),
-/// the site on screen, whether an answer can be planned, the thread a
-/// continuation grows, and the exchanges from other layers the query
-/// depends on.
+/// What an instinct runs on: the words that ran (the reading's, when it
+/// rewrote them), what they are about, Jev's pick, the site on screen,
+/// whether an answer can be shown, the thread a continuation grows, the
+/// exchanges from other layers the query depends on, the values the
+/// instinct takes, and what rides on the log line beside the pick.
 struct InstinctContext {
     let query: String
-    let outcome: RouteOutcome
+    /// What the request is about, as the reading gave it; nil when it gave
+    /// none, in which case an instinct takes the words as they are.
+    let subject: String?
+    let decision: Pick
     let opened: OpenedSite?
     let canAnswer: Bool
     /// The conversation on screen, oldest first, when the query continues
@@ -18,46 +20,42 @@ struct InstinctContext {
     /// The chained exchanges that are not the thread: a search made, a page
     /// read, a picture looked at; oldest first.
     let earlier: [Exchange]
-    /// The values the instinct takes, by field name: what its grammar read,
-    /// what Jev read for a closed-set field, what a model read out of the
-    /// words for a free-form one. Empty for an instinct that takes none.
+    /// The values the instinct takes, by field name: the reading's subject
+    /// in its object field, what Jev read for a closed-set field, what the
+    /// extractor read for a free-form one, or what a plan passed.
     let arguments: [String: JSONValue]
-
-    var decision: RouteDecision { outcome.decision }
+    /// How the extractor fared, when it was asked; for the log.
+    var extraction: ExtractionSummary? = nil
+    /// How the reading beside Jev fared, when it ran; for the log.
+    var reading: ReadingSummary? = nil
+    /// A lasting fact the words stated on the way, kept beside the pick; for the log.
+    var fact: FactSummary? = nil
 }
 
 /// What an instinct that shows nothing came to: how it touched the facts,
-/// and a line for the console.
-struct ActOutcome {
+/// and a line for the console. A showing instinct returns `.nothing`.
+struct InstinctOutcome {
     var fact: FactSummary?
     var text: String
 
-    static let nothing = ActOutcome(fact: nil, text: "")
+    static let nothing = InstinctOutcome(fact: nil, text: "")
 }
 
-/// One instinct as the app runs it: its spec from the registry, and either
-/// the plan it makes for a query the engine decided for it (the session
-/// turns the plan into a layer) or, for one that shows nothing, what it
-/// does with the session's stores and sheet.
-protocol Instinct {
+/// One instinct as the app runs it: its spec from the registry, and what it
+/// does for a query Jev picked it for, through the session: a showing
+/// instinct opens its layer and records its line; an acting one works the
+/// session's stores and sheet and hands back what to log. Nothing else
+/// dispatches on the pick.
+protocol InstinctRunner {
     var spec: InstinctSpec { get }
-    /// The plan of a showing instinct; an acting one is never asked for it.
-    func plan(_ context: InstinctContext) -> CardPlan
-    /// What an acting instinct (`spec.showsLayer == false`) does, under the
-    /// request's token: a wait that outlives the query is answered nothing.
-    func act(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> ActOutcome
-}
-
-extension Instinct {
-    func act(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> ActOutcome {
-        .nothing
-    }
+    /// Runs under the request's token: a wait that outlives the query lands nowhere.
+    func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome
 }
 
 enum InstinctRegistry {
     /// One conformer per spec, in registry order.
-    static func all() -> [any Instinct] {
-        let instincts: [any Instinct] = [
+    static func all() -> [any InstinctRunner] {
+        let instincts: [any InstinctRunner] = [
             WebResultsInstinct(),
             AnswerInstinct(format: .narrative),
             MapInstinct(),
@@ -69,6 +67,7 @@ enum InstinctRegistry {
             VideoInstinct(),
             RememberInstinct(),
             ForgetInstinct(),
+            TimeInstinct(),
         ]
         assert(instincts.map(\.spec.id) == InstinctSpec.all.map(\.id), "every spec in the registry has its conformer, in order")
         return instincts

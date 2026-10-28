@@ -4,8 +4,7 @@ import Foundation
 /// itself, so a recall costs no second round trip: which kinds of memory
 /// are wanted, whether a particular thing is named, and whether a set is
 /// wanted rather than one thing. The probabilities are kept for the log;
-/// the derived values are what the filters and the shortlist act on. The
-/// word lists in `RecallFilters` are the fallback when no intent came back.
+/// the derived values are what the shortlist acts on (`RecallAsk`).
 public struct RecallIntent: Codable, Sendable, Equatable {
     /// The five kind questions, by the suffix of their question id.
     public enum Kind: String, Codable, Sendable, CaseIterable {
@@ -59,7 +58,7 @@ public struct RecallIntent: Codable, Sendable, Equatable {
         Set(Kind.allCases.filter { probability(of: $0) >= Self.threshold })
     }
 
-    /// As `RecallFilters.kinds` reads them; nil when no kind clears the
+    /// As `RecallAsk.kinds` takes them; nil when no kind clears the
     /// threshold, which means every kind is wanted. Videos are pages on a
     /// video host, so videos and pages together still mean only videos.
     public var kinds: Set<MemoryRecord.Kind>? {

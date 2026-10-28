@@ -4,8 +4,8 @@ import Testing
 @testable import Routing
 
 @Suite struct EvalDiffTests {
-    private func result(_ query: String, expected: ResponseFormat, got: ResponseFormat, status: EvalStatus? = nil) -> EvalResult {
-        var result = EvalResult(EvalCase(query: query, format: expected), outcome: RouteOutcome(query: query, decision: RouteDecision(format: got, suggested: got, confidence: 0.9, source: .jev)), cached: true)
+    private func result(_ query: String, expected: Instinct, got: Instinct, status: EvalStatus? = nil) -> EvalResult {
+        var result = EvalResult(EvalCase(query: query, instinct: expected), decision: Pick(instinct: got, suggested: got, confidence: 0.9, source: .jev), cached: true)
         if let status { result.status = status }
         return result
     }
@@ -25,8 +25,8 @@ import Testing
         ]
         let diff = EvalDiff.compare(baseline: baseline, current: current)
         #expect(diff.regressions.map(\.name) == ["eiffel tower"])
-        #expect(diff.regressions.first?.before.decision.format == .image)
-        #expect(diff.regressions.first?.after.decision.format == .webResults)
+        #expect(diff.regressions.first?.before.decision.instinct == .image)
+        #expect(diff.regressions.first?.after.decision.instinct == .webResults)
         #expect(diff.fixes.map(\.name) == ["reddit"])
         #expect(diff.added == ["new one"])
         #expect(diff.dropped == ["old one"])

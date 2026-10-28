@@ -1,11 +1,11 @@
 import Foundation
 import Routing
 
-/// The second half of `ROUTING.md`: what the app sends Gemini for the two
+/// The second half of `ENGINE.md`: what the app sends Gemini for the two
 /// model-answered formats, built from the same `AnswerPrompt` the app uses.
 public enum AnswersReport {
     public static func markdown() -> String {
-        let built = ResponseFormat.allCases.filter(\.isAnswered)
+        let built = Instinct.allCases.filter(\.isAnswered)
         var out: [String] = []
         out.append("## After routing: Gemini answers")
         out.append("")
@@ -140,7 +140,7 @@ public enum AnswersReport {
         var out: [String] = []
         out.append("### Values read by Gemini")
         out.append("")
-        out.append("An instinct may declare the values it takes (`ArgumentSchema` on its `InstinctSpec`). A closed-set value, a choice or a yes/no, is two Jev questions in the routing request (ROUTING.md above: `<instinct>.<field>?` and `<instinct>.<field>`). A free-form value, a number or words, is one whole-body call to `\(ValueExtractor.model)` within \(ValueExtractor.timeout.components.seconds) s, made only when the pick declares such a field that its own grammar did not read, and the field is required or the reasoning score leans to a value (at or above \(EngineRouting.extractionThreshold.formatted())). The reply must match a JSON schema of the fields still missing; nulls are dropped, \"68\" is read as 68, a choice is checked against its options. Nothing usable, or a required value still missing, shows web results for the words.")
+        out.append("An instinct may declare the values it takes (`ArgumentSchema` on its `InstinctSpec`). A closed-set value, a choice or a yes/no, is two Jev questions in the routing request (ENGINE.md above: `<instinct>.<field>?` and `<instinct>.<field>`). A free-form value, a number or words, is one whole-body call to `\(ValueExtractor.model)` within \(ValueExtractor.timeout.components.seconds) s, made only when the pick declares such a field that its own grammar did not read, and the field is required or the reasoning score leans to a value (at or above \(EngineRequest.extractionThreshold.formatted())). The reply must match a JSON schema of the fields still missing; nulls are dropped, \"68\" is read as 68, a choice is checked against its options. Nothing usable, or a required value still missing, shows web results for the words.")
         out.append("")
         out.append("System instruction:")
         out.append("")
@@ -166,6 +166,38 @@ public enum AnswersReport {
         out.append("| No Gemini key | Web results when a required field is empty | `failed(\"no key\")` |")
         out.append("")
         out.append("The extraction summary (model, latency, tokens, the fields read, the outcome) rides on the same `decisions.jsonl` line.")
+        out.append("")
+        out.append(contentsOf: readingSection())
+        return out
+    }
+
+    /// The reading beside the Jev request: the substance and the subject.
+    private static func readingSection() -> [String] {
+        let request = QueryReader.request(query: "Which oh can you pull up youtube?", now: Date(timeIntervalSince1970: 1_792_600_000))
+        var out: [String] = []
+        out.append("### The reading beside Jev")
+        out.append("")
+        out.append("Every query that reaches Jev (every one that is not an address) goes to `\(QueryReader.model)` at minimal thinking at the same moment, with this instruction and a two-field schema, within \(QueryReader.timeout.components.seconds) s: `query`, the request with its substance isolated (dictation noise, fillers and false starts gone), and `subject`, what the request is about, with anything the words point back at folded in; the newest \(QueryReader.exchangesGiven) exchanges and today's date come first so \"it\" and \"yesterday\" resolve. When the substance differs from the typed words (`Substance.differs`: case, diacritics, punctuation and spacing aside), Jev is asked again on the read words and that pick wins; the read words are what the instinct, the planner, the exchange and the layer receive. The subject fills the picked instinct's object field (`InstinctSpec.subjectField`: the term searched, the subject pictured, the site named, the fact kept, the place whose time is asked), so no grammar reads the words and the extractor is asked only for a field beyond it. The same substance, a miss or a slow reply leaves the first pick standing, with no subject: the instinct then takes the words as they are. A query waits for the slower of the two calls. The typed words stay in the log as `reading.original`; the line's `query` is what ran. The eval runner grades Jev on the typed words and does not read.")
+        out.append("")
+        out.append("System instruction:")
+        out.append("")
+        out.append("```")
+        out.append(QueryReader.system)
+        out.append("```")
+        out.append("")
+        out.append("```")
+        out.append(request.input)
+        out.append("```")
+        out.append("")
+        out.append("```json")
+        out.append(String(decoding: (try? QueryReader.schema.data()) ?? Data(), as: UTF8.self))
+        out.append("```")
+        out.append("")
+        out.append("| Outcome | Then | Logged as |")
+        out.append("|---|---|---|")
+        out.append("| The substance differs | Jev runs again on the read words, and that pick wins; the subject fills the pick's object field | `reading.outcome = rewritten` |")
+        out.append("| The same substance | The first pick stands; the subject fills its object field | `unchanged` |")
+        out.append("| Failed, timed out, not JSON, or an empty query | The first pick stands with no subject; the instinct takes the words as they are | `failed(reason)` |")
         return out
     }
 }

@@ -4,8 +4,8 @@ import Testing
 
 /// The gate into advanced reasoning and the bounds a plan runs within.
 @Suite struct ReasoningPolicyTests {
-    private func decision(_ score: Double?, source: RouteDecision.Source = .jev, format: ResponseFormat = .narrative) -> RouteDecision {
-        RouteDecision(format: format, suggested: format, confidence: 0.8, probabilities: [format.rawValue: 0.8], model: "jev-1.13.0", latencyMs: 100, inputTokens: 100, reasoning: score, source: source)
+    private func decision(_ score: Double?, source: Pick.Source = .jev, format: Instinct = .narrative) -> Pick {
+        Pick(instinct: format, suggested: format, confidence: 0.8, probabilities: [format.rawValue: 0.8], model: "jev-1.13.0", latencyMs: 100, inputTokens: 100, reasoning: score, source: source)
     }
 
     @Test func aScoreAtTheThresholdEntersWhateverThePick() {
@@ -27,7 +27,6 @@ import Testing
     @Test func withoutAScoreNothingEnters() {
         #expect(!ReasoningPolicy.entersReasoning(decision(nil)))
         #expect(!ReasoningPolicy.entersReasoning(.directURL()))
-        #expect(!ReasoningPolicy.entersReasoning(.local("time", format: .oneLine)))
     }
 
     @Test func paidAndDestructiveStepsAreConfirmedUnlessTheyAsk() {
@@ -35,11 +34,11 @@ import Testing
         #expect(!ReasoningPolicy.needsConfirmation(InstinctSpec.spec(for: .remember)), "reversible by forget")
         #expect(!ReasoningPolicy.needsConfirmation(InstinctSpec.spec(for: .forget)), "it puts its own question")
         #expect(InstinctSpec.spec(for: .forget).asksItself)
-        let paid = InstinctSpec(format: .webResults, sideEffects: .paid)
+        let paid = InstinctSpec(instinct: .webResults, sideEffects: .paid)
         #expect(ReasoningPolicy.needsConfirmation(paid))
-        let destructive = InstinctSpec(format: .webResults, sideEffects: .destructive)
+        let destructive = InstinctSpec(instinct: .webResults, sideEffects: .destructive)
         #expect(ReasoningPolicy.needsConfirmation(destructive))
-        #expect(!ReasoningPolicy.needsConfirmation(InstinctSpec(format: .webResults, sideEffects: .destructive, asksItself: true)))
+        #expect(!ReasoningPolicy.needsConfirmation(InstinctSpec(instinct: .webResults, sideEffects: .destructive, asksItself: true)))
     }
 
     @Test func aStepIsItsNameAndItsArguments() {
@@ -56,7 +55,7 @@ import Testing
         #expect(ReasoningPolicy.timeBudget == .seconds(20))
         #expect(ReasoningPolicy.roundTimeout == .seconds(8))
         #expect(ReasoningPolicy.memoriesGiven == 5)
-        #expect(ReasoningPolicy.threshold == EngineRouting.reasoningThreshold)
+        #expect(ReasoningPolicy.threshold == EngineRequest.reasoningThreshold)
     }
 
     @Test func theSummaryReadsItsSteps() throws {
@@ -79,9 +78,9 @@ import Testing
     }
 
     @Test func aPlanStepIsItsOwnSourceAndRoundTrips() throws {
-        let step = RouteDecision(format: .narrative, suggested: nil, confidence: 1, source: .plan)
+        let step = Pick(instinct: .narrative, suggested: nil, confidence: 1, source: .plan)
         #expect(!ReasoningPolicy.entersReasoning(step), "a step never plans again")
-        let back = try DecisionRecord.decoder.decode(RouteDecision.self, from: DecisionRecord.encoder.encode(step))
+        let back = try DecisionRecord.decoder.decode(Pick.self, from: DecisionRecord.encoder.encode(step))
         #expect(back.source == .plan && back.suggested == nil)
     }
 

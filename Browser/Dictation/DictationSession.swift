@@ -263,7 +263,7 @@ final class DictationSession {
     /// the fillers are out: "yeah mhm mmmmw" is none, "tokyo" is one. One
     /// word, so the button rises on the first word and not the second.
     private func isSpeech(_ text: String) -> Bool {
-        TranscriptRules.candidateWords(text).contains { $0.count >= 3 && isKnown($0) }
+        Words.split(text).contains { $0.count >= 3 && $0.allSatisfy(\.isLetter) && isKnown($0) }
     }
 
     private func isKnown(_ word: String) -> Bool {
@@ -280,7 +280,7 @@ final class DictationSession {
         if now.timeIntervalSince(lastWordsAt) > Self.silenceLimit {
             forget()
         } else if let firstWordsAt,
-                  now.timeIntervalSince(firstWordsAt) > Self.attentionLimit || TranscriptRules.words(transcript).count > Self.wordLimit {
+                  now.timeIntervalSince(firstWordsAt) > Self.attentionLimit || Words.split(transcript).count > Self.wordLimit {
             forget()
         }
     }

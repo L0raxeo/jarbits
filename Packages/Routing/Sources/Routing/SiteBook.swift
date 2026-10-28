@@ -2,7 +2,7 @@ import Foundation
 
 /// One name the user opens a site by, and where it goes.
 public struct SiteEntry: Codable, Hashable, Sendable {
-    /// The name as typed the first time, for display; the book keys it with `SiteQuery.key`.
+    /// The name as typed the first time, for display; the book keys it with `Words.key`.
     public var name: String
     /// The site's origin (scheme and host), never a deeper page.
     public var url: URL
@@ -31,7 +31,7 @@ public struct SiteEntry: Codable, Hashable, Sendable {
 /// site on screen is the wrong one. It starts with a seed of well-known
 /// sites and their short names, so the first "open insta" needs no search.
 public struct SiteBook: Codable, Equatable, Sendable {
-    /// Keyed by `SiteQuery.key(name)`.
+    /// Keyed by `Words.key(name)`.
     public var entries: [String: SiteEntry]
 
     public init(entries: [String: SiteEntry] = [:]) {
@@ -39,25 +39,25 @@ public struct SiteBook: Codable, Equatable, Sendable {
     }
 
     public func lookup(_ name: String) -> SiteEntry? {
-        entries[SiteQuery.key(name)]
+        entries[Words.key(name)]
     }
 
     /// `name` now means the origin of `url`; whatever it meant before is replaced.
     public mutating func learn(_ name: String, url: URL, now: Date = .now) {
-        let key = SiteQuery.key(name)
+        let key = Words.key(name)
         guard !key.isEmpty, let origin = Self.origin(of: url) else { return }
         entries[key] = SiteEntry(name: key, url: origin, learned: now)
     }
 
     /// Counts a use, for the log and for whatever ranking comes later.
     public mutating func touch(_ name: String, now: Date = .now) {
-        let key = SiteQuery.key(name)
+        let key = Words.key(name)
         entries[key]?.uses += 1
         entries[key]?.lastUsed = now
     }
 
     public mutating func forget(_ name: String) {
-        entries[SiteQuery.key(name)] = nil
+        entries[Words.key(name)] = nil
     }
 
     /// The scheme and host alone: `https://www.zillow.com/homes/austin/` is
@@ -115,7 +115,7 @@ public struct SiteBook: Codable, Equatable, Sendable {
         for (names, address) in seed {
             guard let url = URL(string: address) else { continue }
             for name in names {
-                book.entries[SiteQuery.key(name)] = SiteEntry(name: name, url: url, learned: now, seeded: true)
+                book.entries[Words.key(name)] = SiteEntry(name: name, url: url, learned: now, seeded: true)
             }
         }
         return book

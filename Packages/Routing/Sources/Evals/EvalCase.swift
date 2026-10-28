@@ -3,7 +3,7 @@ import Routing
 
 /// One labelled query in the golden set: what was typed, what was on screen,
 /// and what the app should do with it. Written by hand, one JSON object per
-/// line, in `Evals/routing.jsonl`; a case states intended behaviour, so a
+/// line, in `Evals/engine.jsonl`; a case states intended behaviour, so a
 /// case that fails today stays in with a `note` saying why.
 public struct EvalCase: Codable, Equatable, Sendable {
     public var query: String
@@ -11,26 +11,18 @@ public struct EvalCase: Codable, Equatable, Sendable {
     public var exchanges: [Exchange]?
     /// The site this app opened by name and still showed.
     public var opened: OpenedSite?
-    /// The format the app should act on, after every gate.
-    public var format: ResponseFormat
+    /// The instinct the app should run: Jev's pick, or web results when
+    /// the pick should be unsure.
+    public var instinct: Instinct
     /// How many exchanges, from the newest back, the query should depend
     /// on; nil to accept any chain.
     public var chain: Int?
-    /// What Jev itself should pick, when that differs from `format` because
-    /// a gate steps in: a narrative about a recent event is picked as
-    /// narrative and shown as web results. Nil to accept any pick.
-    public var pick: ResponseFormat?
-    /// The path that should get there, as `RouteDecision.Source.kind` names
-    /// it (`local:search`, `jev`, `confidenceFallback`, ...); nil to accept any.
+    /// What Jev itself should pick, when that differs from `format`
+    /// because the pick should be unsure. Nil to accept any pick.
+    public var pick: Instinct?
+    /// The path that should get there, as `Pick.Source.kind` names
+    /// it (`jev`, `confidenceFallback`, ...); nil to accept any.
     public var source: String?
-    /// For web results: what should go into the search box.
-    public var term: String?
-    /// For an image: what Wikipedia should be asked for.
-    public var subject: String?
-    /// For a site: the name looked up in the book.
-    public var site: String?
-    /// For an answer: what the model should be asked.
-    public var question: String?
     /// For a recall: what Jev should read into the ask.
     public var recall: RecallExpectation?
     public var note: String?
@@ -39,28 +31,20 @@ public struct EvalCase: Codable, Equatable, Sendable {
         query: String,
         exchanges: [Exchange]? = nil,
         opened: OpenedSite? = nil,
-        format: ResponseFormat,
+        instinct: Instinct,
         chain: Int? = nil,
-        pick: ResponseFormat? = nil,
+        pick: Instinct? = nil,
         source: String? = nil,
-        term: String? = nil,
-        subject: String? = nil,
-        site: String? = nil,
-        question: String? = nil,
         recall: RecallExpectation? = nil,
         note: String? = nil
     ) {
         self.query = query
         self.exchanges = exchanges
         self.opened = opened
-        self.format = format
+        self.instinct = instinct
         self.chain = chain
         self.pick = pick
         self.source = source
-        self.term = term
-        self.subject = subject
-        self.site = site
-        self.question = question
         self.recall = recall
         self.note = note
     }
@@ -97,7 +81,7 @@ public enum EvalSetError: Error, CustomStringConvertible, Equatable {
     public var description: String {
         switch self {
         case let .malformed(line, reason): "line \(line): \(reason)"
-        case let .unknownSource(line, source): "line \(line): unknown source \"\(source)\"; one of \(RouteDecision.Source.kinds.joined(separator: ", ")) or local:<rule>"
+        case let .unknownSource(line, source): "line \(line): unknown source \"\(source)\"; one of \(Pick.Source.kinds.joined(separator: ", "))"
         case let .duplicateName(line, name): "line \(line): \"\(name)\" appears twice; a baseline is keyed by the name"
         }
     }
@@ -119,7 +103,7 @@ public enum EvalSet {
             } catch {
                 throw EvalSetError.malformed(line: number, reason: String(describing: error))
             }
-            if let source = evalCase.source, !RouteDecision.Source.isKind(source) {
+            if let source = evalCase.source, !Pick.Source.isKind(source) {
                 throw EvalSetError.unknownSource(line: number, source: source)
             }
             guard names.insert(evalCase.name).inserted else {
@@ -131,30 +115,24 @@ public enum EvalSet {
     }
 }
 
-extension RouteDecision.Source {
+extension Pick.Source {
     /// The source as one word, for a hand-written file and a readable row:
-    /// `local:time`, `jev`, `confidenceFallback`, `error`. (`Codable` nests
-    /// the enum's payload, which is unreadable in a case line.)
+    /// `jev`, `confidenceFallback`, `error`. (`Codable` nests the enum's
+    /// payload, which is unreadable in a case line.)
     public var kind: String {
         switch self {
         case .jev: "jev"
         case .confidenceFallback: "confidenceFallback"
-        case .answerSplit: "answerSplit"
-        case .recencyFallback: "recencyFallback"
         case .directURL: "directURL"
         case .noKey: "noKey"
-        case .continuation: "continuation"
-        case .rejection: "rejection"
         case .plan: "plan"
-        case let .local(rule): "local:\(rule)"
         case .error: "error"
         }
     }
 
-    /// Every kind without a payload; a local rule is `local:<rule>`.
-    public static let kinds = ["jev", "confidenceFallback", "answerSplit", "recencyFallback", "directURL", "noKey", "continuation", "rejection", "plan", "error"]
+    public static let kinds = ["jev", "confidenceFallback", "directURL", "noKey", "plan", "error"]
 
     public static func isKind(_ text: String) -> Bool {
-        kinds.contains(text) || (text.hasPrefix("local:") && text.count > "local:".count)
+        kinds.contains(text)
     }
 }

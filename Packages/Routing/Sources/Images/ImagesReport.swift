@@ -1,23 +1,15 @@
 import Foundation
 import Routing
 
-/// The image part of `ROUTING.md`: where a picture comes from, Wikipedia then Brave, and what is logged.
+/// The image part of `ENGINE.md`: where a picture comes from, Wikipedia then Brave, and what is logged.
 public enum ImagesReport {
     public static func markdown() -> String {
-        func quoted(_ phrases: [String]) -> String { phrases.map { "\"\($0)\"" }.joined(separator: ", ") }
         var out: [String] = []
         out.append("## After routing: Wikipedia images")
         out.append("")
         out.append("An `image` pick is filled by `ImageLookup` in `Packages/Routing/Sources/Images` from two sources in order: Wikipedia (`ImageSearch`), free and without a key, whose article carries the picture's licence; then, only when Wikipedia answered and had nothing, Brave's image search (`BraveImageSearch`) with the same key as the site search (`BRAVE_API_KEY`, $5 per 1,000 requests), for a subject Wikipedia has no article on (a product from this year, say). Every Wikipedia request sends `User-Agent: \(ImageSearch.defaultUserAgent)`.")
         out.append("")
-        out.append("What is searched is the subject alone: `ImageQuery` takes the asking off the query (\"show me a picture of the eiffel tower\" → \"eiffel tower\", \"what does a capybara look like\" → \"capybara\", \"Dominican flag, I said.\" → \"Dominican flag\"), as typed, and leaves a bare subject as it is. Wikipedia's ranking turns on every word: \"Dominican flag, I said\" puts the flag of Panama first. The card, the memory and the log keep the spoken words.")
-        out.append("")
-        out.append("- Corrections, any number, at the front: \(quoted(ImageQuery.corrections))")
-        out.append("- Leads, any number, before the opener: \(quoted(ImageQuery.leads))")
-        out.append("- Openers: \(quoted(ImageQuery.openers))")
-        out.append("- Articles, before and after the picture phrase: \(quoted(ImageQuery.articles))")
-        out.append("- The picture phrase: \(quoted(ImageQuery.nounsOf))")
-        out.append("- Trailers, any number, at the end: \(quoted(ImageQuery.trailers))")
+        out.append("What is searched is the subject alone, as the reading beside Jev gave it (\"show me a picture of the eiffel tower\" → \"eiffel tower\", \"pictures of it\" after a Brazil page → \"Brazil\"; see \"The reading beside Jev\"); with no subject, the words as typed. Wikipedia's ranking turns on every word. The card, the memory and the log keep the spoken words.")
         out.append("")
         out.append("1. `GET \(ImageSearch.defaultBaseURL)/w/rest.php/v1/search/page?q=<subject>&limit=\(ImageSearch.searchLimit)`: article candidates in rank order. Hits without a `thumbnail` are dropped; the first \(ImageSearch.candidateLimit) remain.")
         out.append("2. `GET \(ImageSearch.defaultBaseURL)/api/rest_v1/page/summary/<key>` for each, in parallel: `type` must be `standard` (disambiguation pages are dropped) and `originalimage` must exist. An SVG comes back as a PNG render of about 960 px.")

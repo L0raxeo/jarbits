@@ -136,35 +136,6 @@ public struct ArgumentSchema: Sendable, Equatable {
 /// Values read for an instinct, by field name, as text.
 public typealias Arguments = [String: String]
 
-/// A device grammar matched the query: which rule, and what it read out.
-public struct Recognised: Sendable, Equatable {
-    public var rule: String
-    public var arguments: Arguments
-
-    public init(rule: String, arguments: Arguments = [:]) {
-        self.rule = rule
-        self.arguments = arguments
-    }
-}
-
-/// What a grammar may need besides the words.
-public struct RecogniseContext: Sendable {
-    public var now: Date
-    public var locale: Locale
-    public var homeZone: TimeZone
-    public var book: SiteBook
-    /// A Gemini key is configured, so a question handed to the model by name can be answered.
-    public var canAnswer: Bool
-
-    public init(now: Date = .now, locale: Locale = .current, homeZone: TimeZone = .current, book: SiteBook, canAnswer: Bool = true) {
-        self.now = now
-        self.locale = locale
-        self.homeZone = homeZone
-        self.book = book
-        self.canAnswer = canAnswer
-    }
-}
-
 /// What a request is about, for the questions an instinct adds to it.
 public struct RequestContext: Sendable {
     public var query: String
@@ -179,19 +150,19 @@ public struct RequestContext: Sendable {
 }
 
 /// One instinct as the engine knows it: anything hard-coded the app can do
-/// for a query, named for Jev by its format, with the questions it adds to
-/// the routing request, the grammar that recognises it on the device when
-/// it has one, and the values it takes. The registry is `all`, in the
+/// for a query, named for Jev by its instinct, with the questions it adds to
+/// the routing request and the values it takes. Nothing here decides a
+/// query: the pick is Jev's, and an instinct's grammar reads its values
+/// out of the words only once it has been picked. The registry is `all`, in the
 /// order Jev sees the options. The app binds each spec to the code that
-/// runs it; adding an instinct is one `ResponseFormat` case, one branch in
-/// `init(format:)` and one conformer in the app.
+/// runs it; adding an instinct is one `Instinct` case, one branch in
+/// `init(instinct:)` and one conformer in the app.
 public struct InstinctSpec: Sendable, Identifiable {
-    public let format: ResponseFormat
-    public var id: String { format.rawValue }
-    public var criterion: Criterion { format.criterion }
-    public var outranksConversation: Bool { format.outranksConversation }
-    public var isAnswered: Bool { format.isAnswered }
-    public var stage: Stage { format.stage }
+    public let instinct: Instinct
+    public var id: String { instinct.rawValue }
+    public var criterion: Criterion { instinct.criterion }
+    public var outranksConversation: Bool { instinct.outranksConversation }
+    public var isAnswered: Bool { instinct.isAnswered }
     /// Running it puts a layer on screen; false for one that only acts.
     public let showsLayer: Bool
     public let sideEffects: SideEffects
@@ -199,135 +170,120 @@ public struct InstinctSpec: Sendable, Identifiable {
     /// need not confirm it first.
     public let asksItself: Bool
     public let arguments: ArgumentSchema
+    /// The field the reading's subject fills (what the request is about),
+    /// so no grammar reads the words and the extractor is asked only for a
+    /// field beyond it; nil for an instinct with no such field.
+    public let subjectField: String?
+    /// The extractor reads this instinct's free-form fields on every pick,
+    /// not only when a field is required, the query is chained or the
+    /// reasoning score leans to a value: its values are always in the words.
+    public let alwaysReads: Bool
     /// Questions this instinct adds to the request when they apply; a
     /// question two instincts both add is asked once.
     public let questions: @Sendable (RequestContext) -> [(id: String, question: Question)]
-    /// A grammar that decides the query with no model, when one exists.
-    public let recognise: (@Sendable (String, RecogniseContext) -> Recognised?)?
-    /// A grammar that reads the instinct's values out of the words once it
-    /// has been picked, so no model is asked for what a template can see.
-    public let read: (@Sendable (String) -> Arguments)?
 
-    public init(format: ResponseFormat) {
-        self.format = format
+    public init(instinct: Instinct) {
+        self.instinct = instinct
         var showsLayer = true
         var sideEffects = SideEffects.none
         var asksItself = false
         var arguments = ArgumentSchema.none
-        var read: (@Sendable (String) -> Arguments)?
-        switch format {
+        var subjectField: String?
+        var alwaysReads = false
+        switch instinct {
         case .narrative:
-            questions = { _ in [(EngineRouting.recencyQuestionID, .noul(instructions: EngineRouting.recencyInstructions, criteria: EngineRouting.recencyCriteria))] }
-            // "ask AI what GDP means": the question to the model, as asked.
-            // Skipped without an answer key.
-            recognise = { query, context in
-                guard context.canAnswer, let ask = AnswerQuery.parse(query) else { return nil }
-                return Recognised(rule: DeviceRouting.askRule, arguments: ["question": ask.question])
-            }
+            questions = { _ in [(EngineRequest.recencyQuestionID, .noul(instructions: EngineRequest.recencyInstructions, criteria: EngineRequest.recencyCriteria))] }
         case .oneLine:
-            questions = { _ in [(EngineRouting.recencyQuestionID, .noul(instructions: EngineRouting.recencyInstructions, criteria: EngineRouting.recencyCriteria))] }
-            // The time in a named place, from the device clock.
-            recognise = { query, context in
-                guard let local = LocalAnswers.answer(query, now: context.now, locale: context.locale, homeZone: context.homeZone) else { return nil }
-                return Recognised(rule: local.rule, arguments: ["text": local.text])
-            }
+            questions = { _ in [(EngineRequest.recencyQuestionID, .noul(instructions: EngineRequest.recencyInstructions, criteria: EngineRequest.recencyCriteria))] }
         case .recall:
-            questions = { _ in EngineRouting.recallQuestions }
-            recognise = nil
+            questions = { _ in EngineRequest.recallQuestions }
+            // The kinds, the name and the set are Jev's questions; a count
+            // and a day are values the words state, read on every pick.
+            arguments = ArgumentSchema(fields: [
+                .init(name: "count", kind: .integer, description: "how many of the newest to bring back, when the words ask for a number of them (\"my last five searches\", \"the last few\")", required: false),
+                .init(name: "from", kind: .text, description: "the start of the span the words name, as an ISO 8601 date-time against today (\"yesterday\", \"last week\", \"three days ago\"); null when none is named", required: false),
+                .init(name: "to", kind: .text, description: "the end of that span, as an ISO 8601 date-time; null when none is named", required: false),
+            ])
+            alwaysReads = true
         case .site:
             // Over a site this app opened by name: is the query saying it was the wrong one?
             questions = { context in
                 guard context.opened != nil else { return [] }
-                return [(EngineRouting.rejectsQuestionID, .noul(instructions: EngineRouting.rejectsInstructions, criteria: EngineRouting.rejectsCriteria))]
+                return [(EngineRequest.rejectsQuestionID, .noul(instructions: EngineRequest.rejectsInstructions, criteria: EngineRequest.rejectsCriteria))]
             }
-            // An opener and a known name: the site, no model asked. A bare
-            // name ("youtube") is left to Jev, which may read it as a search.
-            recognise = { query, context in
-                guard let site = SiteQuery.parse(query), site.hasOpener, context.book.lookup(site.name) != nil else { return nil }
-                return Recognised(rule: DeviceRouting.siteRule, arguments: ["name": site.name])
-            }
+            arguments = ArgumentSchema(fields: [.init(name: "name", kind: .text, description: "the site's name or address, as the words give it", required: false)])
+            subjectField = "name"
         case .webResults:
             questions = { _ in [] }
-            // "search for X", "look up X": web results for X. A bare "google
-            // X" is not a command here ("google stock"); Jev decides.
-            recognise = { query, _ in
-                guard let search = SearchQuery.parse(query), search.isCommand else { return nil }
-                return Recognised(rule: DeviceRouting.searchRule, arguments: ["term": search.term])
-            }
-            // Read only when the query depends on earlier exchanges ("wait
-            // no I meant brazil" after "brasil weather"): the words alone are
-            // the term otherwise.
             arguments = ArgumentSchema(fields: [.init(name: "term", kind: .text, description: "what to search the web for, in full, with anything the words point back at folded in", required: false)])
+            subjectField = "term"
         case .remember:
             // Asked in every request: a yes on another pick is a fact noted quietly.
-            questions = { _ in [(EngineRouting.rememberQuestionID, .noul(instructions: EngineRouting.rememberInstructions, criteria: EngineRouting.rememberCriteria))] }
-            recognise = nil
+            questions = { _ in [(EngineRequest.rememberQuestionID, .noul(instructions: EngineRequest.rememberInstructions, criteria: EngineRequest.rememberCriteria))] }
             showsLayer = false
             arguments = ArgumentSchema(fields: [.init(name: "fact", kind: .text, description: "the lasting fact about the user, in their own words and in the first person, as they said it")])
-            // "remember that I'm allergic to peanuts": the words after the opener.
-            read = { query in RememberQuery.parse(query).map { ["fact": $0.fact] } ?? [:] }
+            subjectField = "fact"
         case .forget:
             questions = { _ in [] }
-            recognise = nil
             showsLayer = false
             sideEffects = .destructive
             asksItself = true
             arguments = ArgumentSchema(fields: [.init(name: "about", kind: .text, description: "what the fact to forget is about, when the words say", required: false)])
+            subjectField = "about"
         case .image:
             questions = { _ in [] }
-            recognise = nil
-            // Read only when the query depends on earlier exchanges ("pictures of it").
             arguments = ArgumentSchema(fields: [.init(name: "subject", kind: .text, description: "the one thing to picture, named in full, with anything the words point back at folded in", required: false)])
+            subjectField = "subject"
         case .video:
             questions = { _ in [] }
-            recognise = nil
             arguments = ArgumentSchema(fields: [.init(name: "term", kind: .text, description: "what to find videos of, in full, with anything the words point back at folded in", required: false)])
+            subjectField = "term"
+        case .time:
+            questions = { _ in [] }
+            arguments = ArgumentSchema(fields: [.init(name: "place", kind: .text, description: "the place whose time is asked, as named; null for the time here", required: false)])
+            subjectField = "place"
         case .map, .stock:
             questions = { _ in [] }
-            recognise = nil
         }
         self.showsLayer = showsLayer
         self.sideEffects = sideEffects
         self.asksItself = asksItself
         self.arguments = arguments
-        self.read = read
+        self.subjectField = subjectField
+        self.alwaysReads = alwaysReads
     }
 
     /// A spec set by hand: for an instinct whose values or side effects the
-    /// format does not fix, and for tests.
+    /// instinct does not fix, and for tests.
     public init(
-        format: ResponseFormat,
+        instinct: Instinct,
         showsLayer: Bool = true,
         sideEffects: SideEffects = .none,
         asksItself: Bool = false,
         arguments: ArgumentSchema = .none,
-        questions: @escaping @Sendable (RequestContext) -> [(id: String, question: Question)] = { _ in [] },
-        recognise: (@Sendable (String, RecogniseContext) -> Recognised?)? = nil,
-        read: (@Sendable (String) -> Arguments)? = nil
+        subjectField: String? = nil,
+        alwaysReads: Bool = false,
+        questions: @escaping @Sendable (RequestContext) -> [(id: String, question: Question)] = { _ in [] }
     ) {
-        self.format = format
+        self.instinct = instinct
         self.showsLayer = showsLayer
         self.sideEffects = sideEffects
         self.asksItself = asksItself
         self.arguments = arguments
+        self.subjectField = subjectField
+        self.alwaysReads = alwaysReads
         self.questions = questions
-        self.recognise = recognise
-        self.read = read
     }
 
     /// Every instinct, in the order Jev sees the options: `web_results`
     /// first, since Jev leans toward the first option when unsure.
-    public static let all: [InstinctSpec] = ResponseFormat.allCases.map(InstinctSpec.init(format:))
-
-    /// The device's rules in the order the app has always applied them:
-    /// the time, a question handed to the model, a known site, a search verb.
-    public static let deviceRuleOrder: [ResponseFormat] = [.oneLine, .narrative, .site, .webResults]
+    public static let all: [InstinctSpec] = Instinct.allCases.map(InstinctSpec.init(instinct:))
 
     public static func spec(for id: String) -> InstinctSpec? {
         all.first { $0.id == id }
     }
 
-    public static func spec(for format: ResponseFormat) -> InstinctSpec {
-        all.first { $0.format == format }!
+    public static func spec(for instinct: Instinct) -> InstinctSpec {
+        all.first { $0.instinct == instinct }!
     }
 }

@@ -38,16 +38,16 @@ public struct StyledSpan: Equatable, Sendable {
 /// what each one means in `AnswerPrompt`; this turns its text into spans.
 public enum AnswerMarkup {
     /// Which markers a format may use. One-line answers only highlight.
-    public static func markers(for format: ResponseFormat) -> [Emphasis] {
+    public static func markers(for format: Instinct) -> [Emphasis] {
         switch format {
         case .oneLine: [.highlight]
         case .narrative: [.highlight, .bold, .underline, .italic]
-        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget: []
+        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time: []
         }
     }
 
     /// `text` as the card shows it: split on the markers the format allows, highlights padded.
-    public static func styled(_ text: String, for format: ResponseFormat) -> [StyledSpan] {
+    public static func styled(_ text: String, for format: Instinct) -> [StyledSpan] {
         paddingHighlights(spans(text, allowed: Set(markers(for: format))))
     }
 

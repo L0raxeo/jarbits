@@ -4,7 +4,7 @@ import Foundation
 public struct DecisionRecord: Codable, Sendable, Equatable {
     public var timestamp: Date
     public var query: String
-    public var decision: RouteDecision
+    public var decision: Pick
     /// Filled in once Gemini has answered (or failed to); absent for web plans
     /// and for lines written before answers existed.
     public var answer: AnswerSummary?
@@ -20,8 +20,10 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     public var fact: FactSummary?
     /// What a plan came to, when the query went to advanced reasoning.
     public var engine: EngineSummary?
+    /// How the reading beside Jev went, when one was asked; `query` is the words that ran.
+    public var reading: ReadingSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: Pick, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
@@ -32,6 +34,7 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
         self.extraction = extraction
         self.fact = fact
         self.engine = engine
+        self.reading = reading
     }
 
     public static let encoder: JSONEncoder = {
@@ -56,6 +59,22 @@ public enum DecisionsReport {
             .map { try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data($0.utf8)) }
     }
 
+    /// Every line that decodes, and how many did not: a phone log may still
+    /// hold version 1's lines (its gates and rules as sources), which the
+    /// engine's record no longer describes.
+    public static func parseLenient(_ data: Data) -> (records: [DecisionRecord], skipped: Int) {
+        var records: [DecisionRecord] = []
+        var skipped = 0
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true) {
+            if let record = try? DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(line.utf8)) {
+                records.append(record)
+            } else {
+                skipped += 1
+            }
+        }
+        return (records, skipped)
+    }
+
     public static func markdown(records: [DecisionRecord]) -> String {
         var out: [String] = []
         out.append("# Decisions")
@@ -69,12 +88,14 @@ public enum DecisionsReport {
         let errors = records.filter { if case .error = $0.decision.source { true } else { false } }
         let direct = records.filter { $0.decision.source == .directURL }
         let noKey = records.filter { $0.decision.source == .noKey }
-        let local = records.filter { if case .local = $0.decision.source { true } else { false } }
         let latencies = asked.compactMap(\.decision.latencyMs).sorted()
 
-        let gated = asked.filter { $0.decision.source == .recencyFallback }
+        // An answer pick the instinct showed as web results, by Jev's recency answer.
+        let gated = asked.filter { $0.decision.source == .jev && $0.decision.instinct.isAnswered && $0.decision.recent }
         let planned = records.filter { $0.decision.source == .plan }
-        out.append("\(records.count) queries: \(asked.count) asked Jev, \(local.count) decided on the device, \(direct.count) addresses, \(noKey.count) without a key, \(errors.count) errors, \(gated.count) sent to web for recency, \(planned.count) steps of plans.")
+        let readings = records.compactMap { record in record.reading.map { (record, $0) } }
+        let rewritten = readings.filter(\.1.changed)
+        out.append("\(records.count) queries: \(asked.count) asked Jev, \(direct.count) addresses, \(noKey.count) without a key, \(errors.count) errors, \(gated.count) answers sent to web for recency, \(planned.count) steps of plans." + (readings.isEmpty ? "" : " \(rewritten.count) rewritten by the reading."))
         if let p50 = latencies.isEmpty ? nil : latencies[latencies.count / 2] {
             out.append("Median Jev latency \(p50) ms.")
         }
@@ -86,12 +107,12 @@ public enum DecisionsReport {
         out.append("")
         out.append("| Format | Picked | Acted on | Fell back (unsure) | Sent to web (recent) | Mean confidence | Recent queries |")
         out.append("|---|---|---|---|---|---|---|")
-        for format in ResponseFormat.allCases {
+        for format in Instinct.allCases {
             let picks = asked.filter { $0.decision.suggested == format }
             guard !picks.isEmpty else { continue }
-            let acted = picks.filter { $0.decision.source == .jev || $0.decision.source == .continuation || $0.decision.source == .answerSplit }.count
+            let acted = picks.filter { $0.decision.source == .jev && !($0.decision.instinct.isAnswered && $0.decision.recent) }.count
             let unsure = picks.filter { $0.decision.source == .confidenceFallback }.count
-            let stale = picks.filter { $0.decision.source == .recencyFallback }.count
+            let stale = picks.filter { $0.decision.source == .jev && $0.decision.instinct.isAnswered && $0.decision.recent }.count
             let confidences = picks.compactMap(\.decision.confidence)
             let mean = confidences.isEmpty ? 0 : confidences.reduce(0, +) / Double(confidences.count)
             let recent = picks.sorted { $0.timestamp > $1.timestamp }.prefix(3).map { "\"\($0.query)\"" }.joined(separator: ", ")
@@ -101,19 +122,19 @@ public enum DecisionsReport {
 
         let withRecency = asked.filter { $0.decision.recency != nil }
         if !withRecency.isEmpty {
-            let answeredRecency = withRecency.filter { $0.decision.source == .jev && ($0.decision.suggested?.isAnswered ?? false) }.compactMap(\.decision.recency)
+            let answeredRecency = withRecency.filter { $0.decision.source == .jev && $0.decision.instinct.isAnswered && !$0.decision.recent }.compactMap(\.decision.recency)
             let gatedRecency = gated.compactMap(\.decision.recency)
             func mean(_ values: [Double]) -> String {
                 values.isEmpty ? "–" : (values.reduce(0, +) / Double(values.count)).formatted(.number.precision(.fractionLength(2)))
             }
-            out.append("Recency (threshold \(EngineRouting.recencyThreshold.formatted())): mean \(mean(answeredRecency)) for answers shown, \(mean(gatedRecency)) for queries sent to web.")
+            out.append("Recency (threshold \(EngineRequest.recencyThreshold.formatted())): mean \(mean(answeredRecency)) for answers shown, \(mean(gatedRecency)) for queries sent to web.")
             out.append("")
         }
         let withExchanges = asked.filter { $0.decision.relevance != nil }
         if !withExchanges.isEmpty {
             let chained = withExchanges.filter { $0.decision.chainedCount > 0 }
             let continued = withExchanges.filter(\.decision.continuesThread)
-            let oneLine = continued.filter { $0.decision.format == .oneLine }.count
+            let oneLine = continued.filter { $0.decision.instinct == .oneLine }.count
             let otherCard = chained.filter { $0.decision.source == .jev && ($0.decision.suggested?.outranksConversation ?? false) }.count
             let chains = chained.map(\.decision.chainedCount)
             let meanChain = chains.isEmpty ? "–" : (Double(chains.reduce(0, +)) / Double(chains.count)).formatted(.number.precision(.fractionLength(1)))
@@ -141,20 +162,6 @@ public enum DecisionsReport {
             out.append("")
         }
 
-        if !local.isEmpty {
-            out.append("## Decided on the device")
-            out.append("")
-            var byRule: [String: [DecisionRecord]] = [:]
-            for record in local {
-                if case let .local(rule) = record.decision.source { byRule[rule, default: []].append(record) }
-            }
-            for (rule, rows) in byRule.sorted(by: { $0.key < $1.key }) {
-                let recent = rows.sorted { $0.timestamp > $1.timestamp }.prefix(10).map { "\"\($0.query)\"" }.joined(separator: ", ")
-                out.append("- `\(rule)`: \(rows.count), most recent \(recent)")
-            }
-            out.append("")
-        }
-
         let answered = records.compactMap { record in record.answer.map { (record, $0) } }
         if !answered.isEmpty {
             out.append("## Answers")
@@ -164,7 +171,7 @@ public enum DecisionsReport {
             out.append("")
             out.append("| Format | Answers | Completed | Needed live data | Partial | Fell back | Median first token | Median total | Mean output tokens |")
             out.append("|---|---|---|---|---|---|---|---|---|")
-            for format in ResponseFormat.allCases {
+            for format in Instinct.allCases {
                 let rows = answered.filter { $0.1.format == format }
                 guard !rows.isEmpty else { continue }
                 let completed = rows.filter { $0.1.outcome == .completed }.count
@@ -282,6 +289,25 @@ public enum DecisionsReport {
             out.append("")
         }
 
+        if !readings.isEmpty {
+            out.append("## Readings")
+            out.append("")
+            let unchanged = readings.filter { $0.1.outcome == .unchanged }.count
+            let failed = readings.filter { if case .failed = $0.1.outcome { true } else { false } }
+            let subjects = readings.filter { $0.1.subject != nil }.count
+            let cost = readings.compactMap { reading in reading.1.usage.map { GeminiPricing.cost($0, model: reading.1.model) } }.reduce(0, +)
+            out.append("\(readings.count) read beside Jev: \(rewritten.count) rewritten, \(unchanged) unchanged, \(failed.count) failed; \(subjects) gave a subject. Median latency \(median(readings.map(\.1.latencyMs))); about $\(cost.formatted(.number.precision(.fractionLength(4)))) in tokens.")
+            if !rewritten.isEmpty {
+                out.append("Rewritten: " + rewritten.suffix(10).map { "\"\($0.1.original)\" → \"\($0.0.query)\"" }.joined(separator: ", "))
+            }
+            if !failed.isEmpty {
+                out.append("Failed: " + failed.suffix(10).map { record, summary in
+                    if case let .failed(reason) = summary.outcome { "\"\(record.query)\": \(reason)" } else { "\"\(record.query)\"" }
+                }.joined(separator: ", "))
+            }
+            out.append("")
+        }
+
         let facts = records.compactMap { record in record.fact.map { (record, $0) } }
         if !facts.isEmpty {
             out.append("## Facts")
@@ -298,7 +324,7 @@ public enum DecisionsReport {
                 func mean(_ values: [Double]) -> String {
                     values.isEmpty ? "–" : (values.reduce(0, +) / Double(values.count)).formatted(.number.precision(.fractionLength(2)))
                 }
-                out.append("Remember gate (threshold \(EngineRouting.rememberThreshold.formatted())): mean \(mean(kept)) where a fact was kept, \(mean(gates)) over every query asked.")
+                out.append("Remember gate (threshold \(EngineRequest.rememberThreshold.formatted())): mean \(mean(kept)) where a fact was kept, \(mean(gates)) over every query asked.")
             }
             if !remembered.isEmpty {
                 out.append("Kept: " + remembered.suffix(10).map { "\"\($0.1.text ?? $0.0.query)\"" }.joined(separator: ", "))
@@ -347,7 +373,7 @@ public enum DecisionsReport {
             for record in unsure.sorted(by: { $0.timestamp > $1.timestamp }).prefix(20) {
                 let pick = record.decision.suggested?.rawValue ?? "?"
                 let confidence = record.decision.confidence.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? "?"
-                let runnerUp = record.decision.runnerUp.map { "`\($0.format.rawValue)` \($0.probability.formatted(.number.precision(.fractionLength(2))))" } ?? ""
+                let runnerUp = record.decision.runnerUp.map { "`\($0.instinct.rawValue)` \($0.probability.formatted(.number.precision(.fractionLength(2))))" } ?? ""
                 out.append("| \"\(record.query)\" | `\(pick)` | \(confidence) | \(runnerUp) |")
             }
             out.append("")

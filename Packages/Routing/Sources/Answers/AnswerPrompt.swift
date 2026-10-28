@@ -41,21 +41,21 @@ public enum AnswerPrompt {
     public static let knowledgeCutoff = DateComponents(year: 2025, month: 1)
     public static let knowledgeCutoffText = "January 2025"
 
-    public static func system(for format: ResponseFormat) -> String {
+    public static func system(for format: Instinct) -> String {
         switch format {
         case .narrative: narrative
         case .oneLine: oneLine
-        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget:
+        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time:
             preconditionFailure("\(format) is not answered by a model")
         }
     }
 
     /// Includes thought tokens, so there is headroom above the visible answer.
-    public static func maxOutputTokens(for format: ResponseFormat) -> Int {
+    public static func maxOutputTokens(for format: Instinct) -> Int {
         switch format {
         case .narrative: 800
         case .oneLine: 160
-        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget:
+        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time:
             preconditionFailure("\(format) is not answered by a model")
         }
     }
@@ -112,7 +112,7 @@ public enum AnswerPrompt {
     /// `earlier` is what else in this session the query depends on, and
     /// `facts` what the app knows about the user; see `input`.
     public static func request(
-        format: ResponseFormat,
+        format: Instinct,
         query: String,
         context: AnswerContext,
         model: String = GeminiClient.defaultModel,

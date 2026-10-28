@@ -33,16 +33,16 @@ import Testing
     }
 
     @Test func aPaidToolSaysTheDeviceConfirmsIt() {
-        let paid = InstinctSpec(format: .webResults, sideEffects: .paid)
+        let paid = InstinctSpec(instinct: .webResults, sideEffects: .paid)
         #expect(Planner.describe(paid).contains("Costs money; the device confirms it with the user first."))
-        let destructive = InstinctSpec(format: .webResults, sideEffects: .destructive)
+        let destructive = InstinctSpec(instinct: .webResults, sideEffects: .destructive)
         #expect(Planner.describe(destructive).contains("Cannot be undone; the device confirms it"))
     }
 
     @Test func theSystemInstructionCarriesTheRulesAndTheFacts() {
         let system = Planner.system(facts: ["I'm vegetarian", "I live in Austin"], context: .example)
         #expect(system.contains("nothing you write is shown to anyone"))
-        #expect(system.contains("Show at most one thing, as the last step: web_results, narrative, map, stock, one_line, recall, image, site, video each put a result on screen"))
+        #expect(system.contains("Show at most one thing, as the last step: web_results, narrative, map, stock, one_line, recall, image, site, video, time each put a result on screen"))
         #expect(system.contains("call remember with it next"))
         #expect(system.contains("never call it again with the same arguments"))
         #expect(system.contains("Call done when the request has been handled"))

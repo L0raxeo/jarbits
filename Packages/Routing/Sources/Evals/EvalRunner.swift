@@ -1,9 +1,10 @@
 import Foundation
 import Routing
 
-/// Runs cases through the app's chain: the device's rules, then the address
-/// check, then Jev, answered from the cache when it can be. Thresholds are
-/// applied here, after the answer, so a sweep re-decides cached answers.
+/// Runs cases as the app does: an address loads as typed, everything else
+/// goes to Jev, answered from the cache when it can be. The reading beside
+/// Jev is not run here: the eval grades the pick on the typed words. The floor is applied here, after the answer,
+/// so a sweep re-decides cached answers.
 public struct EvalRunner: Sendable {
     /// Nil never touches the network: a miss in the cache is `uncached`.
     public var client: JevClient?
@@ -12,31 +13,24 @@ public struct EvalRunner: Sendable {
     /// client's when there is one.
     public var model: String
     public var locale: Locale
-    public var book: SiteBook
     public var floor: Double
+    /// Reported only: at or above it, an answer pick is one the instinct
+    /// will show as web results.
     public var recencyThreshold: Double
-    public var now: Date
-    public var homeZone: TimeZone
 
     public init(
         client: JevClient?,
         cache: JevCache,
         locale: Locale = Locale(identifier: "en_US"),
-        book: SiteBook = .seeded(),
-        floor: Double = EngineRouting.confidenceFloor,
-        recencyThreshold: Double = EngineRouting.recencyThreshold,
-        now: Date = .now,
-        homeZone: TimeZone = .current
+        floor: Double = EngineRequest.confidenceFloor,
+        recencyThreshold: Double = EngineRequest.recencyThreshold
     ) {
         self.client = client
         self.cache = cache
         self.model = client?.model ?? JevClient.defaultModel
         self.locale = locale
-        self.book = book
         self.floor = floor
         self.recencyThreshold = recencyThreshold
-        self.now = now
-        self.homeZone = homeZone
     }
 
     /// In file order, one at a time: the output reads top to bottom and a
@@ -51,14 +45,11 @@ public struct EvalRunner: Sendable {
 
     public func run(_ evalCase: EvalCase) async -> EvalResult {
         let query = evalCase.query
-        if let device = DeviceRouting.decide(query, now: now, locale: locale, homeZone: homeZone, book: book) {
-            return EvalResult(evalCase, outcome: device, cached: false)
-        }
         if QueryParser.directURL(from: query) != nil {
-            return EvalResult(evalCase, outcome: RouteOutcome(query: query, decision: .directURL()), cached: false)
+            return EvalResult(evalCase, decision: .directURL(), cached: false)
         }
         let exchanges = evalCase.exchanges ?? []
-        let request = EngineRouting.request(for: query, locale: locale, model: model, exchanges: exchanges, opened: evalCase.opened)
+        let request = EngineRequest.request(for: query, locale: locale, model: model, exchanges: exchanges, opened: evalCase.opened)
         let key: String
         do {
             key = try JevCache.key(for: request)
@@ -92,13 +83,13 @@ public struct EvalRunner: Sendable {
         } else {
             return .uncached(evalCase)
         }
-        let decision = EngineRouting.decision(from: response, latencyMs: latencyMs, floor: floor, recencyThreshold: recencyThreshold, exchanges: exchanges)
-        return EvalResult(evalCase, outcome: RouteOutcome(query: query, decision: decision, opened: evalCase.opened), cached: cached)
+        let decision = EngineRequest.decision(from: response, latencyMs: latencyMs, floor: floor, exchanges: exchanges)
+        return EvalResult(evalCase, decision: decision, cached: cached)
     }
 
     private func failed(_ evalCase: EvalCase, _ reason: String, latencyMs: Int) -> EvalResult {
-        let decision = RouteDecision(format: .fallback, latencyMs: latencyMs, source: .error(reason))
-        return EvalResult(evalCase, outcome: RouteOutcome(query: evalCase.query, decision: decision), cached: false)
+        let decision = Pick(instinct: .fallback, latencyMs: latencyMs, source: .error(reason))
+        return EvalResult(evalCase, decision: decision, cached: false)
     }
 
     private func describe(_ error: JevError) -> String {

@@ -1,6 +1,8 @@
 import Foundation
 
-/// Decides whether typed text is an address or a search.
+/// A typed address, which loads as typed with no reading and no Jev; the
+/// Google results pages the app loads for words; and a results page read
+/// back for the capsule and the log.
 public enum QueryParser {
     public static func url(for raw: String) -> URL {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)

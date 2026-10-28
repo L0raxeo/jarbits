@@ -18,13 +18,16 @@ final class Layer: Identifiable {
     /// follow-up starts from.
     var query: String
     /// Why the plan is what it is; logged with the record.
-    var decision: RouteDecision?
+    var decision: Pick?
     /// How reading the plan's values out of the words went, when a model
     /// was asked; logged with the record once the layer's result is in.
     var extraction: ExtractionSummary?
     /// A fact the query stated on the way to this layer, kept beside it;
     /// logged with the record once the layer's result is in.
     var fact: FactSummary?
+    /// How the reading beside Jev fared for this layer's query; logged with
+    /// the record once the layer's result is in.
+    var reading: ReadingSummary?
     /// The live page of a web layer; nil while the layer is unloaded or
     /// shows a card.
     var page: PageHost?
@@ -64,7 +67,7 @@ final class Layer: Identifiable {
     /// screenshots, which would only show the player's black box.
     var pictureFixed = false
 
-    init(plan: CardPlan, query: String, decision: RouteDecision? = nil) {
+    init(plan: CardPlan, query: String, decision: Pick? = nil) {
         self.plan = plan
         self.query = query
         self.decision = decision

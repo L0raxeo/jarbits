@@ -18,7 +18,7 @@ final class AnswerSession {
         case failed(String)
     }
 
-    private(set) var format: ResponseFormat = .narrative
+    private(set) var format: Instinct = .narrative
     private(set) var query = ""
     /// The conversation this answer continues, oldest first; empty for a fresh one.
     private(set) var history: [AnswerTurn] = []
@@ -80,7 +80,7 @@ final class AnswerSession {
         AnswerMarkup.styled(displayText, for: format)
     }
 
-    func start(format: ResponseFormat, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = []) {
+    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = []) {
         task?.cancel()
         self.format = format
         self.query = query
@@ -101,12 +101,11 @@ final class AnswerSession {
         }
     }
 
-    private func run(format: ResponseFormat, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String]) async {
+    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String]) async {
         let clock = ContinuousClock()
         let start = clock.now
         let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
-        // An explicit ask ("ask AI what GDP means") sends the question alone; `query` keeps the words as typed.
-        let request = AnswerPrompt.request(format: format, query: AnswerQuery.question(for: query), context: context, model: client.model, history: history, earlier: earlier, facts: facts)
+        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts)
 
         var usage: AnswerUsage?
         var firstTokenMs: Int?

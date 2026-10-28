@@ -17,7 +17,8 @@ final class ImageSession {
         case failed(String)
     }
 
-    private(set) var query = ""
+    /// The subject the picture is of, as the reading gave it.
+    private(set) var subject = ""
     private(set) var results: [ImageResult] = []
     private(set) var primaryIndex = 0
     private(set) var primary: UIImage?
@@ -36,15 +37,15 @@ final class ImageSession {
         self.lookup = lookup
     }
 
-    func start(query: String) {
+    func start(subject: String) {
         task?.cancel()
-        self.query = query
+        self.subject = subject
         results = []
         primaryIndex = 0
         primary = nil
         summary = nil
         phase = .loading
-        task = Task { await run(query) }
+        task = Task { await run(subject) }
     }
 
     func cancel() {
@@ -57,21 +58,21 @@ final class ImageSession {
     func select(_ index: Int) {
         guard results.indices.contains(index), index != primaryIndex else { return }
         let result = results[index]
-        let generation = query
+        let generation = subject
         Task {
-            guard let data = try? await lookup.data(for: result), let image = UIImage(data: data), generation == query else { return }
+            guard let data = try? await lookup.data(for: result), let image = UIImage(data: data), generation == subject else { return }
             primaryIndex = index
             primary = image
         }
     }
 
-    private func run(_ query: String) async {
+    private func run(_ subject: String) async {
         let clock = ContinuousClock()
         let start = clock.now
         let lookup = self.lookup
         do {
             // Each source gets its own budget for the search and the first download.
-            let pick = try await lookup.find(query) { UIImage(data: $0) != nil }
+            let pick = try await lookup.find(subject) { UIImage(data: $0) != nil }
             if Task.isCancelled { return }
             guard let image = UIImage(data: pick.data) else { throw ImageError.decoding("picture") }
             let found = pick.results
