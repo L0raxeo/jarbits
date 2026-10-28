@@ -92,12 +92,12 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .webResults:
             Criterion(
                 what: "A standard page of web search results. The default for broad, vague or multi-part queries, for a search for something on a site, for browsing many pictures, and for anything the other formats do not clearly fit. A bare topic with no ask, such as \"chocolate milk\" or \"quantum computing\", is one of these: the user wants the general spread, not one answer. So is a query that asks for the search itself, such as \"google steve jobs\" or \"look up flights to lima\", whatever the topic.",
-                notFor: "A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, a request to open a website by its name, the bare name of one specific thing with a definitive look, which wants a picture, or videos to watch, which want video results.",
+                notFor: "A question that asks why or how something happened, a single short fact, a question about the user's own life, people, preferences or situation, which the assistant answers from what it was told, a specific place to find, a ticker, a request to open a website by its name, the bare name of one specific thing with a definitive look, which wants a picture, or videos to watch, which want video results.",
                 examples: ["best laptops 2026", "news", "chocolate milk", "google steve jobs", "python tutorial reddit", "zillow homes in austin", "quantum computing", "golden retriever puppies"]
             )
         case .narrative:
             Criterion(
-                what: "A written explanation. The query asks why or how something happened or works, what something is or means (a definition, or the expansion of an acronym or term within a field, which needs the full name and a sentence or two of context), for the story behind something, where a phrase, slogan, name or meme came from, or for a judgement that needs context, such as whether somewhere is safe. Also any question handed to the AI by name (\"ask AI what GDP means\", \"ask the AI about Dyson alternatives\"): the person wants the model's own answer, whatever the question.",
+                what: "A written explanation. The query asks why or how something happened or works, what something is or means (a definition, or the expansion of an acronym or term within a field, which needs the full name and a sentence or two of context), for the story behind something, where a phrase, slogan, name or meme came from, or for a judgement that needs context, such as whether somewhere is safe. Also any question handed to the AI by name (\"ask AI what GDP means\", \"ask the AI about Dyson alternatives\"): the person wants the model's own answer, whatever the question. A longer question about the user's own life, people, preferences or situation, such as what the assistant knows about them, is one of these too: answered from what it was told.",
                 notFor: "Questions answered by one line, such as a time, a date, a number or a yes/no, and queries that only want a price chart.",
                 examples: [
                     "at the end of attack on titan why is levi in a wheelchair",
@@ -111,6 +111,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
                     "whats isi in ipe",
                     "what does gdp mean",
                     "define hegemony",
+                    "what do you know about me",
                 ]
             )
         case .map:
@@ -127,13 +128,15 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
             )
         case .oneLine:
             Criterion(
-                what: "A single short answer that fits on one line: a time, a date, a number, a duration, a yes/no, a conversion, or a quick fact that is itself a name, number or date, including live ones like the weather.",
+                what: "A single short answer that fits on one line: a time, a date, a number, a duration, a yes/no, a conversion, or a quick fact that is itself a name, number or date, including live ones like the weather. A short question about the user's own life, people, preferences or situation, such as what they are allergic to or whether they have a vegan friend, is one of these: the assistant answers it from what it was told.",
                 notFor: "The time or date right now, here or somewhere, which is time; questions that ask why or how and need a few paragraphs; definitions and what-is questions, which need the full name and some context rather than one value; and anything that wants a price chart.",
                 examples: [
                     "will it rain today",
                     "how long do cold sores last",
                     "capital of peru",
                     "100 usd to eur",
+                    "what am I allergic to",
+                    "do I have any vegan friends",
                 ]
             )
         case .image:

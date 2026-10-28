@@ -109,3 +109,8 @@
 {"query": "stop remembering my peanut allergy", "instinct": "forget"}
 {"query": "drop what I told you about my wife", "instinct": "forget"}
 {"query": "you can forget where I live", "instinct": "forget"}
+{"query": "what am I allergic to", "instinct": "one_line"}
+{"query": "do I have any vegan friends", "instinct": "one_line"}
+{"query": "how old is my mom", "instinct": "one_line"}
+{"query": "what do you know about me", "instinct": "narrative"}
+{"query": "whats my wifes name", "instinct": "one_line"}
