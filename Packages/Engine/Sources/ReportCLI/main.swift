@@ -68,8 +68,9 @@ case "decisions":
         fail("could not read \(arguments[1]): \(error)")
     }
 case "recall":
-    guard arguments.count == 3 else { fail("usage: report recall <memories.jsonl> <query>") }
+    guard arguments.count == 3 || (arguments.count == 5 && arguments[3] == "--topic") else { fail("usage: report recall <memories.jsonl> <query> [--topic <thing to bring back>]") }
     let query = arguments[2]
+    let topic: String? = arguments.count == 5 ? arguments[4] : nil
     var records: [MemoryRecord] = []
     do {
         let data = try Data(contentsOf: URL(fileURLWithPath: arguments[1]))
@@ -97,8 +98,9 @@ case "recall":
     // The count and the span are the extractor's values in the app; here the ask carries none.
     let filters = RecallAsk(intent: intent)
     let kinds = filters.kinds.map { $0.map(\.rawValue).sorted().joined(separator: ",") } ?? "any"
-    print("ask: kinds \(kinds), video \(filters.video)\(filters.collection ? ", everything about \"\(MemorySearch.topic(of: query))\"" : "")")
-    let shortlist = MemorySearch.shortlist(records, query: query, ask: filters)
+    print("ask: kinds \(kinds), video \(filters.video)\(filters.collection ? ", everything about \"\(topic ?? query)\"" : "")")
+    // In the app the topic is the extractor's value; here --topic gives it, else the words stand in.
+    let shortlist = MemorySearch.shortlist(records, topic: topic ?? query, ask: filters)
     print("shortlist: \(shortlist.count) of \(records.count)")
     for (index, record) in shortlist.enumerated() {
         print("  m\(index) \(record.kind.rawValue) \(record.date.formatted(date: .abbreviated, time: .omitted)) \"\(record.title)\"")
@@ -126,7 +128,7 @@ case "recall":
         let maybe = all.filter { $0.probability >= RecallRouting.maybeThreshold }
         let shown = filters.collection ? all.filter { $0.probability >= RecallRouting.collectionThreshold } : sure.count == 1 ? sure : maybe
         let verdict = shown.count == 1 ? "opens \"\(shown[0].record.title)\""
-            : shown.isEmpty ? "none of these: web results for \"\(MemorySearch.topic(of: query))\""
+            : shown.isEmpty ? "none of these: web results for \"\(topic ?? query)\""
             : "picker with \(shown.count)"
         let thresholds = filters.collection ? "about it at \(RecallRouting.collectionThreshold.formatted())" : "opens at \(RecallRouting.recallThreshold.formatted()), shown at \(RecallRouting.maybeThreshold.formatted())"
         print("jev (\(latencyMs) ms): \(verdict) (\(thresholds))")
@@ -278,12 +280,13 @@ case "extract":
         print("failed (\(summary.latencyMs) ms against a \(budget.formatted()) s budget): \(summary.outcome)")
     }
 case "plan":
-    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--fact <text>]... [--timeout <seconds>] [--dry-run]"
+    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--page <earlier query> <title> <url>]... [--fact <text>]... [--memory <page|search|narrative> <title> <url or ->]... [--timeout <seconds>] [--dry-run]"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
     var exchanges: [Exchange] = []
     var facts: [String] = []
+    var memories: [MemoryRecord] = []
     var dryRun = false
     var roundTimeout = ReasoningPolicy.roundTimeout
     while let flag = rest.first {
@@ -296,6 +299,15 @@ case "plan":
             guard rest.count >= 2 else { fail(usage) }
             facts.append(rest[1])
             rest.removeFirst(2)
+        case "--page":
+            guard rest.count >= 4, let url = URL(string: rest[3]) else { fail(usage) }
+            exchanges.append(.page(query: rest[1], title: rest[2], address: url))
+            rest.removeFirst(4)
+        case "--memory":
+            guard rest.count >= 4, let kind = MemoryRecord.Kind(rawValue: rest[1]) else { fail(usage) }
+            let url = rest[3] == "-" ? nil : URL(string: rest[3])
+            memories.append(MemoryRecord(date: Date.now.addingTimeInterval(-86_400), kind: kind, query: rest[2], title: rest[2], url: url, text: kind == .narrative ? "…" : nil))
+            rest.removeFirst(4)
         case "--timeout":
             guard rest.count >= 2, let seconds = Double(rest[1]), seconds > 0 else { fail(usage) }
             roundTimeout = .milliseconds(Int(seconds * 1000))
@@ -306,9 +318,11 @@ case "plan":
         default: fail(usage)
         }
     }
-    let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, memories: [], tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now))
-    let transcript: [InteractionStep] = [.userText(Planner.input(query: query, exchanges: exchanges, memories: [], now: .now))]
+    let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, memories: memories, tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), persona: .example)
+    let things = ThingTable(exchanges: exchanges, memories: memories)
+    let transcript: [InteractionStep] = [.userText(Planner.input(query: query, things: things, now: .now))]
     let request = Planner.request(bundle: bundle, transcript: transcript)
+    if !things.handles.isEmpty { print("things: " + things.entries.map { ThingTable.line($0, now: .now) }.joined(separator: " | ")) }
     print("first round's request body (\(Planner.model), \(bundle.tools.count) tools, \(roundTimeout.components.seconds) s to answer):")
     print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
     guard !dryRun, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
@@ -388,6 +402,47 @@ case "sites":
     } catch {
         print("brave failed: \(error)")
     }
+case "plans":
+    let usage = "usage: report plans [cases.jsonl] [--out <results.jsonl>] [--no-network]"
+    let packageRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()   // main.swift → ReportCLI/
+        .deletingLastPathComponent()   // → Sources/
+        .deletingLastPathComponent()   // → Engine/
+    var file = packageRoot.appending(path: "Evals/plans.jsonl")
+    var out = packageRoot.appending(path: ".evalcache/plans.jsonl")
+    var network = true
+    var rest = Array(arguments.dropFirst())
+    while let argument = rest.first {
+        rest.removeFirst()
+        switch argument {
+        case "--out":
+            guard let next = rest.first else { fail(usage) }
+            rest.removeFirst()
+            out = URL(fileURLWithPath: next)
+        case "--no-network": network = false
+        default:
+            guard !argument.hasPrefix("--") else { fail(usage) }
+            file = URL(fileURLWithPath: argument)
+        }
+    }
+    var cases: [PlanCase] = []
+    do {
+        cases = try PlanSet.parse(try Data(contentsOf: file))
+    } catch {
+        fail("could not read \(file.path(percentEncoded: false)): \(error)")
+    }
+    var client: GeminiClient?
+    if network, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty {
+        client = GeminiClient(apiKey: key, model: Planner.model, totalTimeout: ReasoningPolicy.roundTimeout)
+    }
+    let runner = PlanRunner(client: client, cache: PlanCache(directory: packageRoot.appending(path: ".evalcache/plans")))
+    let results = await runner.run(cases)
+    if let data = try? JSONEncoder().encode(results) {
+        try? FileManager.default.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: out, options: .atomic)
+    }
+    print(PlanReport.text(results: results, file: file.lastPathComponent, model: Planner.model), terminator: "")
+    exit(results.contains { $0.status == .fail } ? 1 : 0)
 case "eval":
     let usage = "usage: report eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network]"
     let packageRoot = URL(fileURLWithPath: #filePath)
@@ -531,5 +586,5 @@ case "sample":
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report engine | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--fact <text>]... [--timeout <seconds>] [--dry-run] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report engine | decisions <decisions.jsonl> | recall <memories.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--memory <kind> <title> <url or ->]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }

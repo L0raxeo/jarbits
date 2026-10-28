@@ -16,12 +16,12 @@ let package = Package(
         .target(name: "Engine"),
         .target(name: "Answers", dependencies: ["Engine"]),
         .target(name: "Sites", dependencies: ["Engine"]),
-        .target(name: "Evals", dependencies: ["Engine"]),
+        .target(name: "Evals", dependencies: ["Engine", "Answers"]),
         .executableTarget(name: "ReportCLI", dependencies: ["Engine", "Answers", "Sites", "Evals"]),
         .testTarget(name: "EngineTests", dependencies: ["Engine"]),
         .testTarget(name: "AnswersTests", dependencies: ["Answers"]),
         .testTarget(name: "SitesTests", dependencies: ["Sites", "Answers"]),
-        .testTarget(name: "EvalsTests", dependencies: ["Evals", "Engine"]),
+        .testTarget(name: "EvalsTests", dependencies: ["Evals", "Engine", "Answers"]),
     ],
     swiftLanguageModes: [.v6]
 )
