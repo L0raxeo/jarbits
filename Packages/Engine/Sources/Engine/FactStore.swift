@@ -4,13 +4,16 @@ import Foundation
 /// Lines beside the memories, loaded once, appended as facts are learned.
 /// A fact already there (the same words, case and punctuation aside) is
 /// refreshed, not repeated; nothing expires on its own; `forget` removes
-/// one; `clear` empties the file. Lives in the package so it can be
+/// one; `clear` empties the file. The user's name, asked once, lives in
+/// `facts.profile.json` beside it and goes with a clear. Lives in the package so it can be
 /// tested against a file of its own. Nothing in it leaves the phone except
 /// inside a Gemini request, which keeps nothing.
 public actor FactStore {
     public static let shared = FactStore()
 
     public nonisolated let fileURL: URL
+    /// The user's name, as a one-field JSON object.
+    public nonisolated let profileURL: URL
     /// Past this many the decisions report warns; there is no cap.
     public static let warnPast = 100
 
@@ -22,6 +25,31 @@ public actor FactStore {
         } else {
             let support = URL.applicationSupportDirectory.appending(path: "Browser", directoryHint: .isDirectory)
             self.fileURL = support.appending(path: "facts.jsonl")
+        }
+        profileURL = self.fileURL.deletingPathExtension().appendingPathExtension("profile.json")
+    }
+
+    private struct Profile: Codable { var userName: String? }
+    private var profile: Profile?
+
+    /// The user's name; nil until given.
+    public func userName() -> String? {
+        if profile == nil {
+            profile = (try? Data(contentsOf: profileURL)).flatMap { try? JSONDecoder().decode(Profile.self, from: $0) } ?? Profile()
+        }
+        return profile?.userName
+    }
+
+    /// Keeps the name; empty or blank clears it.
+    public func setUserName(_ name: String?) {
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kept = Profile(userName: trimmed?.isEmpty == false ? trimmed : nil)
+        profile = kept
+        if kept.userName == nil {
+            try? FileManager.default.removeItem(at: profileURL)
+        } else {
+            try? FileManager.default.createDirectory(at: profileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? JSONEncoder().encode(kept).write(to: profileURL, options: .atomic)
         }
     }
 
@@ -64,6 +92,7 @@ public actor FactStore {
     public func clear() {
         loaded = []
         try? FileManager.default.removeItem(at: fileURL)
+        setUserName(nil)
     }
 
     private func facts() -> [Fact] {

@@ -41,7 +41,7 @@ struct Engine {
     /// `exchanges` is the session's history up to the layer on screen,
     /// oldest first; `current` that layer; `opened` a site this app opened
     /// by name and still shows.
-    func route(_ typed: String, exchanges: [SessionExchange], current: Layer?, opened: OpenedSite?) async -> EngineResult {
+    func route(_ typed: String, exchanges: [SessionExchange], current: Layer?, opened: OpenedSite?, persona: Persona = Persona()) async -> EngineResult {
         let sent = Array(exchanges.suffix(EngineRequest.maxExchanges))
         var query = typed
         var reading: ReadingSummary?
@@ -51,7 +51,7 @@ struct Engine {
         } else if let router {
             // The reading runs beside the Jev request; a reading that only
             // touched case or punctuation never asks Jev twice.
-            async let asked: ReadingSummary? = reader?.read(typed, exchanges: sent.map(\.exchange))
+            async let asked: ReadingSummary? = reader?.read(typed, exchanges: sent.map(\.exchange), persona: persona)
             let first = await router.decide(typed, exchanges: sent.map(\.exchange), opened: opened)
             reading = await asked
             if let read = reading?.query, reading?.changed == true {
@@ -82,7 +82,7 @@ struct Engine {
         // that notes a fact stated on the way to another pick: it keeps the
         // whole sentence, naming whoever it is about.
         if decision.instinct == .remember, let extractor {
-            let (text, summary) = await extractor.distill(query: query, exchanges: chained.map(\.exchange))
+            let (text, summary) = await extractor.distill(query: query, exchanges: chained.map(\.exchange), persona: persona)
             if let text { arguments["fact"] = .string(text) }
             extraction = summary
         }
@@ -90,7 +90,7 @@ struct Engine {
         if !missing.isEmpty {
             if let extractor {
                 let schema = spec.arguments.jsonSchema(only: missing)
-                switch await extractor.extract(query: query, exchanges: chained.map(\.exchange), schema: schema, now: .now) {
+                switch await extractor.extract(query: query, exchanges: chained.map(\.exchange), schema: schema, instructions: ValueExtractor.system(persona), now: .now) {
                 case let .values(values, summary):
                     arguments.merge(spec.arguments.validate(values)) { _, read in read }
                     extraction = summary
@@ -107,7 +107,7 @@ struct Engine {
         // the pick. The remember and forget instincts handle their own.
         var inferred: Fact?
         if decision.statesFact, decision.instinct != .remember, decision.instinct != .forget, let extractor {
-            let (text, summary) = await extractor.distill(query: query, exchanges: chained.map(\.exchange))
+            let (text, summary) = await extractor.distill(query: query, exchanges: chained.map(\.exchange), persona: persona)
             if let text { inferred = Fact(text: text, source: .inferred, madeBy: query) }
             if extraction == nil { extraction = summary }
         }

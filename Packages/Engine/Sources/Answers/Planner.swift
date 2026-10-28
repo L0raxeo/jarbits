@@ -77,22 +77,23 @@ public struct Planner: Sendable {
         return text
     }
 
-    public static func system(facts: [String], context: AnswerContext) -> String {
+    public static func system(facts: [String], context: AnswerContext, persona: Persona = Persona()) -> String {
         var lines = [
-            "You plan what a phone's browser does for a request. You never answer in text: nothing you write is shown to anyone. You act only by calling the tools below, and the device runs them.",
+            persona.identityLine,
+            "You plan what you do for a request \(persona.user) made. You never answer in text: nothing you write is shown to anyone. You act only by calling the tools below, and the device runs them.",
             "",
             "Rules:",
-            "- To tell the user anything, call narrative or one_line with a complete, self-contained question in its query, with whatever you learned from earlier steps folded in; the device answers it. Never summarise a result yourself.",
+            "- To tell \(persona.user) anything, call narrative or one_line with a complete, self-contained question in its query, with whatever you learned from earlier steps folded in; the device answers it. Never summarise a result yourself.",
             "- To confirm something, to choose, or to get a value the request leaves out, call ask; the answer comes back as the result.",
-            "- A tool that costs money or cannot be undone is confirmed with the user by the device before it runs, not by you.",
+            "- A tool that costs money or cannot be undone is confirmed with \(persona.user) by the device before it runs, not by you.",
             "- Show at most one thing, as the last step: \(InstinctSpec.all.filter(\.showsLayer).map(\.id).joined(separator: ", ")) each put a result on screen, and a second one would replace the first.",
-            "- When an answer on the sheet is something lasting about the user, call remember with it next.",
+            "- When an answer on the sheet is something lasting about \(persona.user) or their life, call remember with it next.",
             "- Call several tools in one turn only when none needs another's result; otherwise one at a time, and read the result before the next.",
             "- A step whose result says it ran is done: never call it again with the same arguments.",
             "- Call done when the request has been handled, or when nothing you can do would help.",
             "- Date and time: \(AnswerPrompt.dateText(context)). Locale: \(context.locale.identifier).",
             "",
-            "What you know about the user (told earlier; let it shape what you do, never repeat it):",
+            "\(AnswerPrompt.factsHeading(persona)) (told earlier; let it shape what you do, never repeat it):",
         ]
         lines += facts.isEmpty ? ["- nothing yet"] : facts.map { "- " + $0 }
         return lines.joined(separator: "\n")
@@ -125,7 +126,7 @@ public struct Planner: Sendable {
     public static func request(bundle: PlanBundle, transcript: [InteractionStep], model: String = model) -> InteractionRequest {
         InteractionRequest(
             model: model,
-            systemInstruction: system(facts: bundle.facts, context: bundle.context),
+            systemInstruction: system(facts: bundle.facts, context: bundle.context, persona: bundle.persona),
             input: "",
             maxOutputTokens: maxOutputTokens,
             thinkingLevel: thinkingLevel,
@@ -167,14 +168,16 @@ public struct PlanBundle: Sendable {
     public var memories: [MemoryRecord]
     public var tools: [ToolDeclaration]
     public var context: AnswerContext
+    public var persona: Persona
 
-    public init(query: String, exchanges: [Exchange], facts: [String], memories: [MemoryRecord], tools: [ToolDeclaration], context: AnswerContext) {
+    public init(query: String, exchanges: [Exchange], facts: [String], memories: [MemoryRecord], tools: [ToolDeclaration], context: AnswerContext, persona: Persona = Persona()) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
         self.memories = memories
         self.tools = tools
         self.context = context
+        self.persona = persona
     }
 }
 

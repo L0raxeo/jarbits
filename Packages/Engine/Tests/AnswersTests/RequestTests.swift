@@ -189,15 +189,29 @@ import Testing
     }
 
     @Test func factsFollowTheContextAndTheExchangesAndThePromptsNameTheBlock() throws {
-        let input = AnswerPrompt.input(query: "give me a dinner recipe", context: .example, earlier: [.search(query: "dinner", term: "dinner ideas")], facts: ["I'm vegetarian", "I hate cilantro"])
-        #expect(input.hasSuffix("- Searched \"dinner ideas\"\n\nWhat you know about the user (told earlier; let it shape the answer when it bears on it, never repeat it or say you were told):\n- I'm vegetarian\n- I hate cilantro"))
-        #expect(!AnswerPrompt.input(query: "x", context: .example).contains("What you know about the user"), "nothing added without facts")
-        let request = AnswerPrompt.request(format: .oneLine, query: "q", context: .example, facts: ["I use metric units"])
+        let input = AnswerPrompt.input(query: "give me a dinner recipe", context: .example, earlier: [.search(query: "dinner", term: "dinner ideas")], facts: ["Lorcan is vegetarian", "Lorcan hates cilantro"], persona: .example)
+        #expect(input.hasSuffix("- Searched \"dinner ideas\"\n\nWhat Jarvits knows about Lorcan (told earlier; let it shape the answer when it bears on it, never repeat it or say you were told):\n- Lorcan is vegetarian\n- Lorcan hates cilantro"))
+        #expect(!AnswerPrompt.input(query: "x", context: .example).contains("knows about"), "nothing added without facts")
+        let request = AnswerPrompt.request(format: .oneLine, query: "q", context: .example, facts: ["Lorcan uses metric units"], persona: .example)
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
-        #expect((json["input"] as? String)?.hasSuffix("- I use metric units") == true)
-        #expect(AnswerPrompt.system(for: .narrative).contains("What you know about the user"))
-        #expect(AnswerPrompt.system(for: .oneLine).contains("What you know about the user"))
-        #expect(AnswerPrompt.system(for: .narrative).contains("never list them back"))
+        #expect((json["input"] as? String)?.hasSuffix("- Lorcan uses metric units") == true)
+        #expect(AnswerPrompt.system(for: .narrative, persona: .example).contains("What Jarvits knows about Lorcan"))
+        #expect(AnswerPrompt.system(for: .oneLine, persona: .example).contains("What Jarvits knows about Lorcan"))
+        #expect(AnswerPrompt.system(for: .narrative, persona: .example).contains("never list them back"))
+        #expect(AnswerPrompt.system(for: .narrative).contains("What Jarvits knows about the person you assist"), "nameless until the name is given")
+    }
+
+    @Test func everyInstructionOpensWithWhoJarvitsIs() {
+        let line = Persona.example.identityLine
+        #expect(line == "You are Jarvits, the assistant in Lorcan's phone browser. Lorcan is the person speaking to you; you are not Lorcan. Speak of Lorcan by name and of yourself as Jarvits.")
+        for system in [AnswerPrompt.system(for: .narrative, persona: .example), AnswerPrompt.system(for: .oneLine, persona: .example), QueryReader.system(.example), ValueExtractor.system(.example), ValueExtractor.factSystem(.example), Planner.system(facts: [], context: .example, persona: .example)] {
+            #expect(system.hasPrefix(line + "\n"))
+        }
+        let nameless = Persona().identityLine
+        #expect(nameless.contains("whose name you do not know yet"))
+        #expect(QueryReader.system.hasPrefix(nameless))
+        #expect(Persona(userName: "  ").userName == nil)
+        #expect(ValueExtractor.factSystem(.example).contains("\"Lorcan's friend Noah is vegan\", \"Lorcan is allergic to peanuts\""))
     }
 
     @Test func contextCarriesDateZoneAndLocale() {

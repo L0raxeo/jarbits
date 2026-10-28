@@ -17,11 +17,16 @@ public struct ValueExtractor: Sendable {
     public static let timeout: Duration = .seconds(2)
     public static let maxOutputTokens = 120
 
-    public static let system = """
-        You read values out of a request made to a phone's browser. Reply with JSON matching the schema and nothing else.
+    /// The nameless form, for the CLI and tests; the app sends `system(_:)`.
+    public static var system: String { system(Persona()) }
+
+    public static func system(_ persona: Persona) -> String {
+        persona.identityLine + "\n" + """
+        You read values out of a request \(persona.user) made to you. Reply with JSON matching the schema and nothing else.
         A value is what the request says: a number as a number, words as the words used. Anything the request does not state is null.
         Never guess, never add fields. Earlier exchanges of the session may come before the request, oldest first; "it", "that" and the like resolve against them. Today's date may come too: a day the request names ("yesterday", "last week") is read against it.
         """
+    }
 
     public var client: GeminiClient
     /// The budget for one call; `Self.timeout` unless a test shortens it.
@@ -41,21 +46,30 @@ public struct ValueExtractor: Sendable {
         return lines.joined(separator: "\n")
     }
 
-    /// The schema and the instruction that distil a lasting fact about the
-    /// user out of a query that states one on the way to asking something
-    /// else ("I'm allergic to peanuts, what can I snack on").
-    public static let factSchema: JSONValue = [
-        "type": "object",
-        "properties": ["fact": ["type": ["string", "null"], "description": "the lasting personal fact, in one short sentence from the person's perspective, about whoever or whatever the words name; null when the request states none"]],
-        "required": [],
-        "additionalProperties": false,
-    ]
+    /// The schema and the instruction that read the lasting fact a query
+    /// states: told outright ("remember my friend Noah is vegan") or on the
+    /// way to asking something else ("I'm allergic to peanuts, what can I
+    /// snack on"). The fact is kept as Jarvits notes it, naming the user.
+    public static var factSchema: JSONValue { factSchema(Persona()) }
 
-    public static let factSystem = """
-        You note the personal fact a request made to a phone's browser states. Reply with JSON matching the schema and nothing else.
-        A fact is something lasting and personal: about the person, or about anyone or anything in their life, a preference, an allergy, a name, where they live, their job, a coworker, their mother's age. It will still be true next week and could shape a later answer. State it in one short sentence from the person's perspective, keeping who or what it is about as the words name them ("I'm allergic to peanuts", "Jasmine is 50 years old", "my coworker Sam is vegan"). Something true only now, a fact about the world with no one personal in it, or a question with nothing lasting in it is null.
+    public static func factSchema(_ persona: Persona) -> JSONValue {
+        [
+            "type": "object",
+            "properties": ["fact": ["type": ["string", "null"], "description": .string("the lasting personal fact, in one short sentence as \(Persona.assistant) notes it, naming \(persona.user) and whoever or whatever else the words name; null when the request states none")]],
+            "required": [],
+            "additionalProperties": false,
+        ]
+    }
+
+    public static var factSystem: String { factSystem(Persona()) }
+
+    public static func factSystem(_ persona: Persona) -> String {
+        persona.identityLine + "\n" + """
+        You note the personal fact a request \(persona.user) made to you states. Reply with JSON matching the schema and nothing else.
+        A fact is something lasting and personal: about \(persona.user), or about anyone or anything in their life, a preference, an allergy, a name, where they live, their job, a coworker, their mother's age. It will still be true next week and could shape a later answer. State it in one short sentence as you would note it, from your own point of view: \(persona.user) by name, never "I" or "my" for them, and whoever or whatever else the words name kept as the words relate them to \(persona.user) ("\(persona.users) friend Noah is vegan", "\(persona.user.capitalizedFirst) is allergic to peanuts", "\(persona.users) mom Jasmine is 50 years old"). Something true only now, a fact about the world with no one personal in it, or a question with nothing lasting in it is null.
         Earlier exchanges of the session may come before the request, oldest first.
         """
+    }
 
     public static func request(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, model: String = model, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil) -> InteractionRequest {
         InteractionRequest(
@@ -106,8 +120,8 @@ public struct ValueExtractor: Sendable {
 
     /// The lasting fact a query states on the way to something else, in one
     /// sentence; nil when the model found none or the call missed.
-    public func distill(query: String, exchanges: [Exchange]) async -> (fact: String?, summary: ExtractionSummary) {
-        switch await extract(query: query, exchanges: exchanges, schema: Self.factSchema, instructions: Self.factSystem) {
+    public func distill(query: String, exchanges: [Exchange], persona: Persona = Persona()) async -> (fact: String?, summary: ExtractionSummary) {
+        switch await extract(query: query, exchanges: exchanges, schema: Self.factSchema(persona), instructions: Self.factSystem(persona)) {
         case let .values(values, summary):
             let text = values["fact"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
             return (text?.isEmpty == false ? text : nil, summary)

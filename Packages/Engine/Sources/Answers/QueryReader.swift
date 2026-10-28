@@ -32,11 +32,16 @@ public struct QueryReader: Sendable {
         "additionalProperties": false,
     ]
 
-    public static let system = """
-        You read a request made to a phone's browser, usually dictated. Reply with JSON matching the schema and nothing else.
+    /// The nameless form, for the CLI and tests; the app sends `system(_:)`.
+    public static var system: String { system(Persona()) }
+
+    public static func system(_ persona: Persona) -> String {
+        persona.identityLine + "\n" + """
+        You read a request \(persona.user) made to you, usually dictated. Reply with JSON matching the schema and nothing else.
         query: the request, standing on its own. Drop dictation noise, fillers, false starts and repeated words. Keep every word that carries meaning, the person's own wording and language, names, numbers and addresses. A request that leans on the earlier exchanges comes back complete, with what they make clear folded in, so it can be read with nothing else in view. Never answer, never add anything the request and the exchanges do not say. A request with nothing to drop and nothing to fold in comes back exactly as it is.
         Earlier exchanges of the session may come before the request, oldest first, and today's date.
         """
+    }
 
     public var extractor: ValueExtractor
 
@@ -47,14 +52,14 @@ public struct QueryReader: Sendable {
     public var timeout: Duration { extractor.timeout }
 
     /// The request the app sends, for the report and the CLI.
-    public static func request(query: String, exchanges: [Exchange] = [], now: Date = .now, model: String = model) -> InteractionRequest {
-        ValueExtractor.request(query: query, exchanges: Array(exchanges.suffix(exchangesGiven)), schema: schema, instructions: system, model: model, maxOutputTokens: maxOutputTokens, now: now)
+    public static func request(query: String, exchanges: [Exchange] = [], now: Date = .now, model: String = model, persona: Persona = Persona()) -> InteractionRequest {
+        ValueExtractor.request(query: query, exchanges: Array(exchanges.suffix(exchangesGiven)), schema: schema, instructions: system(persona), model: model, maxOutputTokens: maxOutputTokens, now: now)
     }
 
     /// One call within the timeout; never throws. `.rewritten` only when
     /// the substance differs (`Substance.differs`).
-    public func read(_ query: String, exchanges: [Exchange] = [], now: Date = .now) async -> ReadingSummary {
-        let verdict = await extractor.extract(query: query, exchanges: Array(exchanges.suffix(Self.exchangesGiven)), schema: Self.schema, instructions: Self.system, maxOutputTokens: Self.maxOutputTokens, now: now)
+    public func read(_ query: String, exchanges: [Exchange] = [], now: Date = .now, persona: Persona = Persona()) async -> ReadingSummary {
+        let verdict = await extractor.extract(query: query, exchanges: Array(exchanges.suffix(Self.exchangesGiven)), schema: Self.schema, instructions: Self.system(persona), maxOutputTokens: Self.maxOutputTokens, now: now)
         switch verdict {
         case let .values(values, summary):
             let text = values["query"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

@@ -297,6 +297,10 @@ struct HomeView: View {
         }
         // The small sheet the app asks with: a question and a tap or a line to answer it.
         .modifier(AskSheetPresenter())
+        // Jarvits asks the user's name once, on the idle circle, while none is known.
+        .onChange(of: mode == .circle && session.stage == .idle && session.question == nil && session.userName == nil && session.nameLoaded, initial: true) { _, idle in
+            if idle { session.askNameIfNeeded() }
+        }
         .onChange(of: listening, initial: true) { _, listening in
             #if DEBUG
             if !listening {

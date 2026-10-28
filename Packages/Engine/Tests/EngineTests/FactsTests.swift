@@ -70,6 +70,23 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: store.fileURL.path(percentEncoded: false)))
     }
 
+    @Test func theNameIsKeptBesideTheFactsAndGoesWithAClear() async throws {
+        let store = store()
+        #expect(await store.userName() == nil)
+        await store.setUserName("  Lorcan ")
+        #expect(await store.userName() == "Lorcan")
+        #expect(await FactStore(fileURL: store.fileURL).userName() == "Lorcan", "persisted")
+        #expect(store.profileURL.lastPathComponent.hasSuffix(".profile.json") && store.profileURL.deletingLastPathComponent() == store.fileURL.deletingLastPathComponent())
+        await store.setUserName("")
+        #expect(await store.userName() == nil)
+        await store.setUserName("Lorcan")
+        await store.add(Fact(text: "Lorcan is vegetarian", source: .told, madeBy: "q"))
+        await store.clear()
+        #expect(await store.userName() == nil)
+        #expect(await store.all().isEmpty)
+        #expect(await FactStore(fileURL: store.fileURL).userName() == nil)
+    }
+
     @Test func theFilePersistsAcrossInstancesAndSkipsABadLine() async throws {
         let store = store()
         defer { try? FileManager.default.removeItem(at: store.fileURL) }

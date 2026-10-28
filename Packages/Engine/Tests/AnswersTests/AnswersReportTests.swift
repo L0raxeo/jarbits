@@ -13,8 +13,9 @@ import Testing
 
     @Test func reportQuotesThePromptsTheAppSends() {
         let markdown = AnswersReport.markdown()
-        #expect(markdown.contains(AnswerPrompt.system(for: .narrative)))
-        #expect(markdown.contains(AnswerPrompt.system(for: .oneLine)))
+        #expect(markdown.contains(AnswerPrompt.system(for: .narrative, persona: .example)))
+        #expect(markdown.contains(AnswerPrompt.system(for: .oneLine, persona: .example)))
+        #expect(markdown.contains("## Who Jarvits is") && markdown.contains(Persona.example.identityLine))
         #expect(markdown.contains(AnswerPrompt.input(query: "<query>", context: .example)))
         #expect(markdown.contains(GeminiClient.defaultModel))
         #expect(markdown.contains("### `narrative` — system instruction, max \(AnswerPrompt.maxOutputTokens(for: .narrative)) output tokens"))
@@ -24,9 +25,9 @@ import Testing
         #expect(markdown.contains("- Searched \"<term searched>\"\n- Read \"<page title>\" (<host>)"), "the block is rendered from the same code")
         #expect(markdown.contains("### Input with facts"))
         #expect(markdown.contains("- <fact>\n- <fact>"))
-        #expect(markdown.contains(ValueExtractor.factSystem))
+        #expect(markdown.contains(ValueExtractor.factSystem(.example)))
         #expect(markdown.contains("### Values read by Gemini"))
-        #expect(markdown.contains(ValueExtractor.system))
+        #expect(markdown.contains(ValueExtractor.system(.example)))
         #expect(markdown.contains("Earlier: Searched \"<term searched>\"\nRequest: <query>"))
         #expect(markdown.contains("\"required\":[\"temperature\"]"))
         #expect(markdown.contains("`extraction.outcome = extracted`"))

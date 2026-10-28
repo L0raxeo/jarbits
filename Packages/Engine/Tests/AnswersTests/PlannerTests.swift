@@ -40,13 +40,15 @@ import Testing
     }
 
     @Test func theSystemInstructionCarriesTheRulesAndTheFacts() {
-        let system = Planner.system(facts: ["I'm vegetarian", "I live in Austin"], context: .example)
+        let system = Planner.system(facts: ["Lorcan is vegetarian", "Lorcan lives in Austin"], context: .example, persona: .example)
+        #expect(system.hasPrefix(Persona.example.identityLine))
         #expect(system.contains("nothing you write is shown to anyone"))
+        #expect(system.contains("What Jarvits knows about Lorcan"))
         #expect(system.contains("Show at most one thing, as the last step: web_results, narrative, map, stock, one_line, recall, image, site, video, time each put a result on screen"))
         #expect(system.contains("call remember with it next"))
         #expect(system.contains("never call it again with the same arguments"))
         #expect(system.contains("Call done when the request has been handled"))
-        #expect(system.contains("- I'm vegetarian\n- I live in Austin"))
+        #expect(system.contains("- Lorcan is vegetarian\n- Lorcan lives in Austin"))
         #expect(system.contains("Locale: en_US"))
         #expect(Planner.system(facts: [], context: .example).contains("- nothing yet"))
     }

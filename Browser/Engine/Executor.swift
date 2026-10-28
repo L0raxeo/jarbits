@@ -57,7 +57,8 @@ final class Executor {
         let bundle = PlanBundle(
             query: query, exchanges: exchanges, facts: facts, memories: memories,
             tools: Planner.tools(for: InstinctSpec.all),
-            context: AnswerContext(locale: .current, timeZone: .current, now: now)
+            context: AnswerContext(locale: .current, timeZone: .current, now: now),
+            persona: session.persona
         )
         var transcript: [InteractionStep] = [.userText(Planner.input(query: query, exchanges: exchanges, memories: memories, now: now))]
         var ran: Set<String> = []

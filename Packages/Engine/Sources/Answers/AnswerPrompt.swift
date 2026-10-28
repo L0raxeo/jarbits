@@ -41,13 +41,19 @@ public enum AnswerPrompt {
     public static let knowledgeCutoff = DateComponents(year: 2025, month: 1)
     public static let knowledgeCutoffText = "January 2025"
 
-    public static func system(for format: Instinct) -> String {
+    public static func system(for format: Instinct, persona: Persona = Persona()) -> String {
         switch format {
-        case .narrative: narrative
-        case .oneLine: oneLine
+        case .narrative: narrative(persona)
+        case .oneLine: oneLine(persona)
         case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time:
             preconditionFailure("\(format) is not answered by a model")
         }
+    }
+
+    /// The heading of the facts block in the input, and the name the rules
+    /// give it.
+    public static func factsHeading(_ persona: Persona) -> String {
+        "What \(Persona.assistant) knows about \(persona.user)"
     }
 
     /// Includes thought tokens, so there is headroom above the visible answer.
@@ -63,9 +69,9 @@ public enum AnswerPrompt {
     /// `earlier` is the exchanges of this session the query depends on, from
     /// other layers than the answer's own thread (a search, a page read, a
     /// picture looked at), oldest first; empty for a query that stands alone.
-    /// `facts` is everything the app knows about the user, each in their
-    /// own words, oldest first; every one goes, there are few.
-    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = []) -> String {
+    /// `facts` is everything Jarvits knows about the user, as he noted it,
+    /// oldest first; every one goes, there are few.
+    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], persona: Persona = Persona()) -> String {
         var lines = [
             "Query: \(query)",
             "",
@@ -83,7 +89,7 @@ public enum AnswerPrompt {
         }
         if !facts.isEmpty {
             lines.append("")
-            lines.append("What you know about the user (told earlier; let it shape the answer when it bears on it, never repeat it or say you were told):")
+            lines.append("\(factsHeading(persona)) (told earlier; let it shape the answer when it bears on it, never repeat it or say you were told):")
             for fact in facts {
                 lines.append("- " + fact)
             }
@@ -109,7 +115,7 @@ public enum AnswerPrompt {
     /// narrative on screen, sent whole: every earlier query and answer, so
     /// a reply can lean on anything said in it. Empty for a fresh answer.
     /// `earlier` is what else in this session the query depends on, and
-    /// `facts` what the app knows about the user; see `input`.
+    /// `facts` what Jarvits knows about the user; see `input`.
     public static func request(
         format: Instinct,
         query: String,
@@ -117,19 +123,21 @@ public enum AnswerPrompt {
         model: String = GeminiClient.defaultModel,
         history: [AnswerTurn] = [],
         earlier: [Exchange] = [],
-        facts: [String] = []
+        facts: [String] = [],
+        persona: Persona = Persona()
     ) -> InteractionRequest {
         InteractionRequest(
             model: model,
-            systemInstruction: system(for: format),
-            input: input(query: query, context: context, earlier: earlier, facts: facts),
+            systemInstruction: system(for: format, persona: persona),
+            input: input(query: query, context: context, earlier: earlier, facts: facts, persona: persona),
             history: history,
             maxOutputTokens: maxOutputTokens(for: format)
         )
     }
 
-    static let narrative = """
-        You answer web search queries for a browser. The user typed a query and expects a short written answer.
+    static func narrative(_ persona: Persona) -> String {
+        persona.identityLine + "\n" + """
+        You answer the queries \(persona.user) puts to you. \(persona.user.capitalizedFirst) typed a query and expects a short written answer.
 
         Rules:
         - Open with the most immediate, simple answer in the first line or two. Everything after that supports it.
@@ -139,20 +147,22 @@ public enum AnswerPrompt {
         - Earlier turns of this conversation may come before the query, oldest first; the context block applies to all of them. Then the query is a reply to your last answer: resolve "it", "that", "why" and the like against the conversation, do not repeat what you already said, and answer only the new question.
         - Your knowledge ends around \(knowledgeCutoffText) and you have no access to the web; the context says how long ago that was. Answer with what you knew then, stated as plain fact. Never say when your knowledge ends, that the answer may be out of date, or that you cannot check: the browser puts a web link under every answer. Do not invent developments after that date.
         - Use the context block for "today" and "now". Do not mention the context unless the query is about it.
-        - A block "What you know about the user" may follow the context: facts the user told the app before. Let them shape the answer when they bear on it (a vegetarian gets a vegetarian recipe); ignore them otherwise; never list them back, repeat them or say you were told.
+        - A block "\(factsHeading(persona))" may follow the context: facts \(persona.user) told you before, as you noted them. Let them shape the answer when they bear on it (a vegetarian gets a vegetarian recipe); ignore them otherwise; never list them back, repeat them or say you were told.
         - If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
         - Write in the language of the query.
 
         Emphasis. Mark it with exactly these markers and nothing else:
-        - ==…== for the single most important thing the user should take away, at most once in the whole answer (each answer in a conversation has its own).
+        - ==…== for the single most important thing \(persona.user) should take away, at most once in the whole answer (each answer in a conversation has its own).
         - **…** for the facts that directly answer the question, a few at most.
         - __…__ for a condition or caveat that changes the answer.
         - _…_ for a name, title or term you are introducing.
         Most sentences have no markers. Never put a marker around a whole sentence or paragraph.
         """
+    }
 
-    static let oneLine = """
-        You answer web search queries for a browser with a single line.
+    static func oneLine(_ persona: Persona) -> String {
+        persona.identityLine + "\n" + """
+        You answer the queries \(persona.user) puts to you with a single line.
 
         Rules:
         - Reply with one line only: a number, a word, a name, a date, a time, or a short clause. Examples: "24 days", "Lima", "8:14 PM", "About 92 euros".
@@ -161,12 +171,13 @@ public enum AnswerPrompt {
         - Earlier turns of this conversation may come before the query, oldest first; the query may lean on them ("and chile?", "in km?"): resolve it against your last answer and answer only the new question, still in one line.
         - Your knowledge ends around \(knowledgeCutoffText) and you have no access to the web. If the question needs live data, such as today's weather, a current price or exchange rate, a live score, or the latest news, or if the answer may have changed since \(knowledgeCutoffText), such as whether a person is alive or who currently holds a role, reply with exactly: \(liveDataMarker)
         - You do know the current date and time from the context block. Compute dates, countdowns and the time in other places from it.
-        - A block "What you know about the user" may follow the context: facts the user told the app before. Let them shape the line when they bear on it; ignore them otherwise; never repeat them or say you were told.
+        - A block "\(factsHeading(persona))" may follow the context: facts \(persona.user) told you before, as you noted them. Let them shape the line when they bear on it; ignore them otherwise; never repeat them or say you were told.
         - If the honest answer is a range or depends on something, give the typical value in the line, such as "Usually 7 to 10 days".
         - If the question cannot be answered in one line, answer its most direct version in one line anyway.
         - Answer in the language of the query.
         - You may wrap the key word or number in ==…==, as in "About ==92== euros". No other markers, no Markdown.
         """
+    }
 
     /// Whole months from the knowledge cutoff to the context's date, never negative.
     static func monthsSinceCutoff(_ context: AnswerContext) -> Int {

@@ -139,6 +139,13 @@ final class BrowserSession {
     let facts: FactStore
     /// The facts' words, for the answer prompts; refreshed after every change.
     private(set) var factTexts: [String] = []
+    /// The user's name, asked on the sheet when the app is first installed
+    /// or its memory is cleared; nil until given.
+    private(set) var userName: String?
+    /// Jarvits and the user, for every Gemini prompt.
+    var persona: Persona { Persona(userName: userName) }
+    /// The name was asked this launch: a swipe away is not asked again until the next.
+    private var askedName = false
     /// Jev judging which fact a forget means; nil offers the shortlist in word order.
     let factResolver: FactResolver?
     /// The fact kept or dropped a moment ago, shown for `FactMark.linger`.
@@ -167,7 +174,10 @@ final class BrowserSession {
         self.answerClient = answerClient
         Task { [weak self] in
             let texts = await facts.all().map(\.text)
+            let name = await facts.userName()
             self?.factTexts = texts
+            self?.userName = name
+            self?.nameLoaded = true
         }
         dictation.mayListen = { [weak self] in
             await self?.audioIsQuiet() ?? true
@@ -202,7 +212,7 @@ final class BrowserSession {
         let token = UUID()
         requestToken = token
         Task {
-            let result = await engine.route(trimmed, exchanges: exchanges, current: shown, opened: opened)
+            let result = await engine.route(trimmed, exchanges: exchanges, current: shown, opened: opened, persona: persona)
             guard token == requestToken else { return }   // a newer query won, or cancelled
             lastQuery = result.query   // the words that ran: the label, the exchange, the layer and the record carry them
             #if DEBUG
@@ -248,6 +258,32 @@ final class BrowserSession {
     /// The sheet was swiped away.
     func dismissQuestion() {
         question?.cancel()
+    }
+
+    /// The name has been read from the store; until then nothing asks for it.
+    private(set) var nameLoaded = false
+
+    /// Puts "What's your name?" on the sheet while no name is known, once
+    /// per launch, and keeps the answer. Called by the home screen when the
+    /// circle is idle and nothing else is on the sheet.
+    func askNameIfNeeded() {
+        guard nameLoaded, userName == nil, !askedName, question == nil, stage == .idle else { return }
+        askedName = true
+        let pending = PendingQuestion(title: "What's your name?", input: .text(placeholder: "Your name"))
+        question = pending
+        Task {
+            let answer = await pending.wait()
+            if question === pending { question = nil }
+            if case let .text(name)? = answer { await setUserName(name) }
+        }
+    }
+
+    func setUserName(_ name: String?) async {
+        await facts.setUserName(name)
+        userName = await facts.userName()
+        #if DEBUG
+        print("user name \(userName.map { "\"\($0)\"" } ?? "cleared")")
+        #endif
     }
 
     // MARK: Facts
@@ -556,7 +592,7 @@ final class BrowserSession {
         layer.reading = context.reading
         if layer.answer == nil { layer.answer = makeAnswer(for: layer) }
         stage = .loading
-        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: factTexts)
+        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: factTexts, persona: persona)
     }
 
     /// A site the book knew opens, in a new layer, as opened by name.
@@ -976,13 +1012,17 @@ final class BrowserSession {
     }
 
     #if DEBUG
-    /// Forgets every memory and picture, every learned site and every fact. A Debug control until a real one exists.
+    /// Forgets every memory and picture, every learned site, every fact and
+    /// the user's name, which is asked again. A Debug control until a real one exists.
     func clearMemory() {
         Task {
             await memory.clear()
             await sites.clear()
             await facts.clear()
             factTexts = []
+            userName = nil
+            askedName = false
+            askNameIfNeeded()
         }
     }
     #endif

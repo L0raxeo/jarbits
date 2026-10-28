@@ -517,15 +517,32 @@ exported memories file. Debug builds show a "Clear memory" link at the top of th
 screen that deletes the file and every picture; there is no user-facing
 control yet.
 
+## Jarvits and the user
+
+The app is an assistant, Jarvits, assisting the person holding the phone;
+he is not that person. Every Gemini instruction he sends (the reading, the
+value reader, the fact reader, both answer formats, the planner) opens
+with one identity line (`Persona.identityLine` in the Answers library):
+"You are Jarvits, the assistant in Lorcan's phone browser. Lorcan is the
+person speaking to you; you are not Lorcan. Speak of Lorcan by name and of
+yourself as Jarvits." For that he needs the user's name: with none known,
+the home screen puts "What's your name?" on the small sheet as soon as the
+circle is idle (`BrowserSession.askNameIfNeeded`), once per launch; a
+swipe away asks again at the next launch, and until a name is given the
+prompts say "the person you assist". The name lives in
+`facts.profile.json` beside the facts (`FactStore.userName`) and goes with
+"Clear memory", which asks it again at once. Jev never sees any of this.
+
 ## Facts
 
-A fact is one thing the app knows about the user, in their own words: a
-preference, an allergy, a name, where they live. Facts are the second
-memory store, beside the memories of things seen: few, short, and never
-expiring on their own. Every fact goes into every answer (`AnswerPrompt`'s
-"What you know about the user" block, after the context and the earlier
-exchanges; the prompts say to let them shape the answer when they bear on
-it and never to repeat them), and later into every plan. Nothing in the
+A fact is one thing Jarvits knows about the user, noted from his point of
+view: "Lorcan is allergic to peanuts", "Lorcan's friend Noah is vegan",
+"Lorcan's mom Jasmine is 50". Facts are the second memory store, beside
+the memories of things seen: few, short, and never expiring on their own.
+Every fact goes into every answer (`AnswerPrompt`'s "What Jarvits knows
+about Lorcan" block, after the context and the earlier exchanges; the
+prompts say to let them shape the answer when they bear on it and never to
+repeat them), and into every plan. Nothing in the
 file leaves the phone except inside a Gemini request, which keeps nothing
 (`store: false`).
 
@@ -534,23 +551,23 @@ A fact comes to be known three ways (`Fact.source`):
   vegetarian", "note that I don't eat pork". Jev picks the `remember`
   instinct; the fact is what the fact reader (`ValueExtractor.distill`,
   the same call that notes a fact on any other pick) reads out of the
-  words, from the user's perspective, naming whoever it is about ("My
-  friend Bob is vegan.").
+  words, as Jarvits notes it, naming the user and whoever else it is
+  about ("Lorcan's friend Bob is vegan.").
   A plain statement with nothing asked ("I live in austin now") is a
   remember too.
 - **inferred**: the query states something lasting on the way to asking
   something else ("I'm allergic to peanuts, what can I snack on"). Every
   request carries a `remember` question (ENGINE.md); at or above
   `EngineRequest.rememberThreshold` (0.5) on any other pick, the pick runs
-  as usual and the same small call distils the fact into one sentence in
-  the user's voice, which is kept quietly. The query waits for that call
+  as usual and the same small call distils the fact into one sentence as
+  Jarvits notes it, which is kept quietly. The query waits for that call
   (about a second) before the pick runs.
 - **chosen**: the answer to a question a plan put on the sheet, when the
   plan keeps it (a `remember` step right after an `ask`; see "Advanced
   reasoning").
 
-Keeping a fact shows one quiet line for three seconds, "Remembered: I'm
-vegetarian", above the capsule over a result or under the clay on the idle
+Keeping a fact shows one quiet line for three seconds, "Remembered: Lorcan
+is vegetarian", above the capsule over a result or under the clay on the idle
 screen (`RememberedMark`): the only sign that something was kept, so a
 wrong note can be seen and undone. The same words again (case and
 punctuation aside) refresh the fact rather than repeat it.
