@@ -10,7 +10,9 @@ import SwiftUI
 /// hidden, swelling with the voice as the clay does. One view, so the looks
 /// morph rather than swap. A swipe across it goes back a layer (to the
 /// right) or forward (to the left); the capsule collapses from the side the
-/// swipe started on toward where it goes, and springs back.
+/// swipe started on toward where it goes, and springs back. A query too long
+/// for the capsule is cut with an ellipsis; holding the capsule down grows
+/// it to show the whole query, and it shrinks back on release.
 struct ClayCapsule: View {
     var text: String
     var compact: Bool
@@ -50,6 +52,14 @@ struct ClayCapsule: View {
     @State private var swipeTravel: CGFloat = 0
     /// 0 purple … 1 red, eased over a few frames rather than switched.
     @State private var warmth = VoicePulse(attack: 0.35, release: 0.35)
+    /// The query's width on one line, unclipped; past the capsule's room it
+    /// is cut, and a hold shows it whole.
+    @State private var labelWidth: CGFloat = 0
+    /// A finger is holding the capsule down over a cut query: the capsule
+    /// is grown to the whole query, as many lines as it takes.
+    @State private var expanded = false
+    /// The hold just ended: the release is not a tap.
+    @State private var justHeld = false
 
     static let openHeight: CGFloat = 46
     static let compactHeight: CGFloat = 34
@@ -72,7 +82,17 @@ struct ClayCapsule: View {
         (compact ? compactHeight - compactDrop : openHeight) + bottomPadding + 8
     }
 
-    private var height: CGFloat {
+    /// Side padding around the label.
+    private static let labelInset: CGFloat = 18
+    /// How long a finger rests before the capsule grows.
+    private static let holdDuration: TimeInterval = 0.35
+
+    /// The label does not fit on one line: it is cut, and a hold shows it.
+    private var truncated: Bool { labelWidth + 2 * Self.labelInset > maxWidth + 0.5 }
+    private var holdable: Bool { swipeable && truncated }
+
+    private var height: CGFloat? {
+        if expanded { return nil }
         if loading { return Self.lineThickness + 2 * Self.waveHeight }
         if editing { return Self.editingHeight }
         if hearing { return Self.openHeight }
@@ -81,6 +101,7 @@ struct ClayCapsule: View {
 
     /// A square frame makes the shape exactly a circle.
     private var width: CGFloat? {
+        if expanded { return maxWidth }
         if loading { return Self.lineWidth }
         if editing { return fieldWidth }
         if hearing { return Self.openHeight }
@@ -91,7 +112,23 @@ struct ClayCapsule: View {
     private var widest: CGFloat { editing ? fieldWidth : circular ? Self.openHeight : maxWidth }
     private var hidesText: Bool { editing || loading || hearing }
     /// Only the plain label swipes: not the field, the line or the circle.
-    private var swipeable: Bool { !editing && !loading && !hearing }
+    private var swipeable: Bool { !editing && !loading && !hearing && !expanded }
+
+    /// A rest of `holdDuration` grows the capsule; lifting shrinks it back.
+    private var hold: some Gesture {
+        LongPressGesture(minimumDuration: Self.holdDuration)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                if case .second = value, !expanded {
+                    withAnimation(.spring(duration: 0.35, bounce: 0.15)) { expanded = true }
+                    justHeld = true
+                }
+            }
+            .onEnded { _ in
+                withAnimation(.spring(duration: 0.35, bounce: 0.1)) { expanded = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { justHeld = false }
+            }
+    }
 
     /// How much of its width the capsule gives up at most, and how far a
     /// swipe must travel to count.
@@ -141,14 +178,27 @@ struct ClayCapsule: View {
                 Text(text)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                    .lineLimit(1)
+                    .lineLimit(expanded ? nil : 1)
                     .truncationMode(.tail)
+                    .multilineTextAlignment(.leading)
                     // Only the capsule's height changes between the two sizes: the
-                    // text and its side padding stay put.
-                    .padding(.horizontal, 18)
+                    // text and its side padding stay put. Grown, it takes the
+                    // lines it needs with the same room above and below.
+                    .padding(.horizontal, Self.labelInset)
+                    .padding(.vertical, expanded ? (Self.openHeight - 20) / 2 : 0)
                     // Gone while hidden; fading out as a swipe collapses the shape.
                     .opacity(hidesText ? 0 : swipeTextOpacity)
                     .animation(.easeOut(duration: 0.15), value: hidesText)
+                    // The label's one-line width, measured unclipped, says
+                    // whether the capsule cuts it.
+                    .background {
+                        Text(text)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .fixedSize()
+                            .hidden()
+                            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { labelWidth = $0 }
+                    }
             }
             .frame(height: height)
             .frame(width: width)
@@ -163,7 +213,7 @@ struct ClayCapsule: View {
                     WavyCapsule(
                         amplitude: loading ? Self.waveHeight : 0,
                         crest: crest,
-                        thickness: loading ? Self.lineThickness : height
+                        thickness: loading ? Self.lineThickness : expanded ? min(proxy.size.height, Self.openHeight) : (height ?? proxy.size.height)
                     )
                     .fill(Palette.breathingMesh(at: t, warmth: red))
                     .frame(width: proxy.size.width * swipeScale)
@@ -185,22 +235,24 @@ struct ClayCapsule: View {
             // As the listening circle, the same shadow as the buttons beside it.
             .shadow(color: ListeningCapsule.shadowColor.opacity(circular ? 1 : 0), radius: ListeningCapsule.shadowRadius, y: ListeningCapsule.shadowY)
         }
-        .fixedSize(horizontal: !editing && !loading, vertical: false)
+        .fixedSize(horizontal: !editing && !loading && !expanded, vertical: false)
         // The circle takes no more than its own width, so the buttons beside
         // it in the row sit right next to it rather than at the far edge.
         .frame(maxWidth: widest)
-        .offset(y: compact && !editing && !loading && !hearing ? Self.compactDrop : 0)
+        .offset(y: compact && !editing && !loading && !hearing && !expanded ? Self.compactDrop : 0)
         .contentShape(Capsule())
         .onTapGesture {
-            if !editing && !loading { onTap() }
+            if !editing && !loading && !expanded && !justHeld { onTap() }
         }
         .gesture(swipe, including: swipeable ? .all : .none)
+        .simultaneousGesture(hold, including: holdable || expanded ? .all : .none)
         // A swipe to another layer changes the query: the capsule grows or
         // shrinks to it from both sides rather than jumping.
         .animation(.spring(duration: 0.35, bounce: 0.1), value: text)
         .animation(.spring(duration: 0.35, bounce: 0.1), value: compact)
         .animation(.spring(duration: 0.35, bounce: 0.1), value: editing)
         .animation(.spring(duration: 0.35, bounce: 0.1), value: hearing)
+        .animation(.spring(duration: 0.35, bounce: 0.1), value: expanded)
         // No bounce into the line: an overshoot would push its height below zero.
         .animation(.smooth(duration: 0.45), value: loading)
         .accessibilityElement(children: editing ? .contain : .ignore)

@@ -148,6 +148,11 @@ struct WavyCapsule: Shape {
         let start = rect.minX + radius
         let end = rect.maxX - radius
         guard end - start > 0.5, amplitude > 0.01 else {
+            // Taller than its thickness (the capsule grown to a long query):
+            // the whole rect, its corners as round as the capsule's ends.
+            if rect.height > thickness + 0.5 {
+                return RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: rect)
+            }
             return Capsule().path(in: CGRect(x: rect.minX, y: rect.midY - radius, width: rect.width, height: thickness))
         }
         let length = end - start

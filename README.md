@@ -152,7 +152,7 @@ reading (see "The reading") in parallel:
 - **The pick stands.** The one fallback is an unsure pick: confidence below
   `EngineRequest.confidenceFloor` (0.5) runs `web_results`, logged as
   `confidenceFallback` with the pick kept as `suggested`. Any error or a
-  2.5 s timeout does the same. Nothing overrules a sure pick: Jev's
+  20 s timeout does the same. Nothing overrules a sure pick: Jev's
   `recent` answer is the answer instincts' to act on (a reply that may have
   gone stale is web results instead, logged as `recency` on the pick's
   line), and its `rejects` answer is the site instinct's.
