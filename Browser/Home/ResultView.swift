@@ -97,6 +97,8 @@ struct ResultView: View {
             }
         case let .time(_, text):
             AnswerView(spans: AnswerMarkup.styled(text, for: .oneLine), stoppedEarly: false, format: .oneLine, clayY: clayY, barCompact: $barCompact)
+        case let .said(_, text):
+            AnswerView(spans: AnswerMarkup.styled(text, for: .narrative), stoppedEarly: false, format: .narrative, clayY: clayY, barCompact: $barCompact)
         case let .memory(record):
             // A remembered conversation shows its earlier turns and ends on its last.
             let turns = record.turns ?? []

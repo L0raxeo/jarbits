@@ -18,6 +18,9 @@ enum CardPlan: Hashable, Sendable {
     case answer(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange])
     /// The time from the device clock; `text` carries the one-line markup.
     case time(query: String, text: String)
+    /// What the planner said in its own words, shown as it is: no model
+    /// reads it. `query` is the user's words, the capsule's.
+    case said(query: String, text: String)
     /// Several memories matched; a card lists them and a tap replays one.
     /// `title` says what they are when the query asked for a set
     /// ("Everything about Dyson PencilVac", "Last 5 searches"); nil for a
@@ -36,6 +39,7 @@ enum CardPlan: Hashable, Sendable {
         case .web: "web"
         case let .answer(_, query, history, _): "answer:" + (history.first?.query ?? query)
         case let .time(query, _): "answer:" + query   // the thread grown from it is the same card
+        case let .said(query, _): "answer:" + query
         case .recallPicker: "picker"
         case let .memory(record): "memory:\(record.id)"
         case .siteChoices: "choices"
