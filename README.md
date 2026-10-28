@@ -149,10 +149,14 @@ reading (see "The reading") in parallel:
 - When the reading rewrote the words (dictation noise, a false start), Jev
   is asked again on the read words and that pick wins; the read words are
   what everything after receives, and the log keeps both.
-- **The pick stands.** The one fallback is an unsure pick: confidence below
-  `EngineRequest.confidenceFloor` (0.5) runs `web_results`, logged as
-  `confidenceFallback` with the pick kept as `suggested`. Any error or a
-  20 s timeout does the same. Nothing overrules a sure pick: Jev's
+- **The pick is a shortcut.** A pick at or above
+  `EngineRequest.confidenceFloor` (0.9) runs straight. Below it the query
+  is planned (see "Advanced reasoning"): the planner reads the request
+  with every instinct as a tool and calls what fits; logged as
+  `confidenceFallback` with the pick kept as `suggested`. Google is never
+  the engine's own fallback; the planner may choose `web_results`. Without
+  a Gemini key, or on an error or the 20 s timeout, web results stand in.
+  Nothing overrules a sure pick: Jev's
   `recent` answer is the answer instincts' to act on (a reply that may have
   gone stale is web results instead, logged as `recency` on the pick's
   line), and its `rejects` answer is the site instinct's.
@@ -243,8 +247,20 @@ instruction asks again. `--baseline before.jsonl` lists what flipped
 pass→fail and fail→pass since that run and exits 1 on a regression;
 `--only image` runs one instinct. A query that routed wrongly on the phone
 becomes one more line in the file, with its intended instinct and a note.
-The set is 108 of 111 after the cut (2026-10-27): the three misses are
-unsure picks the architecture sends to web, each with a note.
+A case whose `instinct` is `planned` expects an unsure pick, which the
+engine plans; `pick` can pin what Jev leaned to. The set is 121 of 121
+after the floor rose to 0.9 (2026-10-29): fifteen cases under it became
+`planned`, and five long dictated stories joined it.
+
+The planner has its own set, `Packages/Engine/Evals/plans.jsonl`: a
+request with the exchanges, facts and memories around it, and the calls
+the first round should make, by name in order, with any argument that
+matters pinned (a handle, say). `swift run --package-path Packages/Engine
+report plans` runs them with the Gemini key, caches each first round by
+its request bytes (`.evalcache/plans/`), and prints passes, misses with
+what was called instead, and a count per first call. The first round is
+where the choice of tool and handle is made; what follows depends on
+what the device did and is the phone's to check.
 
 The golden set only catches what it already knows. To stress Jev with
 queries nobody has labelled, by hand and whenever you like:
@@ -259,9 +275,9 @@ across the instincts, with the typos, casing, leads and trailers people
 type) go through the same chain, and the output is a triage list rather than
 pass/fail. Each row is what the app did (instinct, source, confidence,
 recency, the runner-up), why to doubt it, and a `{"query": …,
-"instinct": …}` line labelled with what the app did, to paste into
-`engine.jsonl` as is when that was right or with the instinct corrected when
-it was not. Rows come most doubtful first: a confidence or recency within
+"instinct": …}` line labelled with what the app did (`planned` for an
+unsure pick), to paste into `engine.jsonl` as is when that was right or
+with the instinct corrected when it was not. Rows come most doubtful first: a confidence or recency within
 0.15 of its threshold or an unsure pick (the closest call first), then
 anything that failed or was not cached, then the sure rows. The draw is
 fixed by the day (or `--seed`), so a repeat the same day runs from the
@@ -442,22 +458,24 @@ become the ask over what each record stores (`RecallAsk`): videos are
 pages on a video host (a short list in `MemoryRecord.videoHosts`; a host's
 front page, as "go to youtube" opens it, is the site and not a video) or
 titled as one, answers are answers, a span keeps what was seen then. No
-word list reads the query. Then the phrasing is
-dropped ("remember", "that", "my", "pull up", "can") and the records left
-are ranked by the words that remain, in their queries, titles, addresses
-and text; a name spelt nearly right still counts ("hennessy" finds
-"hennessey", as dictation spells names); records holding every word win,
-then records holding any, then the rest of the filtered set newest first;
-at most ten (`MemorySearch.shortlist`). With no filter and no content word
-there is nothing to go on, and the words go to the web. Last, the
+word list reads the query. The thing to bring back is the extractor's
+`topic` ("that thing about gingivitis again" → "gingivitis"; null when
+the words name nothing), and the records left are ranked by its words, in
+their queries, titles, addresses and text; a name spelt nearly right
+still counts ("hennessy" finds "hennessey", as dictation spells names);
+records holding every word win, then records holding any, then the rest
+of the filtered set newest first; at most ten (`MemorySearch.shortlist`).
+With no filter and no topic there is nothing to go on, and the words go
+to the web. Last, the
 shortlist goes to Jev in one request, a yes/no question per memory naming
 its kind, when, its host and its title (`RecallRouting`, see ENGINE.md).
 A memory at or above 0.5 is the one asked for and is shown alone;
 otherwise everything at or above 0.3 is plausible and is shown in Jev's
 order. Nothing ever opens straight away: even a single memory is shown in
 the grid, so the user sees what was found before it takes the screen; nothing
-plausible falls through to a Google search for the query's content words
-("that thing about gingivitis again" searches "gingivitis"), so a wrong
+plausible falls through to a Google search for the topic ("that thing
+about gingivitis again" searches "gingivitis"), or for the words as they
+ran when none was named, so a wrong
 judgement costs nothing visible. A failed or slow Jev request, or no key,
 shows the shortlist in word order instead. The kind words are a preference,
 not a wall: "what you told me about the dyson" prefers an answer, but when
@@ -466,7 +484,7 @@ no answer holds those words and pages or searches do, those are shortlisted.
 A query that asks for everything ("pull up everything we talked about with
 the Dyson PencilVac", "all the videos from yesterday") wants a collection,
 not one thing (`RecallAsk.collection`). The kinds become no bar, the
-shortlist is every memory holding any of the content words (a span still
+shortlist is every memory holding any of the topic's words (a span still
 holds), and Jev is asked, per memory, whether it is about the topic
 rather than whether it is the one. Everything at or above 0.5 is shown,
 newest first, in the grid titled "Everything about <topic>"; one alone
@@ -582,8 +600,9 @@ punctuation aside) refresh the fact rather than repeat it.
 "Forget that", "forget that I'm vegetarian", "stop remembering my peanut
 allergy" is the `forget` instinct, the first destructive one: the facts
 the words point at are shortlisted on the device (`FactSearch`: the ones
-holding any of the content words first, then the newest, so a bare
-"forget that" offers what was just kept), judged by Jev one yes/no each as
+holding any word of what the forget is about, the extractor's `about`,
+first, then the newest, so a bare "forget that" offers what was just
+kept), judged by Jev one yes/no each as
 a recall's candidates are (`FactRouting`), and put to the user on the
 sheet: "Forget “I'm vegetarian”?" with Forget and Keep when one is sure,
 "Forget which?" with up to three when several are plausible. A tap
@@ -601,30 +620,40 @@ empties it with the rest.
 
 ## Advanced reasoning
 
-A query that needs several steps, a condition, or a value no instinct has
-on its own ("remember I'm vegetarian, then suggest a dinner", "find that
-car page again and tell me where the nearest dealer is") is planned
-instead of run. Every request carries a reasoning `score`
-(ENGINE.md: direct, needs a value, needs sequencing); at or above
-`ReasoningPolicy.threshold` (1.2; the two-step "remember I'm vegetarian,
-then suggest a dinner recipe" measured 1.46 and a plain remember 0.82),
-whatever Jev picked, or at or above
-`leanThreshold` (1.0) when the pick was unsure, the engine hands the query
-to the executor (`Browser/Engine/Executor.swift`) rather than to the pick.
-Without a Gemini key the pick runs as it would.
+The pick is a shortcut for a request Jev is near-certain about.
+Everything else is reasoned: a pick under `EngineRequest.confidenceFloor`
+(0.9; "Remember the story about my friend Noah…" at 0.45 remember, 0.48
+recall), or a sure pick that needs several steps, a condition, or a value
+no instinct has on its own ("remember I'm vegetarian, then suggest a
+dinner", "find that car page again and tell me where the nearest dealer
+is"). Every request carries a reasoning `score` (ENGINE.md: direct, needs
+a value, needs sequencing); at or above `ReasoningPolicy.threshold` (1.2;
+the two-step "remember I'm vegetarian, then suggest a dinner recipe"
+measured 1.46 and a plain remember 0.82) a sure pick is planned too. The
+engine hands such a query to the executor
+(`Browser/Engine/Executor.swift`) rather than to the pick. Without a
+Gemini key the pick runs as it would, and an unsure one is web results.
 
 The planner (`Planner` in the Answers library) asks `gemini-3.1-flash-lite`,
-the extractor's model at its minimal thinking (`store: false`; well under
-a cent a plan at the prices in `GeminiPricing`), with every instinct as a tool,
-each taking a `query` and its own fields, plus two the executor answers
+the extractor's model, at high thinking (accuracy over speed and cost,
+Lorcan 2026-10-29; `store: false`; prices in `GeminiPricing`), with every instinct as a tool,
+each taking a `query` and its own fields, plus three the executor answers
 itself: `ask` puts one question on the sheet (up to three options, or a
-line to type) and `done` ends the plan. The model's text is never shown:
-the system instruction says it acts only by calling tools and speaks
-through `narrative` or `one_line` with a query it writes, folding in what
-earlier steps returned. The first turn carries the request, the exchanges
-it depends on (the chain) and up to five memories the words point at (the
-recall shortlist, judged by Jev when it can); every fact goes in the
-system instruction, as it does for an answer.
+line to type), `say` shows the planner's own text on a card as it is, and
+`done` ends the plan. `say` is for what the planner already holds in full
+(the facts, the memories shown to it, earlier steps' results), including
+"I don't know that yet"; a question needing knowledge beyond that goes
+through `narrative` or `one_line` with a question the planner writes,
+folding in what earlier steps returned, never an answer written into a
+question. A said card is styled as a narrative whatever its length, the
+capsule shows the user's words, and it is kept as a narrative memory so
+"that story you told me" brings it back. It is told the classifier was unsure or saw
+several steps, so the request may need one tool or many; and a request
+about the user's own life is served from what it knows of them (remember,
+recall, answer from the facts, or say it does not know), never made up.
+The first turn carries the request, the exchanges it depends on (the
+chain) and up to five of the newest memories (judged by Jev when it can);
+every fact goes in the system instruction, as it does for an answer.
 
 The executor runs each call in order through the same paths a single
 query takes: a showing instinct through the session, waiting until its
@@ -635,13 +664,34 @@ thing to show is refused, since a new layer would replace the first; an
 answer on the sheet goes back to the model as the step's result, and a
 `remember` right after it keeps the fact as **chosen**. Each result goes
 back as a `function_result`, with every model step replayed verbatim, for
-at most four rounds within twenty seconds, each round within eight. The
+at most six rounds within two minutes, each round within forty-five
+seconds. The
 plan ends on `done`; when nothing was shown or done, web results for the
 words; on a no on the sheet; when the rounds or the time run out; or when
 a newer query takes the screen, where it stands and never after a step
 with a side effect. The wave line stays up while the plan runs; a plan
 that only did something hands the screen back to where it stood, as
 `remember` does.
+
+**Things and handles.** The first turn tags each earlier exchange of the
+session (`p1`, `p2`, oldest first) and each memory shown (`m1`, `m2`):
+a handle (`ThingTable` in the Engine library). The planner points at a
+thing by its handle and never sees or writes an address; the device knows
+each thing exactly (a page's address, a search's term, an answer's text, a
+memory's record) and swaps the handle for it before a step runs. A tool
+field of kind thing takes a handle: `open.thing`, and an answer's
+optional `about`, which puts the thing in the answer's context block. In
+a plan, `recall` shows nothing: its result names what it found by handle
+("found m6: A page from yesterday (dyson.com): …"), minted into the
+listing, so the next step can `open` one, `say` something about it, or
+answer with it in view; "find that car page again and tell me where the
+nearest dealer is" is a recall, then an open or an answer, in one plan. A
+handle not in the listing fails the step ("no such thing: p3; the things
+are p1, p2, m1"), and two failures end the plan. On the straight pick
+path, with no planner, a thing field is filled from what the query leans
+on: the chain's newest page, search or answer, else the layer on screen.
+Handles are for things only the device can recover exactly; a search
+term, a fact, a place name stay as words.
 
 Every step a plan did with no screen of its own (a fact kept; later, a
 call made) is a memory of kind `action`, chained from what was on screen,
@@ -699,7 +749,7 @@ view: the site instinct asks Jev `rejects`, and on a site pick at or above
 zillow", "I'm looking for a different website" forget the name and show
 the choices again, so the next tap replaces the entry; "open youtube" is a
 new site request and anything else runs as picked (see "How a query
-runs"). Nothing overrules the pick: an unsure one is web results. The results page a
+runs"). Nothing overrules a sure pick; an unsure one is planned. The results page a
 site request falls through to is not memorised as a search, so "go to
 lobsters" never becomes a search memory. Debug builds' "Clear memory"
 resets the book to the seed.
