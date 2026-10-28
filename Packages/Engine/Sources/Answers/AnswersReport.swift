@@ -1,0 +1,203 @@
+import Foundation
+import Engine
+
+/// The second half of `ENGINE.md`: what the app sends Gemini for the two
+/// model-answered formats, built from the same `AnswerPrompt` the app uses.
+public enum AnswersReport {
+    public static func markdown() -> String {
+        let built = Instinct.allCases.filter(\.isAnswered)
+        var out: [String] = []
+        out.append("## After routing: Gemini answers")
+        out.append("")
+        out.append("`\(built.map(\.rawValue).joined(separator: "` and `"))` are answered by Gemini `\(GeminiClient.defaultModel)` through the Interactions API, thinking `minimal`, `store: false`, no tools. One streamed request per query. The model answers from what it knows; it has no web access.")
+        out.append("")
+        out.append("Grounding with Google Search was tried and dropped: Google's terms require their Search Suggestions bar, unmodified, under every grounded answer. Live-data questions go to web results instead (below).")
+        out.append("")
+        out.append("Prices pinned in `GeminiPricing`: $\(GeminiPricing.inputPerMillionUSD) per 1M input tokens, $\(GeminiPricing.outputPerMillionUSD) per 1M output tokens (thinking included).")
+        out.append("")
+        out.append("### Input (both formats)")
+        out.append("")
+        out.append("```")
+        out.append(AnswerPrompt.input(query: "<query>", context: .example))
+        out.append("```")
+        out.append("")
+        out.append("### Input with earlier exchanges")
+        out.append("")
+        out.append("When the relevance chain says the query depends on earlier exchanges of this session from other layers than the answer's own thread (a search, a page read, a picture looked at; `chain` in the decision), they follow the context block, oldest first, one line each:")
+        out.append("")
+        out.append("```")
+        out.append(AnswerPrompt.input(query: "<query>", context: .example, earlier: [
+            .search(query: "<earlier query>", term: "<term searched>"),
+            Exchange(query: "<earlier query>", kind: .page, title: "<page title>", host: "<host>", address: "https://<host>/<path>"),
+        ]))
+        out.append("```")
+        out.append("")
+        out.append("### Input with facts")
+        out.append("")
+        out.append("Everything the app knows about the user (`FactStore`: told outright, chosen on the sheet, or inferred from a query that stated something lasting on the way to its ask) goes into every answer, each in the user's own words, after the context and the earlier exchanges. The system instructions say to let them shape the answer when they bear on it and never to repeat them.")
+        out.append("")
+        out.append("```")
+        out.append(AnswerPrompt.input(query: "<query>", context: .example, facts: ["<fact>", "<fact>"]))
+        out.append("```")
+        out.append("")
+        out.append("An inferred fact is distilled by the same small call that reads values (\"Values read by Gemini\" below) with this instruction and a one-field schema, when Jev's `remember` question says the query states one and the pick is not `remember` itself:")
+        out.append("")
+        out.append("```")
+        out.append(ValueExtractor.factSystem)
+        out.append("```")
+        out.append("")
+        out.append("### Input for a narrative that continues")
+        out.append("")
+        out.append("When the relevance chain ends on the answer on screen (`continuation` in the decision), `input` is a list of `user_input` and `model_output` steps instead of a string, Google's stateless shape; `store` stays false. Oldest first: `{\"type\": \"user_input\", \"content\": [{\"type\": \"text\", \"text\": \"<earlier query>\"}]}`, `{\"type\": \"model_output\", \"content\": [{\"type\": \"text\", \"text\": \"<earlier answer, markup included>\"}]}`, and so on, then one last `user_input` step holding the block above. Every earlier turn is sent, however long the conversation.")
+        out.append("")
+        for format in built {
+            out.append("### `\(format.rawValue)` — system instruction, max \(AnswerPrompt.maxOutputTokens(for: format)) output tokens")
+            out.append("")
+            out.append("```")
+            out.append(AnswerPrompt.system(for: format))
+            out.append("```")
+            out.append("")
+        }
+        out.append("### What comes back")
+        out.append("")
+        out.append("Server-sent events: `step.delta` text pieces, then `interaction.completed` with usage (`total_input_tokens`, `total_output_tokens`, `total_thought_tokens`).")
+        out.append("")
+        out.append("A call that needs the whole reply at once (a value read out of the words, a plan) sends `stream: false` on the same endpoint and reads the finished Interaction instead: its `status`, its `steps` (`model_output` text, `function_call` steps with `id`, `name` and `arguments`, anything else kept verbatim so a plan's next call can replay it) and its usage. The request then may carry `tools` (`{type: function, name, description, parameters}`), `generation_config.tool_choice` and a `response_format` schema; none of those goes on the wire for an answer.")
+        out.append("")
+        out.append("| Outcome | Shown | Logged as |")
+        out.append("|---|---|---|")
+        out.append("| Streamed to the end | The answer card | `answer.outcome = completed` |")
+        out.append("| `one_line` replied `\(AnswerPrompt.liveDataMarker)` | Web results for the query | `needsLiveData` |")
+        out.append("| Failed after some text | What arrived, with a note | `partial(reason)` |")
+        out.append("| Failed before any text, or no first byte in 10 s, or over 30 s in all | Web results for the query | `fellBackToWeb(reason)` |")
+        out.append("| No Gemini key configured | Web results; Jev's pick is still logged | the decision alone |")
+        out.append("")
+        out.append("The answer summary (model, tokens, first-token and total latency, outcome) is appended to the same `decisions.jsonl` line as the routing decision.")
+        out.append("")
+        out += valuesSection()
+        out.append("")
+        out += reasoningSection()
+        return out.joined(separator: "\n") + "\n"
+    }
+
+    /// Advanced reasoning's request, quoted from the same `Planner` the app uses.
+    private static func reasoningSection() -> [String] {
+        let tools = Planner.tools(for: InstinctSpec.all)
+        let bundle = PlanBundle(query: "<query>", exchanges: [.search(query: "<earlier query>", term: "<term searched>")], facts: ["<fact>"], memories: [], tools: tools, context: .example)
+        let input = Planner.input(query: "<query>", exchanges: bundle.exchanges, memories: [
+            MemoryRecord(date: AnswerContext.example.now.addingTimeInterval(-86_400), kind: .page, query: "<earlier query>", title: "<page title>", url: URL(string: "https://example.com/<path>")),
+        ], now: AnswerContext.example.now)
+        var out: [String] = []
+        out.append("### Reasoning (function calling)")
+        out.append("")
+        out.append("A query whose reasoning score reaches \(ReasoningPolicy.threshold.formatted()) (several steps, a condition, a schedule), or an unsure pick whose score reaches \(ReasoningPolicy.leanThreshold.formatted()), is planned instead of run: `\(Planner.model)` (price in `GeminiPricing`: $\(GeminiPricing.inputPerMillionUSD) per 1M input tokens and $\(GeminiPricing.outputPerMillionUSD) per 1M output; well under a cent a plan. `gemini-3.8-flash` was measured first on 2026-10-27: it refuses minimal thinking, and at low a round took eleven seconds and a thousand thought tokens, half a cent), thinking `\(Planner.thinkingLevel)`, `store: false`, `tool_choice: any`, at most \(ReasoningPolicy.maxRounds) rounds within \(ReasoningPolicy.timeBudget.components.seconds) s, each round within \(ReasoningPolicy.roundTimeout.components.seconds) s. Every instinct is a tool, with a `query` field and the instinct's own; `ask` puts a question on the sheet and `done` ends the plan. The device runs each call in order (a paid or destructive tool is confirmed on the sheet first, unless the instinct asks for itself; the same call twice runs once; a second thing to show is refused) and sends the results back as `function_result` steps, every model step replayed verbatim, for the next round. Nothing the model writes is shown: it speaks through `narrative` or `one_line` with a query it writes.")
+        out.append("")
+        out.append("System instruction:")
+        out.append("")
+        out.append("```")
+        out.append(Planner.system(facts: bundle.facts, context: bundle.context))
+        out.append("```")
+        out.append("")
+        out.append("First turn (the request, the exchanges it depends on, the memories the words point at, at most \(ReasoningPolicy.memoriesGiven)):")
+        out.append("")
+        out.append("```")
+        out.append(input)
+        out.append("```")
+        out.append("")
+        out.append("Tools (`tools` on the request), one per instinct, then `ask` and `done`:")
+        out.append("")
+        out.append("| Tool | Description | Fields |")
+        out.append("|---|---|---|")
+        for tool in tools {
+            let fields = tool.parameters["properties"]?.objectValue?.keys.sorted().joined(separator: ", ") ?? ""
+            out.append("| `\(tool.name)` | \(tool.description) | \(fields) |")
+        }
+        out.append("")
+        out.append("| Outcome | Then | Logged as |")
+        out.append("|---|---|---|")
+        out.append("| `done`, or the rounds end after something was shown or done | What the steps showed stays; a plan that only did something hands the screen back | `engine.outcome = completed` |")
+        out.append("| Nothing shown and nothing done | Web results for the words | `fellBackToWeb(reason)` |")
+        out.append("| No on the sheet, or the sheet swiped away | The plan ends there | `declined` |")
+        out.append("| The rounds or the time ran out | As completed, or web results when nothing happened | `budget` |")
+        out.append("| A newer query took the screen | Nothing more | `stale` |")
+        out.append("")
+        out.append("The plan summary (model, rounds, every step with its outcome and latency, tokens, the facts and memories given, the outcome) rides on the same `decisions.jsonl` line; a step that did something with no screen of its own is also a memory of kind `action`, so \"what did you just do\" finds it.")
+        return out
+    }
+
+    /// The one small call that reads an instinct's free-form values out of
+    /// the words, quoted from the same `ValueExtractor` the engine uses.
+    private static func valuesSection() -> [String] {
+        let sample = ArgumentSchema(fields: [
+            .init(name: "temperature", kind: .integer, description: "the degrees asked for"),
+            .init(name: "room", kind: .text, description: "which room, when one is named", required: false),
+        ])
+        let request = ValueExtractor.request(
+            query: "<query>",
+            exchanges: [.search(query: "<earlier query>", term: "<term searched>")],
+            schema: sample.jsonSchema()
+        )
+        var out: [String] = []
+        out.append("### Values read by Gemini")
+        out.append("")
+        out.append("An instinct may declare the values it takes (`ArgumentSchema` on its `InstinctSpec`). A closed-set value, a choice or a yes/no, is two Jev questions in the routing request (ENGINE.md above: `<instinct>.<field>?` and `<instinct>.<field>`). A free-form value, a number or words, is one whole-body call to `\(ValueExtractor.model)` within \(ValueExtractor.timeout.components.seconds) s, made only when the pick declares such a field that its own grammar did not read, and the field is required or the reasoning score leans to a value (at or above \(EngineRequest.extractionThreshold.formatted())). The reply must match a JSON schema of the fields still missing; nulls are dropped, \"68\" is read as 68, a choice is checked against its options. Nothing usable, or a required value still missing, shows web results for the words.")
+        out.append("")
+        out.append("System instruction:")
+        out.append("")
+        out.append("```")
+        out.append(ValueExtractor.system)
+        out.append("```")
+        out.append("")
+        out.append("Input, with the chained exchanges first, and the schema for a thermostat instinct that takes a required `temperature` and an optional `room`:")
+        out.append("")
+        out.append("```")
+        out.append(request.input)
+        out.append("```")
+        out.append("")
+        out.append("```json")
+        out.append(String(decoding: (try? sample.jsonSchema().data()) ?? Data(), as: UTF8.self))
+        out.append("```")
+        out.append("")
+        out.append("| Outcome | Then | Logged as |")
+        out.append("|---|---|---|")
+        out.append("| At least one value read | The instinct runs with it | `extraction.outcome = extracted` |")
+        out.append("| The reply held no value | Web results when a required field is empty, else the instinct runs without it | `empty` |")
+        out.append("| Failed, timed out, or not JSON | Web results when a required field is empty, else the instinct runs without it | `failed(reason)` |")
+        out.append("| No Gemini key | Web results when a required field is empty | `failed(\"no key\")` |")
+        out.append("")
+        out.append("The extraction summary (model, latency, tokens, the fields read, the outcome) rides on the same `decisions.jsonl` line.")
+        out.append("")
+        out.append(contentsOf: readingSection())
+        return out
+    }
+
+    /// The reading beside the Jev request: the substance and the subject.
+    private static func readingSection() -> [String] {
+        let request = QueryReader.request(query: "Which oh can you pull up youtube?", now: Date(timeIntervalSince1970: 1_792_600_000))
+        var out: [String] = []
+        out.append("### The reading beside Jev")
+        out.append("")
+        out.append("Every query that reaches Jev (every one that is not an address) goes to `\(QueryReader.model)` at minimal thinking at the same moment, with this instruction and a two-field schema, within \(QueryReader.timeout.components.seconds) s: `query`, the request with its substance isolated (dictation noise, fillers and false starts gone), and `subject`, what the request is about, with anything the words point back at folded in; the newest \(QueryReader.exchangesGiven) exchanges and today's date come first so \"it\" and \"yesterday\" resolve. When the substance differs from the typed words (`Substance.differs`: case, diacritics, punctuation and spacing aside), Jev is asked again on the read words and that pick wins; the read words are what the instinct, the planner, the exchange and the layer receive. The subject fills the picked instinct's object field (`InstinctSpec.subjectField`: the term searched, the subject pictured, the site named, the fact kept, the place whose time is asked), so no grammar reads the words and the extractor is asked only for a field beyond it. The same substance, a miss or a slow reply leaves the first pick standing, with no subject: the instinct then takes the words as they are. A query waits for the slower of the two calls. The typed words stay in the log as `reading.original`; the line's `query` is what ran. The eval runner grades Jev on the typed words and does not read.")
+        out.append("")
+        out.append("System instruction:")
+        out.append("")
+        out.append("```")
+        out.append(QueryReader.system)
+        out.append("```")
+        out.append("")
+        out.append("```")
+        out.append(request.input)
+        out.append("```")
+        out.append("")
+        out.append("```json")
+        out.append(String(decoding: (try? QueryReader.schema.data()) ?? Data(), as: UTF8.self))
+        out.append("```")
+        out.append("")
+        out.append("| Outcome | Then | Logged as |")
+        out.append("|---|---|---|")
+        out.append("| The substance differs | Jev runs again on the read words, and that pick wins; the subject fills the pick's object field | `reading.outcome = rewritten` |")
+        out.append("| The same substance | The first pick stands; the subject fills its object field | `unchanged` |")
+        out.append("| Failed, timed out, not JSON, or an empty query | The first pick stands with no subject; the instinct takes the words as they are | `failed(reason)` |")
+        return out
+    }
+}

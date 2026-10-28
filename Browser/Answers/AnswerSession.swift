@@ -1,7 +1,7 @@
 import Answers
 import Foundation
 import Observation
-import Routing
+import Engine
 
 /// One in-flight Gemini answer: the text as it streams and the summary that
 /// goes to the log when it ends. A new query cancels the old answer.

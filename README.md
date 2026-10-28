@@ -218,7 +218,7 @@ hundred queries a month still cost under a cent. To see what Jev makes of
 one query from the Mac (one real call):
 
 ```
-TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report route "some query"
+TYPESAFE_API_KEY=… swift run --package-path Packages/Engine report route "some query"
 ```
 
 It prints the pick, the confidence and every option's probability; with
@@ -226,20 +226,20 @@ It prints the pick, the confidence and every option's probability; with
 <query> <term>` for the session's earlier exchanges, oldest first, it also
 prints the relevance of each, the chain and the reasoning score.
 
-To run the whole golden set, `Packages/Routing/Evals/engine.jsonl` (one
+To run the whole golden set, `Packages/Engine/Evals/engine.jsonl` (one
 labelled query per line: the query, the exchanges and the opened site that
 were on screen, the instinct the app should run, and optionally the chain
 expected, Jev's pick and the path):
 
 ```
-TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report eval --out before.jsonl
+TYPESAFE_API_KEY=… swift run --package-path Packages/Engine report eval --out before.jsonl
 ```
 
 Every case goes through the address check and then Jev, as in the app
 (the eval does not read: it grades the pick on the typed words). It
 prints the misses with the threshold that decided and the probability
 spread, then a pass count per instinct. Jev's answers are cached under
-`Packages/Routing/.evalcache/` by a hash of the request body, so a
+`Packages/Engine/.evalcache/` by a hash of the request body, so a
 threshold change re-runs instantly and keyless (`--floor 0.6`,
 `--recency 0.4`, `--no-network`), and only an edited criterion or
 instruction asks again. `--baseline before.jsonl` lists what flipped
@@ -253,11 +253,11 @@ The golden set only catches what it already knows. To stress Jev with
 queries nobody has labelled, by hand and whenever you like:
 
 ```
-TYPESAFE_API_KEY=… swift run --package-path Packages/Routing report sample 50
+TYPESAFE_API_KEY=… swift run --package-path Packages/Engine report sample 50
 ```
 
 Fifty unlabelled queries drawn from
-`Packages/Routing/Evals/pool.txt` (a few hundred plausible phone queries
+`Packages/Engine/Evals/pool.txt` (a few hundred plausible phone queries
 across the instincts, with the typos, casing, leads and trailers people
 type) go through the same chain, and the output is a triage list rather than
 pass/fail. Each row is what the app did (instinct, source, confidence,
@@ -306,7 +306,7 @@ of it.
 `AnswerSession` streams one answer at a time from Gemini `gemini-3.1-flash-lite`
 (Interactions API, thinking `minimal`, `store: false`, no tools). The system
 instruction is the per-format rule set in `AnswerPrompt`
-(`Packages/Routing/Sources/Answers`): narrative opens with the immediate
+(`Packages/Engine/Sources/Answers`): narrative opens with the immediate
 answer and keeps to the scope the query's wording implies, with no target
 length; one-line gives the answer itself in at most twelve words, never a
 sentence restating the question. The input carries the
@@ -528,7 +528,7 @@ look through the memories that has not resolved in 3 s goes to the web.
 
 The decision log notes each recall's shortlist size, how many Jev picked,
 which path answered (`jev`, `words`, or the error) and Jev's latency.
-`swift run --package-path Packages/Routing report recall <memories.jsonl>
+`swift run --package-path Packages/Engine report recall <memories.jsonl>
 "<query>"` runs the filters, the shortlist and, with `TYPESAFE_API_KEY`,
 Jev's judgement from the Mac, so a recall phrasing can be tried against an
 exported memories file. Debug builds show a "Clear memory" link at the top of the idle
@@ -676,7 +676,7 @@ Every site request is Jev's call
 between `site`, `recall` ("pull up that youtube page from earlier" points at
 the past), `web_results` ("zillow homes in austin" is a search on a site)
 and the rest; a `site` pick is then looked up by its name. An unknown name
-goes to Brave's web search (`SiteSearch` in `Packages/Routing/Sources/Sites`,
+goes to Brave's web search (`SiteSearch` in `Packages/Engine/Sources/Sites`,
 key `BRAVE_API_KEY`; one request, the first five results one per host, each
 with its icon) and the choices card lists them where the clay was: "Which
 hacker news?", then the sites, then a "Web results" link. A tap learns the
@@ -696,7 +696,7 @@ site request falls through to is not memorised as a search, so "go to
 lobsters" never becomes a search memory. Debug builds' "Clear memory"
 resets the book to the seed.
 
-`swift run --package-path Packages/Routing report sites "<name>"` prints
+`swift run --package-path Packages/Engine report sites "<name>"` prints
 what the seeded book says of a name and, with `BRAVE_API_KEY`, the
 candidates; `report route "<query>" --opened <name> <host>` shows the
 rejection judgement.
@@ -740,7 +740,7 @@ coming from it. Nothing of this outlives the app.
 
 | Path | Role |
 |---|---|
-| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values, the subject field), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
+| `Packages/Engine/` | Foundation-only Swift package with four libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values, the subject field), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
 | `Browser/Engine/Engine.swift` | The cognitive engine's first stage: an address as typed, else one Jev request over the registry carrying the session's exchanges with the reading beside it, the subject into the pick's object field, the extractor for a field beyond it, and the instinct to run with what it needs; or the hand-off to the executor when the reasoning score says the query needs several steps. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Browser/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat or a second thing to show, and sending every result back to the planner until `done` or the bounds. |
 | `Browser/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the memories and Jev's judge. |
@@ -773,14 +773,14 @@ Gemini system instructions and input block for the answers, the values and
 the planner. Regenerate it with:
 
 ```
-swift run --package-path Packages/Routing report engine > ENGINE.md
+swift run --package-path Packages/Engine report engine > ENGINE.md
 ```
 
 For what real queries triggered, copy `decisions.jsonl` off the phone (the
 app's container, through Xcode's device window or `xcrun devicectl`) and run:
 
 ```
-swift run --package-path Packages/Routing report decisions ~/Downloads/decisions.jsonl
+swift run --package-path Packages/Engine report decisions ~/Downloads/decisions.jsonl
 ```
 
 That prints picks per instinct, how often each was acted on or fell back, mean
@@ -792,7 +792,7 @@ output tokens, and the token cost for the log.
 ## Tests
 
 ```
-swift test --package-path Packages/Routing
+swift test --package-path Packages/Engine
 ```
 
 Covers the Jev request body against TypeSafe's documented shape and option

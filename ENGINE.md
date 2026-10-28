@@ -1,9 +1,9 @@
 # Engine contract
 
-Generated from `EngineRequest` and the instinct registry (`InstinctSpec`) in `Packages/Routing`. Do not edit by hand; run:
+Generated from `EngineRequest` and the instinct registry (`InstinctSpec`) in `Packages/Engine`. Do not edit by hand; run:
 
 ```
-swift run --package-path Packages/Routing report engine > ENGINE.md
+swift run --package-path Packages/Engine report engine > ENGINE.md
 ```
 
 ## The request
@@ -257,7 +257,7 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 
 Web results, however reached, search what the reading gave as the subject ("google steve jobs" searches "steve jobs"), or the words as typed when it gave none; the log keeps the spoken words. An `image` pick searches the subject alone (see "After routing: Wikipedia images"). A `video` pick loads Google's video results for the subject (see "After routing: videos").
 
-Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, the relevance answers and the chain, the reasoning score, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Routing report decisions <file>`.
+Every outcome is appended to `decisions.jsonl` on the device with the query, the pick, every option's probability, confidence, the recency probability, the relevance answers and the chain, the reasoning score, model, latency and input tokens. Summarise an exported log with `swift run --package-path Packages/Engine report decisions <file>`.
 
 ## After routing: recall
 
@@ -297,7 +297,7 @@ A `video` pick loads Google's video results (`QueryParser.videoSearchURL`, the r
 
 - **box**: where something is in an image. No use in sight.
 
-Adding a question is one entry in `EngineRequest.request`, or one line in an instinct's `questions` in `InstinctSpec`; this file and `RoutingTests` pick it up.
+Adding a question is one entry in `EngineRequest.request`, or one line in an instinct's `questions` in `InstinctSpec`; this file and `EngineTests` pick it up.
 
 ## After routing: Gemini answers
 
@@ -551,7 +551,7 @@ The plan summary (model, rounds, every step with its outcome and latency, tokens
 
 ## After routing: Wikipedia images
 
-An `image` pick is filled by `ImageLookup` in `Packages/Routing/Sources/Images` from two sources in order: Wikipedia (`ImageSearch`), free and without a key, whose article carries the picture's licence; then, only when Wikipedia answered and had nothing, Brave's image search (`BraveImageSearch`) with the same key as the site search (`BRAVE_API_KEY`, $5 per 1,000 requests), for a subject Wikipedia has no article on (a product from this year, say). Every Wikipedia request sends `User-Agent: Browser/0.1 (com.lorcancheng.browser)`.
+An `image` pick is filled by `ImageLookup` in `Packages/Engine/Sources/Images` from two sources in order: Wikipedia (`ImageSearch`), free and without a key, whose article carries the picture's licence; then, only when Wikipedia answered and had nothing, Brave's image search (`BraveImageSearch`) with the same key as the site search (`BRAVE_API_KEY`, $5 per 1,000 requests), for a subject Wikipedia has no article on (a product from this year, say). Every Wikipedia request sends `User-Agent: Browser/0.1 (com.lorcancheng.browser)`.
 
 What is searched is the subject alone, as the reading beside Jev gave it ("show me a picture of the eiffel tower" → "eiffel tower", "pictures of it" after a Brazil page → "Brazil"; see "The reading beside Jev"); with no subject, the words as typed. Wikipedia's ranking turns on every word. The card, the memory and the log keep the spoken words.
 
@@ -578,7 +578,7 @@ A Wikipedia article's page carries the image's licence and author; a Brave pictu
 
 ## After routing: sites
 
-A `site` pick names a website. The name is the subject the reading beside Jev gave ("which can u pull up youtube" → "youtube"; see "The reading beside Jev"), or the words as typed when the reading gave none. The site book on the device (`SiteBook`: 37 seeded sites under 53 names, plus whatever has been learned) answers a known name at once; an unknown name is searched by `SiteSearch` in `Packages/Routing/Sources/Sites`, with a Brave Search API key (`BRAVE_API_KEY`).
+A `site` pick names a website. The name is the subject the reading beside Jev gave ("which can u pull up youtube" → "youtube"; see "The reading beside Jev"), or the words as typed when the reading gave none. The site book on the device (`SiteBook`: 37 seeded sites under 53 names, plus whatever has been learned) answers a known name at once; an unknown name is searched by `SiteSearch` in `Packages/Engine/Sources/Sites`, with a Brave Search API key (`BRAVE_API_KEY`).
 
 1. `GET https://api.search.brave.com/res/v1/web/search?q=<name>&count=8&result_filter=web`, header `X-Subscription-Token`. Only `web.results` is read: title, url, description, and the result's favicon when it carries one (`meta_url.favicon` or `profile.img`), else Google's public favicon service for the host.
 2. One result per host (`www.` aside), in Brave's order, the first 5: the choices card.
