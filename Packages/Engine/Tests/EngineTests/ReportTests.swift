@@ -67,7 +67,7 @@ import Testing
         #expect(!markdown.contains("**noul**: a yes/no"), "noul is in use now")
         #expect(!markdown.contains("**score**"), "score is in use now")
         #expect(markdown.contains(JevClient.defaultModel))
-        #expect(markdown.contains("2500 ms"))
+        #expect(markdown.contains("20000 ms"))
         #expect(markdown.contains(EngineReport.regenerateCommand))
     }
 

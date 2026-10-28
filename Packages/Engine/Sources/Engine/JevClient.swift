@@ -274,7 +274,7 @@ public struct JevClient: Sendable {
         apiKey: String,
         baseURL: URL = JevClient.defaultBaseURL,
         model: String = JevClient.defaultModel,
-        timeout: Duration = .milliseconds(2500),
+        timeout: Duration = .seconds(20),
         session: URLSession = .shared
     ) {
         self.apiKey = apiKey
