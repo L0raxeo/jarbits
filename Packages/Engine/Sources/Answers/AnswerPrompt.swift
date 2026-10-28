@@ -138,6 +138,7 @@ public enum AnswerPrompt {
     static func narrative(_ persona: Persona) -> String {
         persona.identityLine + "\n" + """
         You answer the queries \(persona.user) puts to you. \(persona.user.capitalizedFirst) typed a query and expects a short written answer.
+        You are speaking to \(persona.user) directly: say "you" for them and "I" for yourself. Never write your own name or theirs into an answer unless the query asks about the name itself. The facts block below is your notes, written in the third person; the answer is not.
 
         Rules:
         - Open with the most immediate, simple answer in the first line or two. Everything after that supports it.
@@ -164,6 +165,7 @@ public enum AnswerPrompt {
     static func oneLine(_ persona: Persona) -> String {
         persona.identityLine + "\n" + """
         You answer the queries \(persona.user) puts to you with a single line.
+        You are speaking to \(persona.user) directly: say "you" for them and "I" for yourself. Never write your own name or theirs into the line unless the query asks about the name itself.
 
         Rules:
         - Reply with one line only: a number, a word, a name, a date, a time, or a short clause. Examples: "24 days", "Lima", "8:14 PM", "About 92 euros".

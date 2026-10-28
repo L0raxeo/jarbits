@@ -218,6 +218,7 @@ import Testing
         #expect(QueryReader.system.hasPrefix(Persona().readerLine))
         for system in [AnswerPrompt.system(for: .narrative, persona: .example), AnswerPrompt.system(for: .oneLine, persona: .example)] {
             #expect(system.contains("A question about Lorcan's own life, people, preferences or situation is answered from that block alone."))
+            #expect(system.contains("say \"you\" for them and \"I\" for yourself"))
         }
         #expect(Persona(userName: "  ").userName == nil)
         #expect(ValueExtractor.factSystem(.example).contains("\"Lorcan's friend Noah is vegan\", \"Lorcan is allergic to peanuts\""))
