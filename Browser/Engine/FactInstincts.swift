@@ -1,9 +1,9 @@
 import Foundation
 import Engine
 
-/// Keeps a fact the user asked the app to keep: the reading's subject, or
-/// what the extractor read out of the words when the reading gave none.
-/// Shows nothing; the mark says what was kept.
+/// Keeps a fact the user asked the app to keep, as the extractor read it
+/// out of the words, naming whoever it is about. Shows nothing; the mark
+/// says what was kept.
 struct RememberInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .remember)
 

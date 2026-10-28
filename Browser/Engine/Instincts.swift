@@ -2,17 +2,16 @@ import Foundation
 import Engine
 
 /// The instincts that show a page or a card, one per `Instinct` the
-/// session does not own a store for. Each runs itself: the subject the
-/// reading gave is its object, the words as typed stand in when there is
-/// none, and the layer it opens records its line.
+/// session does not own a store for. Each runs itself on the words as they
+/// ran and the values the extractor read, and the layer it opens records
+/// its line.
 
-/// A Google results page for the term.
+/// A Google results page for the words as they ran.
 struct WebResultsInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .webResults)
 
     func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
-        let term = context.arguments["term"]?.stringValue ?? context.query
-        session.openPage(QueryParser.searchURL(for: term), context: context)
+        session.openPage(QueryParser.searchURL(for: context.query), context: context)
         return .nothing
     }
 }
@@ -47,13 +46,12 @@ struct ImageInstinct: InstinctRunner {
     }
 }
 
-/// Google's video results for the subject.
+/// Google's video results for the words as they ran.
 struct VideoInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .video)
 
     func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
-        let term = context.arguments["term"]?.stringValue ?? context.query
-        session.openPage(QueryParser.videoSearchURL(for: term), context: context)
+        session.openPage(QueryParser.videoSearchURL(for: context.query), context: context)
         return .nothing
     }
 }

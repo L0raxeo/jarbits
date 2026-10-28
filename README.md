@@ -108,8 +108,7 @@ sent. An answer still streaming has no exchange yet.
 **The instinct registry** (`InstinctSpec.all` in the package) is the list
 of everything the app can do for a query, one per `Instinct` case, in the
 order Jev sees the options: each one's criterion, the questions it adds to
-the request, the values it takes, which of those the reading's subject
-fills, and its side effects. The app binds each spec to an
+the request, the values it takes, and its side effects. The app binds each spec to an
 `InstinctRunner` (`Browser/Engine/Instincts.swift`, `SiteInstinct.swift`,
 `RecallInstinct.swift`, `FactInstincts.swift`) that runs the query it was
 picked for: a showing instinct opens its layer, an acting one works the
@@ -157,18 +156,16 @@ reading (see "The reading") in parallel:
   `recent` answer is the answer instincts' to act on (a reply that may have
   gone stale is web results instead, logged as `recency` on the pick's
   line), and its `rejects` answer is the site instinct's.
-- **Values.** The reading's subject fills the picked instinct's object
-  field (`InstinctSpec.subjectField`: `web_results.term`, `image.subject`,
-  `video.term`, `site.name`, `remember.fact`, `forget.about`,
-  `time.place`), so no grammar reads the words. A closed-set value, a
-  choice or a yes/no, is two more Jev questions in the request for every
-  instinct that declares one, read only for the pick (`<instinct>.<field>?`
-  and `<instinct>.<field>`; the decision's `arguments`). A free-form value
-  beyond the subject is one small Gemini call after the pick
-  (`ValueExtractor`: Flash-Lite, a JSON schema of the fields still missing,
-  2 s), made when the field is required, the instinct always reads
-  (`recall`: a count and a span), the query is chained, or the reasoning
-  score leans to a value. Nothing usable, or a required value still
+- **Values.** A closed-set value, a choice or a yes/no, is two more Jev
+  questions in the request for every instinct that declares one, read only
+  for the pick (`<instinct>.<field>?` and `<instinct>.<field>`; the
+  decision's `arguments`). Every free-form value the picked instinct
+  declares (`InstinctSpec.arguments`: `site.name`, `time.place`,
+  `forget.about`, recall's count and span) is one small Gemini call after
+  the pick (`ValueExtractor`: Flash-Lite, a JSON schema of the fields,
+  2 s) reading them out of the read words; `remember.fact` is the fact
+  reader's (see "Facts"); no grammar reads the words. `web_results`, `image` and `video` declare none and search
+  the read words as they are. Nothing usable, or a required value still
   missing, runs web results for the words; the call's outcome rides on the
   decision's line as `extraction`. See "Values read by Gemini" in
   ENGINE.md, and try one with `report extract`.
@@ -184,18 +181,18 @@ reading (see "The reading") in parallel:
   chained exchanges as context: a narrative or one-line answer lists them
   under Gemini's context block ("Earlier in this session: Searched …,
   Read …"; see "Answer cards"), and the reading folds them into the
-  subject, so "wait no I meant brazil" after a search is a search for
+  request, so "wait no I meant brazil" after a search is a search for
   Brazil, "how big is it" after reading a page is an answer that knows the
   page, "and chile?" after "capital of peru" answers in one line, "why?"
   after it answers in a paragraph, and "pictures of it" is a picture of
   the thing.
 - **The instinct runs** (`Browser/Engine/Instincts.swift` and the files
   beside it): `web_results`, `map` and `stock` load a Google results page
-  for the term; `narrative` and `one_line` stream an answer, or show web
+  for the words; `narrative` and `one_line` stream an answer, or show web
   results when Jev's `recent` says the reply may have gone stale; `time`
-  answers from the device clock for the place the reading named, here when
-  it named none; `image` loads a picture of the subject; `video` loads
-  Google's video results for the term; `recall` works the memories (see
+  answers from the device clock for the place the extractor read, here
+  when it read none; `image` loads Google's image results for the words;
+  `video` loads Google's video results for them; `recall` works the memories (see
   "Recall"); `site` works the site book and the search (see "Sites");
   `remember` and `forget` work the facts (see "Facts"). A query whose
   reasoning score says it needs several steps goes to the executor instead
@@ -279,26 +276,24 @@ results on the literal words under version 1; the same request without
 the grunt opened YouTube. So every query that is not an address goes to
 `gemini-3.1-flash-lite` at minimal thinking (`QueryReader` in the Answers
 library) at the same moment it goes to Jev, with the newest three
-exchanges and today's date, and a two-field schema: `query`, the request
-with its substance isolated (dictation noise, interjections, fillers and
-false starts dropped, every word that carries meaning kept, in the
-person's own wording and language), and `subject`, what the request is
-about, in the words used, with anything the words point back at folded in
-("pictures of it" after a Brazil page → "Brazil"). When the substance
+exchanges and today's date, and a one-field schema: `query`, the request
+standing on its own (dictation noise, interjections, fillers and false
+starts dropped, every word that carries meaning kept, in the person's own
+wording and language, and anything the words point back at folded in:
+"pictures of it" after a Brazil page → "pictures of Brazil"). When the substance
 differs from the typed words (`Substance.differs`: case, diacritics,
 punctuation and spacing aside), Jev is asked again on the read words and
 that pick wins, and they are what the instinct, the planner, the exchange,
-the layer and the label on screen receive. The subject fills the picked
-instinct's object field. The same substance, a miss, or a reply slower
-than `QueryReader.timeout` (4 s; the Mac sees 1.0 to 1.4 s, and a miss
-sends a chained search out unresolved) leaves the first pick standing
-with no subject: the instinct then takes the words as they are. The trade is
+the layer, the extractor and the label on screen receive. The same
+substance, a miss, or a reply slower than `QueryReader.timeout` (4 s; the
+Mac sees 1.0 to 1.4 s, and a miss sends a chained search out unresolved)
+leaves the first pick standing on the typed words. The trade is
 latency: a query waits for the slower of the two calls, Jev's few hundred
 milliseconds or the reading's (the first real calls took 0.97 and 1.38 s,
 about five thousandths of a cent each), and a rewritten query pays one
 more Jev request. The typed words stay on the decision's line as
 `reading.original`; its `query` is what ran. The console prints
-`reading "typed" -> "ran"; subject "…"`. Try one with `report read`.
+`reading "typed" -> "ran"`. Try one with `report read`.
 Spoken queries go through the same reading: there is no cleaner in front
 of it.
 
@@ -537,8 +532,10 @@ file leaves the phone except inside a Gemini request, which keeps nothing
 A fact comes to be known three ways (`Fact.source`):
 - **told**: "remember that I'm allergic to peanuts", "keep in mind I'm
   vegetarian", "note that I don't eat pork". Jev picks the `remember`
-  instinct; the fact is the reading's subject, in the user's own words,
-  or what the extractor reads out of the words when the reading gave none.
+  instinct; the fact is what the fact reader (`ValueExtractor.distill`,
+  the same call that notes a fact on any other pick) reads out of the
+  words, from the user's perspective, naming whoever it is about ("My
+  friend Bob is vegan.").
   A plain statement with nothing asked ("I live in austin now") is a
   remember too.
 - **inferred**: the query states something lasting on the way to asking
@@ -655,9 +652,9 @@ about thirty well-known sites and their short names (youtube/yt,
 instagram/insta/ig, facebook/fb, x/twitter, reddit, tiktok, amazon, zillow,
 airbnb, netflix, gmail, github…; the list is `SiteBook.seed`). Names are
 keyed by their words (`Words.key`: case, accents and punctuation aside),
-so "Zillow" and "zillow.com" are one entry; the name itself is the subject
-the reading gave ("which can u pull up youtube" → "youtube"), or the
-words as typed when it gave none.
+so "Zillow" and "zillow.com" are one entry; the name itself is what the
+extractor reads out of the words ("can you pull up youtube" → "youtube"),
+or the words as they ran when it read none.
 
 Every site request is Jev's call
 between `site`, `recall` ("pull up that youtube page from earlier" points at
@@ -727,8 +724,8 @@ coming from it. Nothing of this outlives the app.
 
 | Path | Role |
 |---|---|
-| `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values, the subject field), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
-| `Browser/Engine/Engine.swift` | The cognitive engine's first stage: an address as typed, else one Jev request over the registry carrying the session's exchanges with the reading beside it, the subject into the pick's object field, the extractor for a field beyond it, and the instinct to run with what it needs; or the hand-off to the executor when the reasoning score says the query needs several steps. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
+| `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
+| `Browser/Engine/Engine.swift` | The cognitive engine's first stage: an address as typed, else one Jev request over the registry carrying the session's exchanges with the reading beside it, the extractor for every value the pick declares, and the instinct to run with what it needs; or the hand-off to the executor when the reasoning score says the query needs several steps. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Browser/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat or a second thing to show, and sending every result back to the planner until `done` or the bounds. |
 | `Browser/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the memories and Jev's judge. |
 | `Browser/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |

@@ -6,18 +6,18 @@ import Sites
 /// The cognitive engine: a query in, the instinct to run out. An address
 /// loads as typed, with nothing asked. Everything else goes to Jev in one
 /// request over the registry, carrying this session's earlier exchanges,
-/// with the reading beside it: one small Gemini call that isolates the
-/// substance and names the subject. A reading that rewrote the words sends
-/// Jev the read words again, and that pick wins. The subject fills the
-/// picked instinct's object field; the extractor reads only a field beyond
-/// it. A query whose reasoning score says it needs several steps goes to
-/// the executor instead. No word list decides anything here.
+/// with the reading beside it: one small Gemini call that returns the
+/// request standing on its own. A reading that rewrote the words sends Jev
+/// the read words again, and that pick wins. The extractor then reads every
+/// free-form value the picked instinct declares out of the read words. A
+/// query whose reasoning score says it needs several steps goes to the
+/// executor instead. No word list decides anything here.
 struct Engine {
     /// Jev; nil when no key is configured, in which case anything that is
     /// not an address is web results.
     let router: Picker?
     /// The reading beside Jev; nil without a Gemini key, in which case the
-    /// typed words run with no subject.
+    /// typed words run as they are.
     let reader: QueryReader?
     /// Reads a pick's free-form values out of the words; nil without a
     /// Gemini key, in which case an instinct that needs one is web results.
@@ -69,22 +69,25 @@ struct Engine {
         if planner != nil, ReasoningPolicy.entersReasoning(decision) {
             return EngineResult(query: query, decision: decision, reading: reading, reasoning: true, chained: chained.map(\.exchange))
         }
-        // The values the pick takes: the reading's subject in its object
-        // field, what Jev read for its closed-set fields, and what the
-        // extractor reads for the free-form ones still missing, when the
-        // field is required, the instinct always reads, the query is
-        // chained, or the reasoning score says a value is in the words.
+        // The values the pick takes: what Jev read for its closed-set
+        // fields, and what the extractor reads out of the words for every
+        // free-form field the instinct declares.
         let spec = InstinctSpec.spec(for: decision.instinct)
         var arguments: [String: JSONValue] = [:]
-        if let field = spec.subjectField, let subject = reading?.subject {
-            arguments[field] = .string(subject)
-        }
-        for (name, value) in decision.arguments ?? [:] where arguments[name] == nil {
+        for (name, value) in decision.arguments ?? [:] {
             arguments[name] = .string(value)
         }
         var extraction: ExtractionSummary?
+        // A remember pick's fact is read by the fact reader, the same call
+        // that notes a fact stated on the way to another pick: it keeps the
+        // whole sentence, naming whoever it is about.
+        if decision.instinct == .remember, let extractor {
+            let (text, summary) = await extractor.distill(query: query, exchanges: chained.map(\.exchange))
+            if let text { arguments["fact"] = .string(text) }
+            extraction = summary
+        }
         let missing = spec.arguments.freeForm.filter { arguments[$0.name] == nil }
-        if !missing.isEmpty, missing.contains(where: \.required) || spec.alwaysReads || (decision.reasoning ?? 0) >= EngineRequest.extractionThreshold || decision.chainedCount > 0 {
+        if !missing.isEmpty {
             if let extractor {
                 let schema = spec.arguments.jsonSchema(only: missing)
                 switch await extractor.extract(query: query, exchanges: chained.map(\.exchange), schema: schema, now: .now) {
@@ -115,7 +118,6 @@ struct Engine {
         let format: Instinct = spec.arguments.missingRequired(in: arguments).isEmpty ? decision.instinct : .webResults
         let context = InstinctContext(
             query: query,
-            subject: reading?.subject,
             decision: decision,
             opened: opened,
             canAnswer: canAnswer,

@@ -2,15 +2,12 @@ import Foundation
 import Engine
 
 /// What an instinct runs on: the words that ran (the reading's, when it
-/// rewrote them), what they are about, Jev's pick, the site on screen,
+/// rewrote them), Jev's pick, the site on screen,
 /// whether an answer can be shown, the thread a continuation grows, the
 /// exchanges from other layers the query depends on, the values the
 /// instinct takes, and what rides on the log line beside the pick.
 struct InstinctContext {
     let query: String
-    /// What the request is about, as the reading gave it; nil when it gave
-    /// none, in which case an instinct takes the words as they are.
-    let subject: String?
     let decision: Pick
     let opened: OpenedSite?
     let canAnswer: Bool
@@ -20,9 +17,9 @@ struct InstinctContext {
     /// The chained exchanges that are not the thread: a search made, a page
     /// read, a picture looked at; oldest first.
     let earlier: [Exchange]
-    /// The values the instinct takes, by field name: the reading's subject
-    /// in its object field, what Jev read for a closed-set field, what the
-    /// extractor read for a free-form one, or what a plan passed.
+    /// The values the instinct takes, by field name: what Jev read for a
+    /// closed-set field, what the extractor read for a free-form one, or
+    /// what a plan passed.
     let arguments: [String: JSONValue]
     /// How the extractor fared, when it was asked; for the log.
     var extraction: ExtractionSummary? = nil

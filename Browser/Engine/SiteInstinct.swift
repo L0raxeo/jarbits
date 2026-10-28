@@ -2,7 +2,7 @@ import Foundation
 import Engine
 import Sites
 
-/// A website by name: the reading's subject, or the words as typed. An
+/// A website by name: what the extractor read, or the words as they ran. An
 /// address loads as is; a name the book knows opens at once; an unknown
 /// name is searched and the choices shown, or the results page stands in
 /// when nothing can be searched. Over a site this app opened by name, Jev's

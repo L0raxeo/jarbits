@@ -136,7 +136,7 @@ final class Executor {
                     } else {
                         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                         let context = InstinctContext(
-                            query: stepQuery, subject: nil,
+                            query: stepQuery,
                             decision: Pick(instinct: spec.instinct, suggested: nil, confidence: 1, source: .plan),
                             opened: nil, canAnswer: session.canAnswer, thread: [], earlier: exchanges,
                             arguments: values.filter { $0.key != Planner.queryField.name }

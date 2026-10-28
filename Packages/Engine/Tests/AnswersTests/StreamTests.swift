@@ -140,13 +140,12 @@ import Testing
     }
 
 
-    @Test func theReaderCallsADifferentSubstanceARewriteAndNamesTheSubject() async throws {
-        let client = MockGeminiTransport.client(status: 200, body: body(#"{"query":"can you pull up youtube?","subject":"youtube"}"#))
+    @Test func theReaderCallsADifferentSubstanceARewrite() async throws {
+        let client = MockGeminiTransport.client(status: 200, body: body(#"{"query":"can you pull up youtube?"}"#))
         let summary = await QueryReader(client: client).read("Which oh can you pull up youtube?")
         #expect(summary.outcome == .rewritten)
         #expect(summary.changed)
         #expect(summary.query == "can you pull up youtube?")
-        #expect(summary.subject == "youtube")
         #expect(summary.original == "Which oh can you pull up youtube?")
         #expect(summary.model == GeminiClient.defaultModel)
         #expect(summary.usage == AnswerUsage(inputTokens: 200, outputTokens: 9, thoughtTokens: 0))
@@ -157,17 +156,16 @@ import Testing
     }
 
     @Test func theReaderLeavesTheSameWordsUnchanged() async {
-        let client = MockGeminiTransport.client(status: 200, body: body(#"{"query":"Capital of Peru","subject":null}"#))
+        let client = MockGeminiTransport.client(status: 200, body: body(#"{"query":"Capital of Peru"}"#))
         let summary = await QueryReader(client: client).read("capital of peru?")
         #expect(summary.outcome == .unchanged)
         #expect(!summary.changed)
         #expect(summary.query == "Capital of Peru")
-        #expect(summary.subject == nil)
     }
 
     @Test func theReaderFailsOnNothingUsable() async {
         let empty = await QueryReader(client: MockGeminiTransport.client(status: 200, body: body(#"{"query":"  "}"#))).read("x")
-        #expect(empty.outcome == .failed("no query") && empty.query == nil && empty.subject == nil)
+        #expect(empty.outcome == .failed("no query") && empty.query == nil)
         let notObject = await QueryReader(client: MockGeminiTransport.client(status: 200, body: body("just words"))).read("x")
         #expect({ if case .failed = notObject.outcome { true } else { false } }())
         let denied = await QueryReader(client: MockGeminiTransport.client(status: 401, body: #"{"error":{"message":"API key not valid"}}"#)).read("x")

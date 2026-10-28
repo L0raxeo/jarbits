@@ -124,7 +124,7 @@ import Testing
                 instinct: .site, suggested: .site, confidence: 0.8,
                 probabilities: ["site": 0.8, "web_results": 0.2], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, source: .jev),
                 site: SiteSummary(name: "lobsters", outcome: "results", reason: "no key"),
-                reading: ReadingSummary(original: "oh pull up lobsters", query: "pull up lobsters", subject: "lobsters", model: "gemini-3.1-flash-lite", latencyMs: 700, usage: AnswerUsage(inputTokens: 120, outputTokens: 10, thoughtTokens: 0), outcome: .rewritten)),
+                reading: ReadingSummary(original: "oh pull up lobsters", query: "pull up lobsters", model: "gemini-3.1-flash-lite", latencyMs: 700, usage: AnswerUsage(inputTokens: 120, outputTokens: 10, thoughtTokens: 0), outcome: .rewritten)),
             DecisionRecord(timestamp: now.addingTimeInterval(720), query: "videos of pele", decision: Pick(
                 instinct: .video, suggested: .video, confidence: 0.9,
                 probabilities: ["video": 0.9, "web_results": 0.1], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, source: .jev),
@@ -155,7 +155,7 @@ import Testing
         let markdown = DecisionsReport.markdown(records: parsed)
         #expect(markdown.contains("19 queries: 16 asked Jev, 1 addresses, 0 without a key, 1 errors, 1 answers sent to web for recency, 1 steps of plans. 1 rewritten by the reading."))
         #expect(markdown.contains("## Readings"))
-        #expect(markdown.contains("1 read beside Jev: 1 rewritten, 0 unchanged, 0 failed; 1 gave a subject. Median latency 700 ms; about $0.0000 in tokens."))
+        #expect(markdown.contains("1 read beside Jev: 1 rewritten, 0 unchanged, 0 failed. Median latency 700 ms; about $0.0000 in tokens."))
         #expect(markdown.contains("Rewritten: \"oh pull up lobsters\" → \"pull up lobsters\""))
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).reading == nil, "lines without a reading decode")
         let versionOne = #"{"timestamp":"2026-10-01T00:00:00Z","query":"what time is it","decision":{"instinct":"one_line","probabilities":{},"source":{"local":{"_0":"time"}}}}"#

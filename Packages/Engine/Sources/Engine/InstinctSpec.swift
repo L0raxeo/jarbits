@@ -170,14 +170,6 @@ public struct InstinctSpec: Sendable, Identifiable {
     /// need not confirm it first.
     public let asksItself: Bool
     public let arguments: ArgumentSchema
-    /// The field the reading's subject fills (what the request is about),
-    /// so no grammar reads the words and the extractor is asked only for a
-    /// field beyond it; nil for an instinct with no such field.
-    public let subjectField: String?
-    /// The extractor reads this instinct's free-form fields on every pick,
-    /// not only when a field is required, the query is chained or the
-    /// reasoning score leans to a value: its values are always in the words.
-    public let alwaysReads: Bool
     /// Questions this instinct adds to the request when they apply; a
     /// question two instincts both add is asked once.
     public let questions: @Sendable (RequestContext) -> [(id: String, question: Question)]
@@ -188,8 +180,6 @@ public struct InstinctSpec: Sendable, Identifiable {
         var sideEffects = SideEffects.none
         var asksItself = false
         var arguments = ArgumentSchema.none
-        var subjectField: String?
-        var alwaysReads = false
         switch instinct {
         case .narrative:
             questions = { _ in [(EngineRequest.recencyQuestionID, .noul(instructions: EngineRequest.recencyInstructions, criteria: EngineRequest.recencyCriteria))] }
@@ -198,13 +188,12 @@ public struct InstinctSpec: Sendable, Identifiable {
         case .recall:
             questions = { _ in EngineRequest.recallQuestions }
             // The kinds, the name and the set are Jev's questions; a count
-            // and a day are values the words state, read on every pick.
+            // and a day are values the words state, read by the extractor.
             arguments = ArgumentSchema(fields: [
                 .init(name: "count", kind: .integer, description: "how many of the newest to bring back, when the words ask for a number of them (\"my last five searches\", \"the last few\")", required: false),
                 .init(name: "from", kind: .text, description: "the start of the span the words name, as an ISO 8601 date-time against today (\"yesterday\", \"last week\", \"three days ago\"); null when none is named", required: false),
                 .init(name: "to", kind: .text, description: "the end of that span, as an ISO 8601 date-time; null when none is named", required: false),
             ])
-            alwaysReads = true
         case .site:
             // Over a site this app opened by name: is the query saying it was the wrong one?
             questions = { context in
@@ -212,34 +201,28 @@ public struct InstinctSpec: Sendable, Identifiable {
                 return [(EngineRequest.rejectsQuestionID, .noul(instructions: EngineRequest.rejectsInstructions, criteria: EngineRequest.rejectsCriteria))]
             }
             arguments = ArgumentSchema(fields: [.init(name: "name", kind: .text, description: "the site's name or address, as the words give it", required: false)])
-            subjectField = "name"
         case .webResults:
+            // The read words, standing on their own, are the search.
             questions = { _ in [] }
-            arguments = ArgumentSchema(fields: [.init(name: "term", kind: .text, description: "what to search the web for, in full, with anything the words point back at folded in", required: false)])
-            subjectField = "term"
         case .remember:
             // Asked in every request: a yes on another pick is a fact noted quietly.
             questions = { _ in [(EngineRequest.rememberQuestionID, .noul(instructions: EngineRequest.rememberInstructions, criteria: EngineRequest.rememberCriteria))] }
             showsLayer = false
-            arguments = ArgumentSchema(fields: [.init(name: "fact", kind: .text, description: "the lasting fact about the user, in their own words and in the first person, as they said it")])
-            subjectField = "fact"
+            arguments = ArgumentSchema(fields: [.init(name: "fact", kind: .text, description: "the lasting personal fact to keep, as one whole sentence from the person's perspective, naming whoever or whatever it is about as the words relate them; read by the fact reader (`ValueExtractor.distill`), not the value reader")])
         case .forget:
             questions = { _ in [] }
             showsLayer = false
             sideEffects = .destructive
             asksItself = true
             arguments = ArgumentSchema(fields: [.init(name: "about", kind: .text, description: "what the fact to forget is about, when the words say", required: false)])
-            subjectField = "about"
         case .image:
             questions = { _ in [] }
         case .video:
+            // The read words, standing on their own, are the search.
             questions = { _ in [] }
-            arguments = ArgumentSchema(fields: [.init(name: "term", kind: .text, description: "what to find videos of, in full, with anything the words point back at folded in", required: false)])
-            subjectField = "term"
         case .time:
             questions = { _ in [] }
             arguments = ArgumentSchema(fields: [.init(name: "place", kind: .text, description: "the place whose time is asked, as named; null for the time here", required: false)])
-            subjectField = "place"
         case .map, .stock:
             questions = { _ in [] }
         }
@@ -247,8 +230,6 @@ public struct InstinctSpec: Sendable, Identifiable {
         self.sideEffects = sideEffects
         self.asksItself = asksItself
         self.arguments = arguments
-        self.subjectField = subjectField
-        self.alwaysReads = alwaysReads
     }
 
     /// A spec set by hand: for an instinct whose values or side effects the
@@ -259,8 +240,6 @@ public struct InstinctSpec: Sendable, Identifiable {
         sideEffects: SideEffects = .none,
         asksItself: Bool = false,
         arguments: ArgumentSchema = .none,
-        subjectField: String? = nil,
-        alwaysReads: Bool = false,
         questions: @escaping @Sendable (RequestContext) -> [(id: String, question: Question)] = { _ in [] }
     ) {
         self.instinct = instinct
@@ -268,8 +247,6 @@ public struct InstinctSpec: Sendable, Identifiable {
         self.sideEffects = sideEffects
         self.asksItself = asksItself
         self.arguments = arguments
-        self.subjectField = subjectField
-        self.alwaysReads = alwaysReads
         self.questions = questions
     }
 

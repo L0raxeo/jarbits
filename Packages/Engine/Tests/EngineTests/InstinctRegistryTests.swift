@@ -16,28 +16,24 @@ import Testing
             case .remember:
                 #expect(!spec.showsLayer && spec.sideEffects == .none)
                 #expect(spec.arguments.freeForm.map(\.name) == ["fact"] && spec.arguments.closedSet.isEmpty)
-                #expect(spec.subjectField == "fact", "the reading's subject is the fact; the extractor reads it only when the reading gave none")
+                #expect(spec.arguments.fields[0].required, "the extractor reads the fact out of the words")
             case .forget:
                 #expect(!spec.showsLayer && spec.sideEffects == .destructive)
                 #expect(spec.arguments.fields.map(\.name) == ["about"] && spec.arguments.fields[0].required == false)
-                #expect(spec.subjectField == "about")
             case .webResults, .video:
                 #expect(spec.showsLayer && spec.sideEffects == .none)
-                #expect(spec.arguments.fields.map(\.name) == ["term"] && spec.arguments.fields[0].required == false)
-                #expect(spec.subjectField == "term")
+                #expect(spec.arguments.isEmpty, "the read words are the search")
             case .site:
-                #expect(spec.arguments.fields.map(\.name) == ["name"] && spec.subjectField == "name")
+                #expect(spec.arguments.fields.map(\.name) == ["name"])
             case .time:
-                #expect(spec.arguments.fields.map(\.name) == ["place"] && spec.subjectField == "place")
+                #expect(spec.arguments.fields.map(\.name) == ["place"])
                 #expect(spec.arguments.fields[0].required == false, "no place means here")
             case .recall:
-                #expect(spec.arguments.freeForm.map(\.name) == ["count", "from", "to"] && spec.alwaysReads, "a count and a span are the extractor's, on every recall")
-                #expect(spec.subjectField == nil, "the words themselves are the recall's search")
+                #expect(spec.arguments.freeForm.map(\.name) == ["count", "from", "to"], "a count and a span are the extractor's")
             default:
                 #expect(spec.showsLayer, "\(spec.id) shows a layer")
                 #expect(spec.sideEffects == .none, "\(spec.id) has no side effects")
                 #expect(spec.arguments.isEmpty, "\(spec.id) takes no arguments")
-                #expect(spec.subjectField == nil && !spec.alwaysReads)
             }
         }
         #expect(InstinctSpec.spec(for: "podcasts") == nil)

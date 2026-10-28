@@ -358,16 +358,16 @@ case "read":
     let tokens = summary.usage.map { "\($0.inputTokens) in, \($0.outputTokens + $0.thoughtTokens) out; about $\(GeminiPricing.cost($0, model: summary.model).formatted(.number.precision(.fractionLength(5))))" } ?? "no usage"
     switch summary.outcome {
     case .rewritten:
-        print("rewritten (\(summary.latencyMs) ms, \(tokens)): \"\(query)\" → \"\(summary.query ?? "")\"; subject \(summary.subject.map { "\"\($0)\"" } ?? "none")")
+        print("rewritten (\(summary.latencyMs) ms, \(tokens)): \"\(query)\" → \"\(summary.query ?? "")\"")
     case .unchanged:
-        print("unchanged (\(summary.latencyMs) ms, \(tokens)): \"\(summary.query ?? query)\"; subject \(summary.subject.map { "\"\($0)\"" } ?? "none")")
+        print("unchanged (\(summary.latencyMs) ms, \(tokens)): \"\(summary.query ?? query)\"")
     case let .failed(reason):
         print("failed (\(summary.latencyMs) ms): \(reason)")
     }
 case "sites":
     guard arguments.count == 2 else { fail("usage: report sites <name>") }
     let name = arguments[1]
-    print("name: \"\(name)\" (what the reading gives the site instinct as its subject)")
+    print("name: \"\(name)\" (what the extractor gives the site instinct as its name)")
     if let entry = SiteBook.seeded().lookup(name) {
         print("seeded book: \(entry.url.absoluteString)")
     } else {

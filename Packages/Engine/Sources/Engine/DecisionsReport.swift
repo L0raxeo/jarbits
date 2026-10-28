@@ -268,9 +268,8 @@ public enum DecisionsReport {
             out.append("")
             let unchanged = readings.filter { $0.1.outcome == .unchanged }.count
             let failed = readings.filter { if case .failed = $0.1.outcome { true } else { false } }
-            let subjects = readings.filter { $0.1.subject != nil }.count
             let cost = readings.compactMap { reading in reading.1.usage.map { GeminiPricing.cost($0, model: reading.1.model) } }.reduce(0, +)
-            out.append("\(readings.count) read beside Jev: \(rewritten.count) rewritten, \(unchanged) unchanged, \(failed.count) failed; \(subjects) gave a subject. Median latency \(median(readings.map(\.1.latencyMs))); about $\(cost.formatted(.number.precision(.fractionLength(4)))) in tokens.")
+            out.append("\(readings.count) read beside Jev: \(rewritten.count) rewritten, \(unchanged) unchanged, \(failed.count) failed. Median latency \(median(readings.map(\.1.latencyMs))); about $\(cost.formatted(.number.precision(.fractionLength(4)))) in tokens.")
             if !rewritten.isEmpty {
                 out.append("Rewritten: " + rewritten.suffix(10).map { "\"\($0.1.original)\" → \"\($0.0.query)\"" }.joined(separator: ", "))
             }

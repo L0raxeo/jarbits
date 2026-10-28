@@ -3,19 +3,18 @@ import Engine
 
 /// The reading beside the Jev request: one small Gemini call that returns
 /// the request with its substance isolated ("Which oh can you pull up
-/// youtube?" → "can you pull up youtube?") and what it is about ("youtube"),
-/// with anything the words pointed back at folded in ("pictures of it" after
-/// a Brazil page → "Brazil"). The engine sends the typed words to Jev at the
-/// same moment; a reading whose substance differs sends Jev the read words
-/// again and that pick wins; the subject fills the picked instinct's object
-/// field, so no grammar reads the words and the extractor is asked only
-/// for a field beyond that. Built on the same whole-body call that reads
-/// values, with its own schema and instruction.
+/// youtube?" → "can you pull up youtube?"), with anything the words pointed
+/// back at folded in ("pictures of it" after a Brazil page → "pictures of
+/// Brazil"). The engine sends the typed words to Jev at the same moment; a
+/// reading whose substance differs sends Jev the read words again and that
+/// pick wins; the read words are what the instinct and the extractor get.
+/// Built on the same whole-body call that reads values, with its own schema
+/// and instruction.
 public struct QueryReader: Sendable {
     public static let model = GeminiClient.defaultModel
     /// A query waits for the slower of Jev and this call, so the cap is
-    /// what a query may lose to it; past it the typed words run with no
-    /// subject, and a chained search goes out unresolved. From the Mac the
+    /// what a query may lose to it; past it the typed words run, and a
+    /// chained search goes out unresolved. From the Mac the
     /// call takes 1.0 to 1.4 s (2026-10-27); a phone's network is slower,
     /// and a miss here costs more than a wait, so the cap is twice that.
     /// The console prints each call's time; set this from the phone's.
@@ -27,8 +26,7 @@ public struct QueryReader: Sendable {
     public static let schema: JSONValue = [
         "type": "object",
         "properties": [
-            "query": ["type": "string", "description": "the request with its substance isolated; exactly the request when there is nothing to drop"],
-            "subject": ["type": ["string", "null"], "description": "what the request is about, in the words used, standing on its own; null when it is about nothing in particular"],
+            "query": ["type": "string", "description": "the request standing on its own; exactly the request when there is nothing to drop and nothing to fold in"],
         ],
         "required": ["query"],
         "additionalProperties": false,
@@ -37,7 +35,6 @@ public struct QueryReader: Sendable {
     public static let system = """
         You read a request made to a phone's browser, usually dictated. Reply with JSON matching the schema and nothing else.
         query: the request, standing on its own. Drop dictation noise, fillers, false starts and repeated words. Keep every word that carries meaning, the person's own wording and language, names, numbers and addresses. A request that leans on the earlier exchanges comes back complete, with what they make clear folded in, so it can be read with nothing else in view. Never answer, never add anything the request and the exchanges do not say. A request with nothing to drop and nothing to fold in comes back exactly as it is.
-        subject: the thing the request is about, named bare, with none of the asking around it: the thing to search for, picture, open, watch, keep in mind, forget or bring back, or the place whose time is asked; standing on its own the same way. Null when the request is about nothing in particular, such as the time here, a greeting, or a question with no one thing in it.
         Earlier exchanges of the session may come before the request, oldest first, and today's date.
         """
 
@@ -61,12 +58,11 @@ public struct QueryReader: Sendable {
         switch verdict {
         case let .values(values, summary):
             let text = values["query"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let subject = values["subject"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {
                 return ReadingSummary(original: query, model: summary.model, latencyMs: summary.latencyMs, usage: summary.usage, outcome: .failed("no query"))
             }
             let changed = Substance.differs(query, text)
-            return ReadingSummary(original: query, query: text, subject: subject?.isEmpty == false ? subject : nil, model: summary.model, latencyMs: summary.latencyMs, usage: summary.usage, outcome: changed ? .rewritten : .unchanged)
+            return ReadingSummary(original: query, query: text, model: summary.model, latencyMs: summary.latencyMs, usage: summary.usage, outcome: changed ? .rewritten : .unchanged)
         case let .failed(summary):
             let reason: String
             switch summary.outcome {

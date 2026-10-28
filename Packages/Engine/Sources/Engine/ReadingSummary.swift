@@ -1,17 +1,13 @@
 import Foundation
 
 /// What the reading beside the Jev request came back with: the request
-/// with its substance isolated, and what it is about. Rides on the same
+/// standing on its own. Rides on the same
 /// `DecisionRecord` line as the pick; `original` is what was typed, the
 /// record's own `query` is what ran.
 public struct ReadingSummary: Codable, Sendable, Equatable {
     public var original: String
     /// The request with its substance isolated; nil when the call gave nothing usable.
     public var query: String?
-    /// What the request is about, in the words used, with anything the
-    /// words pointed back at folded in; nil when it is about nothing in
-    /// particular, or the call gave nothing usable.
-    public var subject: String?
     public var model: String
     public var latencyMs: Int
     public var usage: AnswerUsage?
@@ -22,14 +18,13 @@ public struct ReadingSummary: Codable, Sendable, Equatable {
         case rewritten
         /// The same substance: the typed words ran.
         case unchanged
-        /// The call failed, timed out, or did not parse: the typed words ran, with no subject.
+        /// The call failed, timed out, or did not parse: the typed words ran.
         case failed(String)
     }
 
-    public init(original: String, query: String? = nil, subject: String? = nil, model: String, latencyMs: Int, usage: AnswerUsage? = nil, outcome: Outcome) {
+    public init(original: String, query: String? = nil, model: String, latencyMs: Int, usage: AnswerUsage? = nil, outcome: Outcome) {
         self.original = original
         self.query = query
-        self.subject = subject
         self.model = model
         self.latencyMs = latencyMs
         self.usage = usage

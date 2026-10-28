@@ -208,8 +208,8 @@ final class BrowserSession {
             #if DEBUG
             if let reading = result.reading {
                 switch reading.outcome {
-                case .rewritten: print("reading \"\(trimmed)\" -> \"\(result.query)\"; subject \(reading.subject.map { "\"\($0)\"" } ?? "none") (\(reading.latencyMs) ms)")
-                case .unchanged: print("reading: subject \(reading.subject.map { "\"\($0)\"" } ?? "none") (\(reading.latencyMs) ms)")
+                case .rewritten: print("reading \"\(trimmed)\" -> \"\(result.query)\" (\(reading.latencyMs) ms)")
+                case .unchanged: print("reading unchanged (\(reading.latencyMs) ms)")
                 case let .failed(reason): print("reading missed (\(reading.latencyMs) ms): \(reason)")
                 }
             }
