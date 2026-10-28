@@ -11,8 +11,9 @@ import UIKit
 /// ready the moment the button is pressed, but they are never shown;
 /// `finish()` is the only way out. A word counts only once the dictionary
 /// vouches for it, so noises do not raise the button; and what was heard is
-/// forgotten after a silence, or once the talk has gone on too long to be a
-/// query, so the button goes back to the keyboard hint. A subscriber of the
+/// forgotten after a silence, so the button goes back to the keyboard
+/// hint; talk may go on as long as it likes, since nothing is sent until the
+/// button is pressed. A subscriber of the
 /// shared `Microphone`, owned by `BrowserSession`, driven by the home screen.
 @Observable
 @MainActor
@@ -58,9 +59,8 @@ final class DictationSession {
     /// Vouches for words; built for the transcriber's locale.
     private var checker: (UITextChecker, String)?
     private var watchTask: Task<Void, Never>?
-    /// When the words last changed, and when the first one was accepted.
+    /// When the words last changed.
     private var lastWordsAt: Date?
-    private var firstWordsAt: Date?
 
     /// How long the last words may take to settle before they are given up on.
     private static let finishTimeout: Duration = .seconds(3)
@@ -70,9 +70,6 @@ final class DictationSession {
     private static let unavailableRetryDelay: Duration = .seconds(2)
     /// A pause this long after talking means it was not for the app.
     private static let silenceLimit: TimeInterval = 6
-    /// Talk this long, or this many words, is a conversation, not a query.
-    private static let attentionLimit: TimeInterval = 30
-    private static let wordLimit = 40
 
     init(microphone: Microphone) {
         self.microphone = microphone
@@ -255,7 +252,6 @@ final class DictationSession {
         lastWordsAt = Date()
         if !heardSpeech, isSpeech(now) {
             heardSpeech = true
-            firstWordsAt = lastWordsAt
         }
     }
 
@@ -272,15 +268,11 @@ final class DictationSession {
         return range.location == NSNotFound
     }
 
-    /// Twice a second while listening: a pause after talking, or talk that
-    /// has gone on too long or too far, means it was not for the app.
+    /// Twice a second while listening: a pause after talking means it was
+    /// not for the app.
     private func watch() {
         guard let lastWordsAt else { return }
-        let now = Date()
-        if now.timeIntervalSince(lastWordsAt) > Self.silenceLimit {
-            forget()
-        } else if let firstWordsAt,
-                  now.timeIntervalSince(firstWordsAt) > Self.attentionLimit || Words.split(transcript).count > Self.wordLimit {
+        if Date().timeIntervalSince(lastWordsAt) > Self.silenceLimit {
             forget()
         }
     }
@@ -291,7 +283,6 @@ final class DictationSession {
         volatile = AttributedString()
         heardSpeech = false
         lastWordsAt = nil
-        firstWordsAt = nil
     }
 
     /// The finalised segments and the volatile tail, with a space between
