@@ -100,14 +100,7 @@ public enum AnswerPrompt {
     /// One exchange as a line of the input block.
     static func describe(_ exchange: Exchange) -> String {
         switch exchange.kind {
-        case .answer: "Asked \"\(exchange.query)\" and got: \(exchange.text ?? "")"
-        case .page:
-            if let title = exchange.title, let host = exchange.host { "Read \"\(title)\" (\(host))" }
-            else if let title = exchange.title { "Read \"\(title)\"" }
-            else { "Read a page for \"\(exchange.query)\"" }
-        case .search: "Searched \"\(exchange.text ?? exchange.query)\""
-        case .recall: "Looked through earlier memories for \"\(exchange.query)\""
-        case .site: "Chose among sites for \"\(exchange.title ?? exchange.query)\""
+        case .answer, .page, .search, .recall, .site: exchange.described
         }
     }
 
@@ -149,7 +142,7 @@ public enum AnswerPrompt {
         - Your knowledge ends around \(knowledgeCutoffText) and you have no access to the web; the context says how long ago that was. Answer with what you knew then, stated as plain fact. Never say when your knowledge ends, that the answer may be out of date, or that you cannot check: the browser puts a web link under every answer. Do not invent developments after that date.
         - Use the context block for "today" and "now". Do not mention the context unless the query is about it.
         - A block "\(factsHeading(persona))" may follow the context: facts \(persona.user) told you before, as you noted them. Let them shape the answer when they bear on it (a vegetarian gets a vegetarian recipe); ignore them otherwise; never list them back, repeat them or say you were told.
-        - A question about \(persona.users) own life, people, preferences or situation is answered from that block alone. When it holds nothing on the question, say in a line that you don't know that yet; never guess, never answer from the world, and never ask for live data.
+        - A question or a request about \(persona.users) own life, people, preferences or situation is answered from that block alone. When it holds nothing on it, say in a line that you don't know that yet; never guess, never answer from the world, never ask for live data, and never tell a story or give a detail about \(persona.users) life that the block does not hold.
         - If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
         - Write in the language of the query.
 
@@ -175,7 +168,7 @@ public enum AnswerPrompt {
         - Your knowledge ends around \(knowledgeCutoffText) and you have no access to the web. If the question needs live data, such as today's weather, a current price or exchange rate, a live score, or the latest news, or if the answer may have changed since \(knowledgeCutoffText), such as whether a person is alive or who currently holds a role, reply with exactly: \(liveDataMarker)
         - You do know the current date and time from the context block. Compute dates, countdowns and the time in other places from it.
         - A block "\(factsHeading(persona))" may follow the context: facts \(persona.user) told you before, as you noted them. Let them shape the line when they bear on it; ignore them otherwise; never repeat them or say you were told.
-        - A question about \(persona.users) own life, people, preferences or situation is answered from that block alone. When it holds nothing on the question, reply in a line that you don't know that yet; never guess, never answer from the world, and never reply \(liveDataMarker) to it.
+        - A question or a request about \(persona.users) own life, people, preferences or situation is answered from that block alone. When it holds nothing on it, reply in a line that you don't know that yet; never guess, never answer from the world, never reply \(liveDataMarker) to it, and never give a detail about \(persona.users) life that the block does not hold.
         - If the honest answer is a range or depends on something, give the typical value in the line, such as "Usually 7 to 10 days".
         - If the question cannot be answered in one line, answer its most direct version in one line anyway.
         - Answer in the language of the query.

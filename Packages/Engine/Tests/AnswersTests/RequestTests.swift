@@ -217,7 +217,8 @@ import Testing
         #expect(nameless.contains("whose name you do not know yet"))
         #expect(QueryReader.system.hasPrefix(Persona().readerLine))
         for system in [AnswerPrompt.system(for: .narrative, persona: .example), AnswerPrompt.system(for: .oneLine, persona: .example)] {
-            #expect(system.contains("A question about Lorcan's own life, people, preferences or situation is answered from that block alone."))
+            #expect(system.contains("A question or a request about Lorcan's own life, people, preferences or situation is answered from that block alone."))
+            #expect(system.contains("that the block does not hold"))
             #expect(system.contains("say \"you\" for them and \"I\" for yourself"))
         }
         #expect(Persona(userName: "  ").userName == nil)
