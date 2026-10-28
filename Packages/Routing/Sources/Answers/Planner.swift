@@ -28,7 +28,7 @@ public struct Planner: Sendable {
     /// The field every tool takes: what to run it on.
     public static let queryField = ArgumentSchema.Field(
         name: "query", kind: .text,
-        description: "the words to run it on: complete and self-contained, with anything learned in earlier steps folded in"
+        description: "the request to run it on, complete and self-contained, with anything learned in earlier steps folded in: for narrative and one_line a question for the device to answer, never the answer itself"
     )
 
     /// The two tools the executor answers itself.

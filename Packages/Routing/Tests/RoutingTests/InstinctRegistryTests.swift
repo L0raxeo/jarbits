@@ -22,6 +22,14 @@ import Testing
                 #expect(!spec.showsLayer && spec.sideEffects == .destructive)
                 #expect(spec.arguments.fields.map(\.name) == ["about"] && spec.arguments.fields[0].required == false)
                 #expect(spec.read == nil)
+            case .webResults, .video:
+                #expect(spec.showsLayer && spec.sideEffects == .none)
+                #expect(spec.arguments.fields.map(\.name) == ["term"] && spec.arguments.fields[0].required == false, "read only for a chained query")
+                #expect(spec.read == nil)
+            case .image:
+                #expect(spec.showsLayer && spec.sideEffects == .none)
+                #expect(spec.arguments.fields.map(\.name) == ["subject"] && spec.arguments.fields[0].required == false, "read only for a chained query")
+                #expect(spec.read == nil)
             default:
                 #expect(spec.showsLayer, "\(spec.id) shows a layer")
                 #expect(spec.sideEffects == .none, "\(spec.id) has no side effects")

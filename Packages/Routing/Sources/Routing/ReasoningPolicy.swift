@@ -6,7 +6,10 @@ import Foundation
 public enum ReasoningPolicy {
     /// A reasoning score at or above this leans to the top level, several
     /// steps or a condition: the query is planned, whatever the pick.
-    public static let threshold = 1.5
+    /// Set from the first Simulator walk (2026-10-27): "remember I'm
+    /// vegetarian, then suggest a dinner recipe" scored 1.46 and a plain
+    /// remember 0.82, the highest single step in twenty queries.
+    public static let threshold = 1.2
     /// An unsure pick with a score at or above this is planned rather than
     /// sent to web results: Jev saw more than one thing in the words.
     public static let leanThreshold = 1.0

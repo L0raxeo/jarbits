@@ -63,7 +63,7 @@ struct Engine {
         // The values the pick takes: what its grammars read (the device
         // rule's, then the pick's own), what Jev read for its closed-set
         // fields, and what a model reads out of the words for the free-form
-        // ones still missing, when the field is required or the reasoning
+        // ones still missing, when the field is required, the query is chained, or the reasoning
         // score says a value is in the words.
         let spec = InstinctSpec.spec(for: decision.format)
         var arguments = outcome.arguments.mapValues(JSONValue.string)
@@ -75,7 +75,9 @@ struct Engine {
         }
         var extraction: ExtractionSummary?
         let missing = spec.arguments.freeForm.filter { arguments[$0.name] == nil }
-        if !missing.isEmpty, missing.contains(where: \.required) || (decision.reasoning ?? 0) >= EngineRouting.extractionThreshold {
+        // A chained query depends on the exchanges, so its words alone do
+        // not name the value ("pictures of it", "wait no I meant brazil").
+        if !missing.isEmpty, missing.contains(where: \.required) || (decision.reasoning ?? 0) >= EngineRouting.extractionThreshold || decision.chainedCount > 0 {
             if let extractor {
                 let schema = spec.arguments.jsonSchema(only: missing)
                 switch await extractor.extract(query: query, exchanges: chained.map(\.exchange), schema: schema) {

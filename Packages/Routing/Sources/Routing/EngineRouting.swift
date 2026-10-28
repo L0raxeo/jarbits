@@ -89,7 +89,7 @@ public enum EngineRouting {
     /// At or above this the score leans to the top level: several steps, a
     /// condition or a schedule. Logged for now; advanced reasoning acts on
     /// it once built.
-    public static let reasoningThreshold = 1.5
+    public static let reasoningThreshold = 1.2
 
     /// At or above this the score says a value should be read out of the
     /// words: the engine asks a model for the pick's free-form fields its

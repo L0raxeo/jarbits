@@ -9,17 +9,19 @@ import Testing
     }
 
     @Test func aScoreAtTheThresholdEntersWhateverThePick() {
-        #expect(ReasoningPolicy.entersReasoning(decision(1.5)))
+        #expect(ReasoningPolicy.entersReasoning(decision(ReasoningPolicy.threshold)))
+        #expect(ReasoningPolicy.entersReasoning(decision(1.46)), "the two-step remember-then-suggest measured 1.46 (2026-10-27)")
         #expect(ReasoningPolicy.entersReasoning(decision(2.0, format: .webResults)))
-        #expect(!ReasoningPolicy.entersReasoning(decision(1.49)))
+        #expect(!ReasoningPolicy.entersReasoning(decision(ReasoningPolicy.threshold - 0.01)))
+        #expect(!ReasoningPolicy.entersReasoning(decision(0.82)), "a plain remember measured 0.82")
         #expect(!ReasoningPolicy.entersReasoning(decision(0.2)))
     }
 
     @Test func anUnsurePickEntersFromTheLeanThreshold() {
         #expect(ReasoningPolicy.entersReasoning(decision(1.0, source: .confidenceFallback)))
-        #expect(ReasoningPolicy.entersReasoning(decision(1.2, source: .confidenceFallback)))
+        #expect(ReasoningPolicy.entersReasoning(decision(1.1, source: .confidenceFallback)))
         #expect(!ReasoningPolicy.entersReasoning(decision(0.9, source: .confidenceFallback)))
-        #expect(!ReasoningPolicy.entersReasoning(decision(1.2, source: .jev)), "a sure pick needs the full score")
+        #expect(!ReasoningPolicy.entersReasoning(decision(1.1, source: .jev)), "a sure pick needs the full score")
     }
 
     @Test func withoutAScoreNothingEnters() {

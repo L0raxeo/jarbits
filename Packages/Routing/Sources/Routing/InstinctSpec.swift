@@ -254,12 +254,16 @@ public struct InstinctSpec: Sendable, Identifiable {
                 guard let search = SearchQuery.parse(query), search.isCommand else { return nil }
                 return Recognised(rule: DeviceRouting.searchRule, arguments: ["term": search.term])
             }
+            // Read only when the query depends on earlier exchanges ("wait
+            // no I meant brazil" after "brasil weather"): the words alone are
+            // the term otherwise.
+            arguments = ArgumentSchema(fields: [.init(name: "term", kind: .text, description: "what to search the web for, in full, with anything the words point back at folded in", required: false)])
         case .remember:
             // Asked in every request: a yes on another pick is a fact noted quietly.
             questions = { _ in [(EngineRouting.rememberQuestionID, .noul(instructions: EngineRouting.rememberInstructions, criteria: EngineRouting.rememberCriteria))] }
             recognise = nil
             showsLayer = false
-            arguments = ArgumentSchema(fields: [.init(name: "fact", kind: .text, description: "the lasting fact about the user, in their own words")])
+            arguments = ArgumentSchema(fields: [.init(name: "fact", kind: .text, description: "the lasting fact about the user, in their own words and in the first person, as they said it")])
             // "remember that I'm allergic to peanuts": the words after the opener.
             read = { query in RememberQuery.parse(query).map { ["fact": $0.fact] } ?? [:] }
         case .forget:
@@ -269,7 +273,16 @@ public struct InstinctSpec: Sendable, Identifiable {
             sideEffects = .destructive
             asksItself = true
             arguments = ArgumentSchema(fields: [.init(name: "about", kind: .text, description: "what the fact to forget is about, when the words say", required: false)])
-        case .map, .stock, .image, .video:
+        case .image:
+            questions = { _ in [] }
+            recognise = nil
+            // Read only when the query depends on earlier exchanges ("pictures of it").
+            arguments = ArgumentSchema(fields: [.init(name: "subject", kind: .text, description: "the one thing to picture, named in full, with anything the words point back at folded in", required: false)])
+        case .video:
+            questions = { _ in [] }
+            recognise = nil
+            arguments = ArgumentSchema(fields: [.init(name: "term", kind: .text, description: "what to find videos of, in full, with anything the words point back at folded in", required: false)])
+        case .map, .stock:
             questions = { _ in [] }
             recognise = nil
         }

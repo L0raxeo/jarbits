@@ -14,7 +14,7 @@ struct WebResultsInstinct: Instinct {
             return .web(url)
         }
         // The verb that asked for the search ("google steve jobs") stays out of the box.
-        return .web(QueryParser.searchURL(for: context.outcome.searchTerm ?? context.query))
+        return .web(QueryParser.searchURL(for: context.arguments["term"]?.stringValue ?? context.outcome.searchTerm ?? context.query))
     }
 }
 
@@ -43,7 +43,7 @@ struct ImageInstinct: Instinct {
 
     func plan(_ context: InstinctContext) -> CardPlan {
         assert(spec.stage == .built, "image is marked \(spec.stage)")
-        return .image(query: context.query)
+        return .image(query: context.arguments["subject"]?.stringValue ?? context.query)
     }
 }
 
@@ -53,7 +53,7 @@ struct VideoInstinct: Instinct {
 
     func plan(_ context: InstinctContext) -> CardPlan {
         assert(spec.stage == .built, "video is marked \(spec.stage)")
-        return .web(QueryParser.videoSearchURL(for: context.outcome.searchTerm ?? VideoQuery.term(for: context.query)))
+        return .web(QueryParser.videoSearchURL(for: context.arguments["term"]?.stringValue ?? context.outcome.searchTerm ?? VideoQuery.term(for: context.query)))
     }
 }
 

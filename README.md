@@ -606,7 +606,9 @@ on its own ("remember I'm vegetarian, then suggest a dinner", "find that
 car page again and tell me where the nearest dealer is") is planned
 instead of run. Every routing request carries a reasoning `score`
 (ROUTING.md: direct, needs a value, needs sequencing); at or above
-`ReasoningPolicy.threshold` (1.5), whatever Jev picked, or at or above
+`ReasoningPolicy.threshold` (1.2; the two-step "remember I'm vegetarian,
+then suggest a dinner recipe" measured 1.46 and a plain remember 0.82),
+whatever Jev picked, or at or above
 `leanThreshold` (1.0) when the pick was unsure, the engine hands the query
 to the executor (`Browser/Engine/Executor.swift`) rather than to the pick.
 Without a Gemini key the pick runs as it would. The device's rules go
