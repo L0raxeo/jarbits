@@ -436,33 +436,6 @@ extension MemoryRecord {
 /// Records holding every term win; failing that, records holding any;
 /// newest first among equals.
 public enum MemorySearch {
-    /// Words that say "bring it back" rather than what to bring back.
-    static let filler: Set<String> = [
-        "where", "wheres", "where's", "my", "remember", "that", "those", "convo", "conversation", "chat",
-        "pull", "bring", "up", "again", "go", "back", "the", "a", "an", "to", "from", "earlier",
-        "yesterday", "thing", "about", "on", "of", "page", "site", "one", "i", "was", "had", "saw",
-        "looked", "at", "open", "show", "me", "find", "get", "it", "and", "with", "for", "in", "you",
-        "we", "did", "do", "what", "which", "s", "can", "could", "would", "please",
-        // What the user did with it, not what it was.
-        "watching", "watched", "watch", "reading", "read", "seen", "see", "looking", "visited",
-        "opened", "searched", "asked", "told", "said", "talking", "talked", "mentioned", "earlier",
-        "before", "ago", "last", "time", "other", "day", "days", "night", "week", "weeks", "recently", "just",
-        "this", "today", "tonight", "morning", "afternoon", "evening", "hours",
-        // The kind of thing, which its title rarely says: Jev's recall
-        // questions read the kind, so the word is noise here.
-        "video", "videos", "clip", "clips", "article", "articles", "post", "link", "website",
-        "answer", "answers", "question", "picture", "pictures", "photo", "photos", "image", "images",
-        // How many: a collection (Jev's question) or a count (the extractor's value).
-        "everything", "all", "anything", "every", "latest", "past", "few", "couple", "most",
-        "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
-        // Vague nouns and glue a spoken recall is padded with.
-        "things", "stuff", "like", "including", "recent", "queries", "query", "searches", "google", "ai",
-        "were", "are", "is", "am", "be", "been", "being", "have", "has", "will", "going", "went", "got",
-        "there", "here", "then", "when", "so", "but", "or", "if", "also", "some", "any", "these", "them",
-        "they", "their", "our", "us", "your", "yours", "him", "her", "his", "she", "he", "not", "dont", "didnt",
-        // Contractions of the words above, with the apostrophe gone ("you'll", "I've").
-        "youll", "ill", "well", "ive", "youve", "weve", "id", "youd", "im", "its", "thats", "whats", "theres",
-    ]
 
     /// At least this long before a term may match inside joined-up text.
     static let joinedMinimum = 6
@@ -470,40 +443,30 @@ public enum MemorySearch {
     /// The most matches a recall returns.
     public static let limit = 10
 
-    public static func terms(from query: String) -> [String] {
+    /// The words of a topic, the thing to bring back as the extractor read
+    /// it out of the request ("that thing about gingivitis again" →
+    /// "gingivitis"); nothing here decides which words count.
+    public static func terms(of topic: String?) -> [String] {
         var seen = Set<String>()
-        return tokens(of: query).filter { !filler.contains($0) && $0.count >= 2 && seen.insert($0).inserted }
-    }
-
-    /// The content words as typed, in order, for a title or a search box:
-    /// "Pull up everything we talked about with the Dyson PencilVac" is
-    /// "Dyson PencilVac". Empty when the query is all recall phrasing.
-    public static func topic(of query: String) -> String {
-        var seen = Set<String>()
-        return query.split { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "\u{2019}" }
-            .map(String.init)
-            .filter { word in
-                let key = tokens(of: word).joined()
-                return !filler.contains(key) && key.count >= 2 && seen.insert(key).inserted
-            }
-            .joined(separator: " ")
+        return tokens(of: topic ?? "").filter { $0.count >= 2 && seen.insert($0).inserted }
     }
 
     /// The candidates for a recall: the records the ask allows (the kinds
-    /// Jev read, the span and the count the extractor read), ranked by word
-    /// matches, then the rest of the allowed set newest first, so a judge
-    /// still sees "the videos from yesterday" when no word matches a title.
+    /// Jev read, the span and the count the extractor read), ranked by
+    /// matches on the topic (the thing to bring back, the extractor's value),
+    /// then the rest of the allowed set newest first, so a judge still sees
+    /// "the videos from yesterday" when no word matches a title.
     ///
     /// Jev's intent decides the kinds, whether a thing is named and whether
-    /// a set is wanted; the words only supply the terms. Nothing named means
+    /// a set is wanted; the topic supplies the terms. Nothing named means
     /// no word matching at all, so "the last 5 things we were looking at"
     /// is immune to any word in it: the newest of the allowed set, as many
     /// as the count or the limit. Without an intent (no key, an error) the
-    /// words alone decide: the kind is no bar, and with no span, no count
-    /// and no content word there is nothing to go on.
-    public static func shortlist(_ records: [MemoryRecord], query: String, ask: RecallAsk = RecallAsk(), limit: Int = limit) -> [MemoryRecord] {
+    /// topic alone decides: the kind is no bar, and with no span, no count
+    /// and no topic there is nothing to go on.
+    public static func shortlist(_ records: [MemoryRecord], topic: String?, ask: RecallAsk = RecallAsk(), limit: Int = limit) -> [MemoryRecord] {
         var filters = ask
-        let terms = terms(from: query)
+        let terms = terms(of: topic)
         let named = filters.named ?? !terms.isEmpty
         let hasTerms = named && !terms.isEmpty
         if filters.collection { filters.kinds = nil }
@@ -513,7 +476,7 @@ public enum MemorySearch {
         // or of the word matches when the query names something too. The
         // ask is for a count, not a thing, so no judge is needed.
         if let count = filters.count {
-            let pool = hasTerms ? matches(allowed, query: query, limit: allowed.count, preferFull: false) : allowed
+            let pool = hasTerms ? matches(allowed, topic: topic, limit: allowed.count, preferFull: false) : allowed
             return Array(pool.sorted { $0.date > $1.date }.prefix(count))
         }
         guard hasTerms else {
@@ -523,15 +486,15 @@ public enum MemorySearch {
         }
         // A collection takes every record that holds any of the words, not
         // only those holding all: Jev then judges which are about the topic.
-        var byWords = matches(allowed, query: query, limit: limit, preferFull: !filters.collection)
+        var byWords = matches(allowed, topic: topic, limit: limit, preferFull: !filters.collection)
         if filters.collection { return byWords }
         if byWords.isEmpty, filters.kinds != nil {
             // The kind was wrong about the kind, so the rest of that kind is
-            // noise, not a fallback; and with no match at all the words go
+            // noise, not a fallback; and with no match at all the topic goes
             // to the web as before.
             var relaxed = filters
             relaxed.kinds = nil
-            byWords = matches(relaxed.isEmpty ? records : records.filter(relaxed.allows), query: query, limit: limit)
+            byWords = matches(relaxed.isEmpty ? records : records.filter(relaxed.allows), topic: topic, limit: limit)
             if !byWords.isEmpty { return byWords }
         }
         guard !filters.isEmpty else { return byWords }
@@ -540,8 +503,8 @@ public enum MemorySearch {
         return Array((byWords + rest).prefix(limit))
     }
 
-    public static func matches(_ records: [MemoryRecord], query: String, limit: Int = limit, preferFull: Bool = true) -> [MemoryRecord] {
-        let terms = terms(from: query)
+    public static func matches(_ records: [MemoryRecord], topic: String?, limit: Int = limit, preferFull: Bool = true) -> [MemoryRecord] {
+        let terms = terms(of: topic)
         guard !terms.isEmpty else { return [] }
         let scored = records.compactMap { record -> (record: MemoryRecord, hits: Int)? in
             let ordered = tokens(of: record.haystack)
@@ -561,7 +524,7 @@ public enum MemorySearch {
     }
 
     /// Lowercased words; an apostrophe joins rather than splits, so
-    /// "you'll" is one word, "youll", that the filler list can name.
+    /// "macy's" is one word, "macys", as a memory's own words have it.
     static func tokens(of text: String) -> [String] {
         text.lowercased()
             .split { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "\u{2019}" }

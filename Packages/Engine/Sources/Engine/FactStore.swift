@@ -84,9 +84,9 @@ public actor FactStore {
         facts()
     }
 
-    /// The facts the query's words point at, newest first; see `FactSearch`.
-    public func shortlist(_ query: String, now: Date = .now) -> [Fact] {
-        FactSearch.shortlist(facts(), query: query, now: now)
+    /// The facts a forget is about, best match first, then newest; see `FactSearch`.
+    public func shortlist(about: String?, now: Date = .now) -> [Fact] {
+        FactSearch.shortlist(facts(), about: about, now: now)
     }
 
     public func clear() {

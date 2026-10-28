@@ -136,14 +136,14 @@ actor MemoryStore {
         try? FileManager.default.removeItem(at: pictureURL(for: id))
     }
 
-    func search(_ query: String) -> [MemoryRecord] {
-        MemorySearch.matches(records(), query: query)
+    func search(topic: String) -> [MemoryRecord] {
+        MemorySearch.matches(records(), topic: topic)
     }
 
     /// The candidates for a recall: the records the ask allows, ranked by
     /// words then recency; see `MemorySearch.shortlist`.
-    func shortlist(_ query: String, ask: RecallAsk = RecallAsk()) -> [MemoryRecord] {
-        MemorySearch.shortlist(records(), query: query, ask: ask)
+    func shortlist(topic: String?, ask: RecallAsk = RecallAsk()) -> [MemoryRecord] {
+        MemorySearch.shortlist(records(), topic: topic, ask: ask)
     }
 
     /// Everything goes: the file and every picture. Debug builds offer this
@@ -156,6 +156,10 @@ actor MemoryStore {
 
     func all() -> [MemoryRecord] {
         records()
+    }
+
+    func record(id: UUID) -> MemoryRecord? {
+        records().first { $0.id == id }
     }
 
     private func records() -> [MemoryRecord] {

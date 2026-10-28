@@ -132,7 +132,7 @@ import Testing
         let back = try roundTrip(record)
         #expect(back == record)
         #expect(back.parts[0].content == .action(name: "remember", arguments: ["query": "I'm vegetarian", "fact": "I'm vegetarian"], result: "kept: I'm vegetarian"))
-        #expect(MemorySearch.matches([record], query: "the vegetarian thing you kept") == [record], "found by its result")
+        #expect(MemorySearch.matches([record], topic: "vegetarian") == [record], "found by its result")
         let factory = MemoryRecord(kind: .action, query: "q", title: "forget", text: "dropped: I'm vegetarian")
         #expect(factory.kind == .action && factory.text == "dropped: I'm vegetarian")
         #expect(MemoryRecord(kind: .action, query: "q", title: "remember").title == "remember", "a bare action is titled by its name")
@@ -143,6 +143,6 @@ import Testing
             MemoryPart(.page(address: URL(string: "https://www.dyson.com/pencilvac")!, title: "Dyson PencilVac | Dyson")),
             MemoryPart(.note(text: "the best cooking show ever")),
         ])
-        #expect(MemorySearch.matches([record], query: "that cooking show website") == [record])
+        #expect(MemorySearch.matches([record], topic: "cooking show") == [record])
     }
 }

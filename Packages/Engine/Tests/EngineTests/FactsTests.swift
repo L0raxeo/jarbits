@@ -34,13 +34,13 @@ import Testing
         let cilantro = fact("I hate cilantro", minutesAgo: 60_000)
         let metric = fact("I use metric units", minutesAgo: 600_000)
         let all = [metric, cilantro, austin, ana, vegetarian, peanuts]
-        #expect(FactSearch.shortlist(all, query: "forget that I'm vegetarian", now: now).first == vegetarian)
-        #expect(FactSearch.shortlist(all, query: "stop remembering my peanut allergy", now: now).first == peanuts, "a near miss on a name still counts")
-        #expect(FactSearch.shortlist(all, query: "drop what I told you about my wife", now: now).first == ana)
-        #expect(FactSearch.shortlist(all, query: "forget that", now: now) == [peanuts, vegetarian, ana, austin, cilantro], "nothing named: the newest, up to the limit")
-        #expect(FactSearch.shortlist(all, query: "forget where I live", now: now).first == austin)
-        #expect(FactSearch.shortlist(all, query: "forget about the weather", now: now).count == 5, "no match: still the newest, for the judge or the sheet")
-        #expect(FactSearch.shortlist([], query: "forget that", now: now).isEmpty)
+        #expect(FactSearch.shortlist(all, about: "vegetarian", now: now).first == vegetarian)
+        #expect(FactSearch.shortlist(all, about: "my peanut allergy", now: now).first == peanuts, "a near miss on a name still counts")
+        #expect(FactSearch.shortlist(all, about: "my wife", now: now).first == ana)
+        #expect(FactSearch.shortlist(all, about: nil, now: now) == [peanuts, vegetarian, ana, austin, cilantro], "nothing named: the newest, up to the limit")
+        #expect(FactSearch.shortlist(all, about: "where I live", now: now).first == austin)
+        #expect(FactSearch.shortlist(all, about: "the weather", now: now).count == 5, "no match: still the newest, for the judge or the sheet")
+        #expect(FactSearch.shortlist([], about: nil, now: now).isEmpty)
     }
 }
 
@@ -60,7 +60,7 @@ import Testing
         #expect(again.source == .told, "how it was first learned stands")
         #expect(again.date == Date(timeIntervalSince1970: 1_792_600_200), "its date moves on")
         #expect(await store.all().count == 2)
-        #expect(await store.shortlist("forget that I'm vegetarian").first?.id == first.id)
+        #expect(await store.shortlist(about: "vegetarian").first?.id == first.id)
         await store.forget(first.id)
         #expect(await store.all() == [second])
         await store.forget(first.id)

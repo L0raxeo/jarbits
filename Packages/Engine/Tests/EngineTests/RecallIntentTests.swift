@@ -99,14 +99,14 @@ import Testing
         let v1 = record(.page, "muse", minutesAgo: 30, title: "Muse - Hysteria", url: "https://m.youtube.com/watch?v=1")
         let all = [peeking, s1, p1, a1, v1]
         let unnamed = RecallIntent(named: false, all: true)
-        #expect(MemorySearch.shortlist(all, query: "Can you pull up the last 5 things we were peeking at", ask: RecallAsk(intent: unnamed)) == [s1, p1, a1, v1, peeking], "'peeking' is not filler, and it does not matter")
-        #expect(MemorySearch.shortlist(all, query: "pull up what I was peeking at", ask: RecallAsk(intent: unnamed)) == [s1, p1, a1, v1, peeking], "no filter and nothing named: the newest, for the judge")
-        #expect(MemorySearch.shortlist(all, query: "pull up what I was peeking at") == [peeking], "with no intent the words still match: this is the bug the intent prevents")
-        #expect(MemorySearch.shortlist(all, query: "pull up what I was looking at").isEmpty, "with no intent and only filler there is nothing to go on")
+        #expect(MemorySearch.shortlist(all, topic: "peeking", ask: RecallAsk(intent: unnamed)) == [s1, p1, a1, v1, peeking], "nothing named: a topic read anyway does not matter")
+        #expect(MemorySearch.shortlist(all, topic: nil, ask: RecallAsk(intent: unnamed)) == [s1, p1, a1, v1, peeking], "no filter and nothing named: the newest, for the judge")
+        #expect(MemorySearch.shortlist(all, topic: "peeking") == [peeking], "with no intent the topic still matches: this is the bug the intent prevents")
+        #expect(MemorySearch.shortlist(all, topic: nil).isEmpty, "with no intent and no topic there is nothing to go on")
         let videos = RecallIntent(kinds: [.videos], named: false, all: true)
-        #expect(MemorySearch.shortlist(all, query: "all the videos I watched", ask: RecallAsk(intent: videos)) == [v1], "a set of a kind keeps the kind")
+        #expect(MemorySearch.shortlist(all, topic: nil, ask: RecallAsk(intent: videos)) == [v1], "a set of a kind keeps the kind")
         let named = RecallIntent(kinds: [.answers], named: true, all: false)
-        #expect(MemorySearch.shortlist(all, query: "what you told me about the dyson", ask: RecallAsk(intent: named)) == [s1, p1], "named: word matches; the kind is a preference, not a wall")
-        #expect(MemorySearch.shortlist(all, query: "the thing you told me", ask: RecallAsk(intent: named)) == [a1], "named but only filler left: the allowed set, newest first")
+        #expect(MemorySearch.shortlist(all, topic: "dyson", ask: RecallAsk(intent: named)) == [s1, p1], "named: word matches; the kind is a preference, not a wall")
+        #expect(MemorySearch.shortlist(all, topic: nil, ask: RecallAsk(intent: named)) == [a1], "named but no topic read: the allowed set, newest first")
     }
 }

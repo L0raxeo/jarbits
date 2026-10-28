@@ -30,7 +30,10 @@ struct ForgetInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .forget)
 
     func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
-        let candidates = await session.facts.shortlist(context.query)
+        // What the forget is about, as the extractor read it; nothing named
+        // offers the newest facts.
+        let about = context.arguments["about"]?.stringValue
+        let candidates = await session.facts.shortlist(about: about)
         guard session.isCurrent(token) else { return .nothing }
         guard !candidates.isEmpty else {
             return InstinctOutcome(fact: FactSummary(action: "none", candidates: 0), text: "nothing to forget")

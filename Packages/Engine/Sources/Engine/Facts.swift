@@ -85,21 +85,15 @@ public struct FactSummary: Codable, Sendable, Equatable {
     }
 }
 
-/// Word matching over the facts, for a forget: the facts holding any of
-/// the query's content words come first, best match first, then the
-/// newest, so "forget that" alone offers the facts just learned.
+/// Word matching over the facts, for a forget: the facts holding any word
+/// of what the forget is about (the extractor's value) come first, best
+/// match first, then the newest, so "forget that" alone, about nothing
+/// named, offers the facts just learned.
 public enum FactSearch {
     public static let limit = 5
 
-    /// Words that say "forget" rather than what to forget.
-    static let forgetWords: Set<String> = [
-        "forget", "forgot", "forgotten", "stop", "remembering", "remembered", "drop", "undo", "remove", "delete",
-        "told", "know", "knew", "known", "said", "mentioned", "fact", "facts", "remember", "mind", "note", "noted",
-        "anymore", "longer", "never", "wrong", "actually", "correction", "scratch",
-    ]
-
-    public static func shortlist(_ facts: [Fact], query: String, now: Date, limit: Int = limit) -> [Fact] {
-        let terms = MemorySearch.terms(from: query).filter { !forgetWords.contains($0) }
+    public static func shortlist(_ facts: [Fact], about: String?, now: Date, limit: Int = limit) -> [Fact] {
+        let terms = MemorySearch.terms(of: about)
         let newest = facts.sorted { $0.date > $1.date }
         guard !terms.isEmpty else { return Array(newest.prefix(limit)) }
         let scored = newest.compactMap { fact -> (fact: Fact, hits: Int)? in
