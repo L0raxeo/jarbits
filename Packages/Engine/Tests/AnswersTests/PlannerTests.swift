@@ -8,10 +8,14 @@ import Testing
 /// instruction, the exchanges and memories in the first turn, and the
 /// wire shape the app sends.
 @Suite struct PlannerTests {
-    @Test func everyInstinctIsAToolWithAQueryFieldThenAskAndDone() throws {
+    @Test func everyInstinctIsAToolWithAQueryFieldThenAskSayOpenAndDone() throws {
         let tools = Planner.tools(for: InstinctSpec.all)
-        #expect(tools.map(\.name) == InstinctSpec.all.map(\.id) + ["ask", "done"])
-        for tool in tools.dropLast(2) {
+        #expect(tools.map(\.name) == InstinctSpec.all.map(\.id) + ["ask", "say", "open", "done"])
+        let recall = try #require(tools.first { $0.name == "recall" })
+        #expect(recall.description.contains("In a plan it shows nothing: its result names what it found, by handle"))
+        let open = try #require(tools.first { $0.name == "open" })
+        #expect(open.parameters["required"]?.arrayValue?.first?.stringValue == "thing")
+        for tool in tools.dropLast(4) {
             let requiredNames = tool.parameters["required"]?.arrayValue?.compactMap { $0.stringValue }
             let required = try #require(requiredNames)
             #expect(required.contains("query"), "\(tool.name) takes a query")
@@ -42,9 +46,13 @@ import Testing
     @Test func theSystemInstructionCarriesTheRulesAndTheFacts() {
         let system = Planner.system(facts: ["Lorcan is vegetarian", "Lorcan lives in Austin"], context: .example, persona: .example)
         #expect(system.hasPrefix(Persona.example.identityLine))
-        #expect(system.contains("nothing you write is shown to anyone"))
+        #expect(system.contains("Nothing you write outside a tool call is shown to anyone"))
+        #expect(system.contains("call say with it"))
+        #expect(system.contains("Never write an answer into a question"))
         #expect(system.contains("What Jarvits knows about Lorcan"))
-        #expect(system.contains("Show at most one thing, as the last step: web_results, narrative, map, stock, one_line, recall, image, site, video, time each put a result on screen"))
+        #expect(system.contains("Show at most one thing, as the last step: web_results, narrative, map, stock, one_line, image, site, video, time, say and open each put a result on screen"))
+        #expect(system.contains("The listing tags each earlier thing of this session (p1, p2) and each memory (m1, m2)"))
+        #expect(system.contains("never one you made up"))
         #expect(system.contains("call remember with it next"))
         #expect(system.contains("never call it again with the same arguments"))
         #expect(system.contains("Call done when the request has been handled"))
@@ -64,9 +72,9 @@ import Testing
             exchanges: [.search(query: "hennessey venom", term: "hennessey venom")],
             memories: memories, now: now, calendar: Calendar(identifier: .gregorian)
         )
-        #expect(input.hasPrefix("Request: find a dealer near me for it\n\nEarlier in this session (oldest first):\n- "))
+        #expect(input.hasPrefix("Request: find a dealer near me for it\n\nEarlier in this session (oldest first):\n- p1: "))
         #expect(input.contains("hennessey venom"))
-        #expect(input.contains("Seen in this app before, that the request may mean (newest first):\n- A page from yesterday (www.hennesseyperformance.com): \"Hennessey Performance\"\n- An answer from today: \"what is a venom f5\""))
+        #expect(input.contains("Seen in this app before, that the request may mean (newest first):\n- m1: A page from yesterday (www.hennesseyperformance.com): \"Hennessey Performance\"\n- m2: An answer from today: \"what is a venom f5\""))
         let bare = Planner.input(query: "x", exchanges: [], memories: [], now: now)
         #expect(bare == "Request: x")
     }
@@ -78,17 +86,19 @@ import Testing
         #expect(request.model == Planner.model)
         #expect(request.stream == false)
         #expect(request.toolChoice == .any)
-        #expect(request.tools.count == InstinctSpec.all.count + 2)
+        #expect(request.tools.count == InstinctSpec.all.count + 4)
+        #expect(request.tools.suffix(4).map(\.name) == ["ask", "say", "open", "done"])
+        #expect(Planner.sayTool.parameters["required"]?.arrayValue?.first?.stringValue == "text")
         #expect(request.maxOutputTokens == Planner.maxOutputTokens)
         #expect(request.thinkingLevel == Planner.thinkingLevel)
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
         #expect(json["model"] as? String == "gemini-3.1-flash-lite")
         #expect(json["stream"] as? Bool == false)
         #expect(json["store"] as? Bool == false)
-        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 2)
+        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 4)
         let config = try #require(json["generation_config"] as? [String: Any])
         #expect(config["tool_choice"] as? String == "any")
-        #expect(config["thinking_level"] as? String == "minimal", "the extractor's level; gemini-3.8-flash refused it and took 11 s at low (2026-10-27)")
+        #expect(config["thinking_level"] as? String == "high", "accuracy over speed: the planner thinks")
         let input = try #require(json["input"] as? [[String: Any]])
         #expect(input.count == 1)
         #expect((json["system_instruction"] as? String)?.contains("- f") == true)

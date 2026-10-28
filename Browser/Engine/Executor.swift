@@ -44,9 +44,9 @@ final class Executor {
             usage = AnswerUsage(inputTokens: usage.inputTokens + found.inputTokens, outputTokens: usage.outputTokens + found.outputTokens, thoughtTokens: usage.thoughtTokens + found.thoughtTokens)
         }
 
-        // The memories the words point at, judged when Jev can; in word
-        // order when it cannot.
-        var memories = await session.memory.shortlist(query)
+        // The newest memories, judged by Jev when it can, so the plan sees
+        // what the words may point at without any word deciding it.
+        var memories = await session.memory.shortlist(topic: nil, ask: RecallAsk(intent: RecallIntent(named: false, all: true)))
         if let recall, !memories.isEmpty, case let .picked(picks, _) = await recall.resolve(query, candidates: memories, threshold: RecallRouting.maybeThreshold) {
             memories = picks.map(\.record)
         }
@@ -60,7 +60,13 @@ final class Executor {
             context: AnswerContext(locale: .current, timeZone: .current, now: now),
             persona: session.persona
         )
-        var transcript: [InteractionStep] = [.userText(Planner.input(query: query, exchanges: exchanges, memories: memories, now: now))]
+        // The handles: the chain's exchanges and the memories, tagged, so
+        // the plan points at a thing and the device resolves it.
+        var things = ThingTable(exchanges: exchanges, memories: memories)
+        var transcript: [InteractionStep] = [.userText(Planner.input(query: query, things: things, now: now))]
+        func noSuchThing(_ handle: String) -> String {
+            "no such thing: \(handle); the things are \(things.handles.isEmpty ? "none" : things.handles.joined(separator: ", "))"
+        }
         var ran: Set<String> = []
         var shown = false
         var failures = 0
@@ -99,6 +105,53 @@ final class Executor {
                     result = "done"
                     outcome = "done"
                     ended = .completed
+                } else if call.name == Planner.sayTool.name {
+                    // The planner's own words, shown as they are: no model reads them.
+                    let text = call.arguments["text"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    if text.isEmpty {
+                        result = "nothing to say"
+                        outcome = "failed: empty"
+                        failures += 1
+                    } else if shown {
+                        result = "something is already on screen; call done"
+                        outcome = "skipped: already showing"
+                    } else {
+                        guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
+                        let context = InstinctContext(
+                            query: query,
+                            decision: Pick(instinct: .narrative, suggested: nil, confidence: 1, source: .plan),
+                            opened: nil, canAnswer: session.canAnswer, thread: [], earlier: exchanges, arguments: [:]
+                        )
+                        session.showSaid(text, context: context)
+                        shown = true
+                        result = "shown on screen"
+                        outcome = "shown"
+                    }
+                    answered = false
+                } else if call.name == Planner.openTool.name {
+                    // A thing by its handle; the device knows what it is.
+                    let handle = call.arguments["thing"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+                    if shown {
+                        result = "something is already on screen; call done"
+                        outcome = "skipped: already showing"
+                    } else if let thing = things[handle] {
+                        guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
+                        let context = InstinctContext(
+                            query: query,
+                            decision: Pick(instinct: .recall, suggested: nil, confidence: 1, source: .plan),
+                            opened: nil, canAnswer: session.canAnswer, thread: [], earlier: exchanges, arguments: [:]
+                        )
+                        await session.open(Reference(thing), context: context)
+                        guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
+                        shown = true
+                        result = "shown on screen"
+                        outcome = "shown"
+                    } else {
+                        result = noSuchThing(handle)
+                        outcome = "failed: no such thing"
+                        failures += 1
+                    }
+                    answered = false
                 } else if call.name == Planner.askTool.name {
                     let question = call.arguments["question"]?.stringValue ?? "?"
                     let options = (call.arguments["options"]?.arrayValue ?? []).compactMap(\.stringValue).prefix(3)
@@ -122,7 +175,18 @@ final class Executor {
                     let stepQuery = values["query"]?.stringValue ?? query
                     if spec.instinct == .remember, answered { values[RememberInstinct.sourceField] = .string(Fact.Source.chosen.rawValue) }
                     answered = false
-                    if ran.contains(key) {
+                    // A thing field names a handle; the device resolves it, or the step fails.
+                    var resolved: [String: Reference] = [:]
+                    var unknown: String?
+                    for field in spec.arguments.things {
+                        guard let handle = values[field.name]?.stringValue else { continue }
+                        if let thing = things[handle] { resolved[field.name] = Reference(thing) } else { unknown = handle; break }
+                    }
+                    if let unknown {
+                        result = noSuchThing(unknown)
+                        outcome = "failed: no such thing"
+                        failures += 1
+                    } else if ran.contains(key) {
                         result = "already done"
                         outcome = "already ran"
                     } else if spec.showsLayer, shown {
@@ -136,13 +200,22 @@ final class Executor {
                         ended = .declined
                     } else {
                         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
-                        let context = InstinctContext(
+                        var context = InstinctContext(
                             query: stepQuery,
                             decision: Pick(instinct: spec.instinct, suggested: nil, confidence: 1, source: .plan),
                             opened: nil, canAnswer: session.canAnswer, thread: [], earlier: exchanges,
                             arguments: values.filter { $0.key != Planner.queryField.name }
                         )
-                        if spec.showsLayer {
+                        context.things = resolved
+                        if spec.instinct == .recall {
+                            // In a plan the recall finds; what it found gets handles for the next step.
+                            context.lookup = true
+                            let act = await instinct.run(context, in: session, token: token)
+                            guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
+                            let handles = things.mint(act.found)
+                            result = Planner.found(handles, in: things, now: now)
+                            outcome = act.found.isEmpty ? "found nothing" : "found \(act.found.count)"
+                        } else if spec.showsLayer {
                             let didShow = await session.perform(instinct, context: context, token: token)
                             guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                             shown = didShow

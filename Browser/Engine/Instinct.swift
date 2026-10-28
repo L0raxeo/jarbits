@@ -16,11 +16,17 @@ struct InstinctContext {
     let thread: [AnswerTurn]
     /// The chained exchanges that are not the thread: a search made, a page
     /// read, a picture looked at; oldest first.
-    let earlier: [Exchange]
+    var earlier: [Exchange]
     /// The values the instinct takes, by field name: what Jev read for a
     /// closed-set field, what the extractor read for a free-form one, or
     /// what a plan passed.
     let arguments: [String: JSONValue]
+    /// The things the instinct's thing fields name, resolved by the device:
+    /// in a plan from the handle table, on the pick path from what the
+    /// query leans on.
+    var things: [String: Reference] = [:]
+    /// A recall in a plan: return what was found, show nothing.
+    var lookup = false
     /// How the extractor fared, when it was asked; for the log.
     var extraction: ExtractionSummary? = nil
     /// How the reading beside Jev fared, when it ran; for the log.
@@ -34,6 +40,8 @@ struct InstinctContext {
 struct InstinctOutcome {
     var fact: FactSummary?
     var text: String
+    /// What a recall in a plan found, for the plan to point at by handle.
+    var found: [MemoryRecord] = []
 
     static let nothing = InstinctOutcome(fact: nil, text: "")
 }

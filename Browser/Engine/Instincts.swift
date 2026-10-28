@@ -29,6 +29,13 @@ struct AnswerInstinct: InstinctRunner {
             session.openPage(QueryParser.searchURL(for: context.query), context: context)
             return .nothing
         }
+        // The thing the answer is about, in its context block, unless the
+        // chain already put it there.
+        var context = context
+        if let about = context.things["about"] {
+            let exchange = about.asExchange(query: context.query)
+            if !context.earlier.contains(exchange) { context.earlier.append(exchange) }
+        }
         session.showAnswer(format: format, context: context)
         return .nothing
     }

@@ -561,7 +561,8 @@ final class BrowserSession {
     }
 
     /// A new card layer, on screen at once.
-    func showCard(_ plan: CardPlan, context: InstinctContext, recording: Bool = true) {
+    @discardableResult
+    func showCard(_ plan: CardPlan, context: InstinctContext, recording: Bool = true) -> Layer {
         let layer = Layer(plan: plan, query: context.query, decision: context.decision)
         layer.extraction = context.extraction
         layer.fact = context.fact
@@ -569,6 +570,43 @@ final class BrowserSession {
         open(layer)
         stage = .ready
         if recording { record(context) }
+        return layer
+    }
+
+    /// A thing a plan points at, shown: a page loads, a search loads its
+    /// results, a saved answer shows as it was, an answer from this session
+    /// shows its text. Unlike `replay`, the request's token stands, so the
+    /// plan goes on.
+    func open(_ reference: Reference, context: InstinctContext) async {
+        lastQuery = context.query
+        switch reference.kind {
+        case .page where reference.address != nil:
+            openPage(reference.address!, context: context)
+        case .search:
+            openPage(QueryParser.searchURL(for: reference.term ?? reference.title), context: context)
+        case .answer, .action, .picture, .page, .recall, .site:
+            var saved: MemoryRecord?
+            if let id = reference.memoryID { saved = await memory.record(id: id) }
+            if let saved, saved.kind == .narrative || saved.kind == .action || saved.turns != nil {
+                let layer = Layer(plan: .memory(saved), query: context.query, decision: context.decision)
+                layer.currentMemory = Task { saved.id }
+                open(layer)
+                stage = .ready
+                record(context)
+            } else if let text = reference.text, !text.isEmpty {
+                showCard(.said(query: context.query, text: text), context: context)
+            } else {
+                openPage(QueryParser.searchURL(for: reference.term ?? reference.title), context: context)
+            }
+        }
+    }
+
+    /// What the planner said, on a card as it is, and kept as a narrative
+    /// memory so it can be brought back.
+    func showSaid(_ text: String, context: InstinctContext) {
+        lastQuery = context.query   // the capsule shows the user's words, not the planner's
+        let layer = showCard(.said(query: context.query, text: text), context: context)
+        remember(MemoryRecord(kind: .narrative, query: context.query, text: text), in: layer)
     }
 
     /// An answer streamed from Gemini: a follow-up that continues the

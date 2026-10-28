@@ -10,8 +10,9 @@ import Sites
 /// request standing on its own. A reading that rewrote the words sends Jev
 /// the read words again, and that pick wins. The extractor then reads every
 /// free-form value the picked instinct declares out of the read words. A
-/// query whose reasoning score says it needs several steps goes to the
-/// executor instead. No word list decides anything here.
+/// pick Jev is not near-certain of, or one whose reasoning score says it
+/// needs several steps, goes to the executor instead. No word list decides
+/// anything here.
 struct Engine {
     /// Jev; nil when no key is configured, in which case anything that is
     /// not an address is web results.
@@ -64,8 +65,8 @@ struct Engine {
             decision = .noKey()
         }
         let chained = Array(sent.suffix(decision.chainedCount))
-        // Several steps, a condition, or an unsure pick that leaned that
-        // way: the session plans it instead of running the pick.
+        // An unsure pick, or a sure one that needs several steps: the
+        // session plans it instead of running the pick.
         if planner != nil, ReasoningPolicy.entersReasoning(decision) {
             return EngineResult(query: query, decision: decision, reading: reading, reasoning: true, chained: chained.map(\.exchange))
         }
@@ -116,7 +117,16 @@ struct Engine {
         let earlier = chained.filter { !(decision.continuesThread && $0.layerID == current?.id) }.map(\.exchange)
         // A value the instinct cannot run without never came: the words go to the web.
         let format: Instinct = spec.arguments.missingRequired(in: arguments).isEmpty ? decision.instinct : .webResults
-        let context = InstinctContext(
+        // A thing field on the pick path: what the query leans on, the
+        // chain's newest page, search or answer, else the layer on screen.
+        var things: [String: Reference] = [:]
+        if !spec.arguments.things.isEmpty {
+            let leaned = chained.map(\.exchange).last { [.page, .search, .answer].contains($0.kind) } ?? current?.exchanges.last?.exchange
+            if let leaned {
+                for field in spec.arguments.things { things[field.name] = Reference(.exchange(leaned)) }
+            }
+        }
+        var context = InstinctContext(
             query: query,
             decision: decision,
             opened: opened,
@@ -127,6 +137,7 @@ struct Engine {
             extraction: extraction,
             reading: reading
         )
+        context.things = things
         return EngineResult(query: query, decision: decision, extraction: extraction, reading: reading, instinct: instinct(for: format), context: context, inferred: inferred)
     }
 

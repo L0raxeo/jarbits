@@ -11,7 +11,9 @@ public enum SideEffects: String, Codable, Sendable {
 
 /// The values an instinct takes, declared once: Jev reads the closed-set
 /// ones as questions in the routing request, a small model call reads the
-/// free-form ones out of the words, and a plan passes either.
+/// free-form ones out of the words, a plan passes either, and a thing (a
+/// page, a search, an answer, a memory) is named by its handle in a plan
+/// and resolved by the device, never read by a model.
 public struct ArgumentSchema: Sendable, Equatable {
     public struct Field: Sendable, Equatable {
         public enum Kind: Sendable, Equatable {
@@ -20,6 +22,9 @@ public struct ArgumentSchema: Sendable, Equatable {
             case integer
             case boolean
             case choice([String])
+            /// A thing from the plan's listing, by handle (`p1`, `m2`); on
+            /// the pick path, what the query leans on. See `ThingTable`.
+            case thing
         }
 
         public var name: String
@@ -35,13 +40,22 @@ public struct ArgumentSchema: Sendable, Equatable {
         }
 
         /// Text and numbers must be read out of the words; a boolean or a
-        /// choice is a question Jev can answer.
+        /// choice is a question Jev can answer; a thing is neither.
         public var isFreeForm: Bool {
             switch kind {
             case .text, .number, .integer: true
-            case .boolean, .choice: false
+            case .boolean, .choice, .thing: false
             }
         }
+
+        public var isClosedSet: Bool {
+            switch kind {
+            case .boolean, .choice: true
+            case .text, .number, .integer, .thing: false
+            }
+        }
+
+        public var isThing: Bool { kind == .thing }
     }
 
     public var fields: [Field]
@@ -54,7 +68,8 @@ public struct ArgumentSchema: Sendable, Equatable {
 
     public var isEmpty: Bool { fields.isEmpty }
     public var freeForm: [Field] { fields.filter(\.isFreeForm) }
-    public var closedSet: [Field] { fields.filter { !$0.isFreeForm } }
+    public var closedSet: [Field] { fields.filter(\.isClosedSet) }
+    public var things: [Field] { fields.filter(\.isThing) }
 
     /// A JSON schema of an object with these fields (`only` narrows it to
     /// some), as Gemini's `response_format` takes it: each field a
@@ -74,6 +89,9 @@ public struct ArgumentSchema: Sendable, Equatable {
             case let .choice(options):
                 type = "string"
                 property["enum"] = .array(options.map(JSONValue.string))
+            case .thing:
+                type = "string"
+                property["description"] = .string(field.description + " (a handle from the listing or a step's result, such as p1 or m2)")
             }
             property["type"] = field.required ? .string(type) : .array([.string(type), .string("null")])
             properties[field.name] = .object(property)
@@ -117,6 +135,10 @@ public struct ArgumentSchema: Sendable, Equatable {
                     out[field.name] = .bool(bool)
                 } else if let text = value.stringValue?.lowercased(), ["true", "false", "yes", "no", "on", "off"].contains(text) {
                     out[field.name] = .bool(["true", "yes", "on"].contains(text))
+                }
+            case .thing:
+                if let handle = value.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !handle.isEmpty {
+                    out[field.name] = .string(handle)
                 }
             case let .choice(options):
                 if let text = value.stringValue, options.contains(text) {
@@ -174,6 +196,11 @@ public struct InstinctSpec: Sendable, Identifiable {
     /// question two instincts both add is asked once.
     public let questions: @Sendable (RequestContext) -> [(id: String, question: Question)]
 
+    /// The thing an answer is about, when the request leans on one: a page
+    /// read, a search made, an earlier answer, a memory. The device puts it
+    /// in the answer's context; the model never sees an address.
+    public static let aboutField = ArgumentSchema.Field(name: "about", kind: .thing, description: "the thing this is about, when the request leans on one that was listed", required: false)
+
     public init(instinct: Instinct) {
         self.instinct = instinct
         var showsLayer = true
@@ -183,13 +210,17 @@ public struct InstinctSpec: Sendable, Identifiable {
         switch instinct {
         case .narrative:
             questions = { _ in [(EngineRequest.recencyQuestionID, .noul(instructions: EngineRequest.recencyInstructions, criteria: EngineRequest.recencyCriteria))] }
+            arguments = ArgumentSchema(fields: [Self.aboutField])
         case .oneLine:
             questions = { _ in [(EngineRequest.recencyQuestionID, .noul(instructions: EngineRequest.recencyInstructions, criteria: EngineRequest.recencyCriteria))] }
+            arguments = ArgumentSchema(fields: [Self.aboutField])
         case .recall:
             questions = { _ in EngineRequest.recallQuestions }
-            // The kinds, the name and the set are Jev's questions; a count
-            // and a day are values the words state, read by the extractor.
+            // The kinds, the name and the set are Jev's questions; the thing
+            // to bring back, a count and a day are values the words state,
+            // read by the extractor.
             arguments = ArgumentSchema(fields: [
+                .init(name: "topic", kind: .text, description: "the thing to bring back, as the words name it, standing on its own (\"that thing about gingivitis again\" names gingivitis); null when the words name nothing in particular (\"my last five searches\")", required: false),
                 .init(name: "count", kind: .integer, description: "how many of the newest to bring back, when the words ask for a number of them (\"my last five searches\", \"the last few\")", required: false),
                 .init(name: "from", kind: .text, description: "the start of the span the words name, as an ISO 8601 date-time against today (\"yesterday\", \"last week\", \"three days ago\"); null when none is named", required: false),
                 .init(name: "to", kind: .text, description: "the end of that span, as an ISO 8601 date-time; null when none is named", required: false),

@@ -29,7 +29,10 @@ import Testing
                 #expect(spec.arguments.fields.map(\.name) == ["place"])
                 #expect(spec.arguments.fields[0].required == false, "no place means here")
             case .recall:
-                #expect(spec.arguments.freeForm.map(\.name) == ["count", "from", "to"], "a count and a span are the extractor's")
+                #expect(spec.arguments.freeForm.map(\.name) == ["topic", "count", "from", "to"], "the topic, a count and a span are the extractor's")
+            case .narrative, .oneLine:
+                #expect(spec.showsLayer && spec.sideEffects == .none)
+                #expect(spec.arguments.fields.map(\.name) == ["about"] && spec.arguments.things.count == 1, "an answer can be about a thing; nothing for the extractor")
             default:
                 #expect(spec.showsLayer, "\(spec.id) shows a layer")
                 #expect(spec.sideEffects == .none, "\(spec.id) has no side effects")
