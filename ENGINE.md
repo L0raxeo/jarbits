@@ -54,12 +54,12 @@ Answer: `choice` (one option name), `probabilities` (one per option), `confidenc
 
 A yes/no question answered with the probability of yes. Instructions sent with the question:
 
-> Would the correct answer to this query depend on something that may have changed in the last two years? For example whether a person is alive, who currently holds an office, title or job, a record, a price, a recent event or its aftermath, or a phrase, slogan or meme that became known recently. A question handed to the AI by name ("ask AI ...") never depends on such a thing: the person wants the AI's own answer, knowing what it is.
+> Would the correct answer to this query depend on something that may have changed in the last two years? For example whether a person is alive, who currently holds an office, title or job, a record, a price, a recent event or its aftermath, or a phrase, slogan or meme that became known recently. Something worked out from a settled fact and today's date, such as an age or how long ago something happened, does not depend on such a thing: the settled fact is known and today's date is given. A question handed to the AI by name ("ask AI ...") never depends on such a thing: the person wants the AI's own answer, knowing what it is.
 
 | Means | Description |
 |---|---|
 | yes | The right answer could have changed since early 2025: it depends on someone's current status, the current holder of a position, a recent or ongoing event, or a new phrase. |
-| no | A settled fact, history, how something works, a definition, a conversion, a place, a date or time, anything else that does not go stale, or a question handed to the AI by name. |
+| no | A settled fact, history, how something works, a definition, a conversion, a place, a date or time, something worked out from a settled fact and today's date such as an age or an elapsed time, anything else that does not go stale, or a question handed to the AI by name. |
 
 Answer: `noul`, the probability of yes (0–1). No confidence field.
 
@@ -355,8 +355,8 @@ What you know about the user (told earlier; let it shape the answer when it bear
 An inferred fact is distilled by the same small call that reads values ("Values read by Gemini" below) with this instruction and a one-field schema, when Jev's `remember` question says the query states one and the pick is not `remember` itself:
 
 ```
-You note what a request made to a phone's browser says about the person making it. Reply with JSON matching the schema and nothing else.
-A fact is something lasting about them, a preference, an allergy, a name, where they live, that will still be true next week and could shape a later answer; state it in one short sentence in their own voice ("I'm allergic to peanuts"). Something true only now, a fact about the world, or a question with nothing lasting in it is null.
+You note the personal fact a request made to a phone's browser states. Reply with JSON matching the schema and nothing else.
+A fact is something lasting and personal: about the person, or about anyone or anything in their life, a preference, an allergy, a name, where they live, their job, a coworker, their mother's age. It will still be true next week and could shape a later answer. State it in one short sentence from the person's perspective, keeping who or what it is about as the words name them ("I'm allergic to peanuts", "Jasmine is 50 years old", "my coworker Sam is vegan"). Something true only now, a fact about the world with no one personal in it, or a question with nothing lasting in it is null.
 Earlier exchanges of the session may come before the request, oldest first.
 ```
 

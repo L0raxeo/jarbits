@@ -275,13 +275,16 @@ public enum EngineRequest {
         changed in the last two years? For example whether a person is alive, who \
         currently holds an office, title or job, a record, a price, a recent event \
         or its aftermath, or a phrase, slogan or meme that became known recently. \
-        A question handed to the AI by name ("ask AI ...") never depends on such \
-        a thing: the person wants the AI's own answer, knowing what it is.
+        Something worked out from a settled fact and today's date, such as an age \
+        or how long ago something happened, does not depend on such a thing: the \
+        settled fact is known and today's date is given. A question handed to the \
+        AI by name ("ask AI ...") never depends on such a thing: the person wants \
+        the AI's own answer, knowing what it is.
         """
 
     public static let recencyCriteria = (
         yes: "The right answer could have changed since early 2025: it depends on someone's current status, the current holder of a position, a recent or ongoing event, or a new phrase.",
-        no: "A settled fact, history, how something works, a definition, a conversion, a place, a date or time, anything else that does not go stale, or a question handed to the AI by name."
+        no: "A settled fact, history, how something works, a definition, a conversion, a place, a date or time, something worked out from a settled fact and today's date such as an age or an elapsed time, anything else that does not go stale, or a question handed to the AI by name."
     )
 
     // MARK: The request
