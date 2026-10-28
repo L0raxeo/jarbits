@@ -32,11 +32,11 @@ public enum EvalReport {
 
         out.append("")
         out.append("by expected format:")
-        for format in Instinct.allCases {
-            let rows = results.filter { $0.expected == format }
+        for expectation in Instinct.allCases.map(Expectation.instinct) + [.planned] {
+            let rows = results.filter { $0.expected == expectation }
             guard !rows.isEmpty else { continue }
             let ok = rows.filter { $0.status == .pass }.count
-            out.append("  \(format.rawValue.padding(toLength: 13, withPad: " ", startingAt: 0)) \(ok)/\(rows.count)")
+            out.append("  \(expectation.description.padding(toLength: 13, withPad: " ", startingAt: 0)) \(ok)/\(rows.count)")
         }
         return out.joined(separator: "\n") + "\n"
     }

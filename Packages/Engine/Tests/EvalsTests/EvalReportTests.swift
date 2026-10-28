@@ -14,7 +14,7 @@ import Testing
         ]
         let text = EvalReport.text(results: results, file: "Evals/engine.jsonl", floor: 0.5, recencyThreshold: 0.5, model: "jev-1.13.0")
         #expect(text.contains("eval Evals/engine.jsonl: 5 cases, 3 passed, 1 failed, 1 not cached (floor 0.5, recency 0.5, jev-1.13.0; 1 address, 1 from cache, 2 asked Jev, 1 not cached)"))
-        #expect(text.contains("  \"eiffel tower\"\n      instinct: expected image, got web_results (confidenceFallback)\n      confidence 0.42 < 0.5   image .46  web_results .41  narrative .09"))
+        #expect(text.contains("  \"eiffel tower\"\n      instinct: expected image, got the planner (confidenceFallback)\n      confidence 0.42 < 0.5   image .46  web_results .41  narrative .09"))
         #expect(text.contains("  \"news\"\n      not cached"))
         #expect(text.contains("  web_results   2/3"))
         #expect(text.contains("  stock         1/1"))

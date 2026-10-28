@@ -45,7 +45,7 @@ import Testing
         #expect(swept.cached)
         #expect(swept.decision.source == .confidenceFallback)
         #expect(swept.status == .fail)
-        #expect(swept.failures == ["instinct: expected one_line, got web_results (confidenceFallback)", "source: expected jev, got confidenceFallback"])
+        #expect(swept.failures == ["instinct: expected one_line, got the planner (confidenceFallback)", "source: expected jev, got confidenceFallback"])
     }
 
     @Test func anAddressNeverAsksJev() async {
@@ -85,7 +85,7 @@ import Testing
     @Test func theOpenedSiteReachesJevAndTheRejectionIsLogged() async {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let client = MockJevTransport.client(status: 200, body: jevResponse(choice: "site", confidence: 0.8, probabilities: ["site": 0.8, "web_results": 0.2], recency: 0.1, rejects: 0.93))
+        let client = MockJevTransport.client(status: 200, body: jevResponse(choice: "site", confidence: 0.95, probabilities: ["site": 0.95, "web_results": 0.05], recency: 0.1, rejects: 0.93))
         let evalCase = EvalCase(query: "no not this one", opened: OpenedSite(name: "zillow", host: "www.zillow.com"), instinct: .site, source: "jev")
         let result = await runner(client: client, directory: directory).run(evalCase)
         #expect(result.status == .pass)

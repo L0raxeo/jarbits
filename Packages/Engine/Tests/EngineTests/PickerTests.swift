@@ -5,7 +5,7 @@ import Testing
 /// These share one `URLProtocol` handler, so they run one at a time.
 @Suite(.serialized) struct EngineRouterTests {
     @Test func asksJevAndActsOnAConfidentAnswer() async throws {
-        let client = MockTransport.client(status: 200, body: jevResponse(choice: "one_line", confidence: 0.88, probabilities: ["one_line": 0.89, "narrative": 0.08, "web_results": 0.03]))
+        let client = MockTransport.client(status: 200, body: jevResponse(choice: "one_line", confidence: 0.95, probabilities: ["one_line": 0.89, "narrative": 0.08, "web_results": 0.03]))
         let router = Picker(client: client, locale: Locale(identifier: "en_US"))
 
         let decision = await router.decide("what's the time in costa rica")

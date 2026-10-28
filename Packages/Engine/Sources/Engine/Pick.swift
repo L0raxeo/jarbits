@@ -50,7 +50,8 @@ public struct Pick: Codable, Sendable, Equatable {
     public enum Source: Codable, Sendable, Equatable {
         /// Jev answered with confidence: the pick runs.
         case jev
-        /// Jev answered below the confidence floor; `instinct` is web results.
+        /// Jev answered below the confidence floor: the query is planned;
+        /// `instinct` is web results, for when there is no planner.
         case confidenceFallback
         /// The query was an address, so it loads as typed: no reading, no Jev.
         case directURL

@@ -5,15 +5,50 @@ import Engine
 /// and what the app should do with it. Written by hand, one JSON object per
 /// line, in `Evals/engine.jsonl`; a case states intended behaviour, so a
 /// case that fails today stays in with a `note` saying why.
+/// What a case expects of the engine: the instinct the shortcut runs, or
+/// that the pick is unsure and the query is planned. Written in the
+/// `instinct` field of a case line as the instinct's name or `planned`.
+public enum Expectation: Codable, Equatable, Sendable, CustomStringConvertible {
+    case instinct(Instinct)
+    case planned
+
+    public static let plannedName = "planned"
+
+    public init(from decoder: any Decoder) throws {
+        let name = try decoder.singleValueContainer().decode(String.self)
+        if name == Self.plannedName { self = .planned; return }
+        guard let instinct = Instinct(rawValue: name) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "unknown expectation \"\(name)\": an instinct, or \(Self.plannedName)"))
+        }
+        self = .instinct(instinct)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(description)
+    }
+
+    public var description: String {
+        switch self {
+        case let .instinct(instinct): instinct.rawValue
+        case .planned: Self.plannedName
+        }
+    }
+}
+
 public struct EvalCase: Codable, Equatable, Sendable {
     public var query: String
     /// The earlier exchanges of the session when the query was typed, oldest first.
     public var exchanges: [Exchange]?
     /// The site this app opened by name and still showed.
     public var opened: OpenedSite?
-    /// The instinct the app should run: Jev's pick, or web results when
-    /// the pick should be unsure.
-    public var instinct: Instinct
+    /// What the engine should do: run this instinct straight (a sure
+    /// pick), or plan the query (an unsure one). The case line's `instinct`.
+    public var expected: Expectation
+    /// The instinct expected to run straight; nil for a planned case.
+    public var instinct: Instinct? {
+        if case let .instinct(instinct) = expected { instinct } else { nil }
+    }
     /// How many exchanges, from the newest back, the query should depend
     /// on; nil to accept any chain.
     public var chain: Int?
@@ -27,6 +62,10 @@ public struct EvalCase: Codable, Equatable, Sendable {
     public var recall: RecallExpectation?
     public var note: String?
 
+    enum CodingKeys: String, CodingKey {
+        case query, exchanges, opened, expected = "instinct", chain, pick, source, recall, note
+    }
+
     public init(
         query: String,
         exchanges: [Exchange]? = nil,
@@ -38,10 +77,24 @@ public struct EvalCase: Codable, Equatable, Sendable {
         recall: RecallExpectation? = nil,
         note: String? = nil
     ) {
+        self.init(query: query, exchanges: exchanges, opened: opened, expected: .instinct(instinct), chain: chain, pick: pick, source: source, recall: recall, note: note)
+    }
+
+    public init(
+        query: String,
+        exchanges: [Exchange]? = nil,
+        opened: OpenedSite? = nil,
+        expected: Expectation,
+        chain: Int? = nil,
+        pick: Instinct? = nil,
+        source: String? = nil,
+        recall: RecallExpectation? = nil,
+        note: String? = nil
+    ) {
         self.query = query
         self.exchanges = exchanges
         self.opened = opened
-        self.instinct = instinct
+        self.expected = expected
         self.chain = chain
         self.pick = pick
         self.source = source

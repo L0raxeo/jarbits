@@ -14,7 +14,7 @@ public enum EvalStatus: String, Codable, Sendable {
 public struct EvalResult: Codable, Equatable, Sendable {
     public var name: String
     public var query: String
-    public var expected: Instinct
+    public var expected: Expectation
     public var expectedPick: Instinct?
     public var expectedSource: String?
     public var decision: Pick
@@ -26,7 +26,7 @@ public struct EvalResult: Codable, Equatable, Sendable {
     public init(_ evalCase: EvalCase, decision: Pick, cached: Bool) {
         name = evalCase.name
         query = evalCase.query
-        expected = evalCase.instinct
+        expected = evalCase.expected
         expectedPick = evalCase.pick
         expectedSource = evalCase.source
         self.decision = decision
@@ -61,10 +61,11 @@ public struct EvalResult: Codable, Equatable, Sendable {
 
 /// What a case checks, and in which order. Pure, so every rule is testable.
 public enum EvalCheck {
-    /// Empty means the case passed. The format is the instinct the app
-    /// runs, so an expected `web_results` passes whether Jev picked it or
-    /// was unsure; `source` pins the path. The reading is not in the eval,
-    /// so what an instinct did with its subject is not checked here.
+    /// Empty means the case passed. An expected instinct is the shortcut:
+    /// a sure pick of that instinct; an unsure pick is planned, and fails
+    /// it. `planned` passes when the engine would plan the query, whatever
+    /// Jev leaned to; `pick` pins the lean and `source` the path. The
+    /// reading is not in the eval.
     public static func failures(_ evalCase: EvalCase, _ decision: Pick) -> [String] {
         switch decision.source {
         case let .error(message): return ["error: \(message)"]
@@ -72,8 +73,17 @@ public enum EvalCheck {
         default: break
         }
         var failures: [String] = []
-        if decision.instinct != evalCase.instinct {
-            failures.append("instinct: expected \(evalCase.instinct.rawValue), got \(decision.instinct.rawValue) (\(decision.source.kind))")
+        switch evalCase.expected {
+        case .planned:
+            if !ReasoningPolicy.entersReasoning(decision) {
+                failures.append("planned: expected the planner, got \(decision.instinct.rawValue) (\(decision.source.kind))")
+            }
+        case let .instinct(expected):
+            if decision.source == .confidenceFallback {
+                failures.append("instinct: expected \(expected.rawValue), got the planner (confidenceFallback)")
+            } else if decision.instinct != expected {
+                failures.append("instinct: expected \(expected.rawValue), got \(decision.instinct.rawValue) (\(decision.source.kind))")
+            }
         }
         if let pick = evalCase.pick, decision.suggested != pick {
             failures.append("pick: expected \(pick.rawValue), got \(decision.suggested?.rawValue ?? "none")")
@@ -81,7 +91,7 @@ public enum EvalCheck {
         if let expected = evalCase.source, decision.source.kind != expected {
             failures.append("source: expected \(expected), got \(decision.source.kind)")
         }
-        guard decision.instinct == evalCase.instinct else { return failures }
+        guard case let .instinct(expected) = evalCase.expected, decision.instinct == expected else { return failures }
         if let chain = evalCase.chain, decision.chainedCount != chain {
             let newest = decision.relevance?.last.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? "none"
             failures.append("chain: expected \(chain), got \(decision.chainedCount) (newest relevance \(newest))")

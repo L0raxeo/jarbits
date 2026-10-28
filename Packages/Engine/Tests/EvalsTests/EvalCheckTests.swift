@@ -9,17 +9,22 @@ import Testing
         #expect(EvalCheck.failures(EvalCase(query: "tesla stock", instinct: .stock), decision).isEmpty)
     }
 
-    @Test func webResultsViaAFallbackPassUnlessTheSourceIsPinned() throws {
+    @Test func anUnsurePickIsPlannedAndFailsAnExpectedInstinct() throws {
         let unsure = try decision(choice: "map", confidence: 0.4, probabilities: ["map": 0.46, "web_results": 0.3])
-        #expect(EvalCheck.failures(EvalCase(query: "coffee near me", instinct: .webResults), unsure).isEmpty)
-        #expect(EvalCheck.failures(EvalCase(query: "coffee near me", instinct: .webResults, source: "jev"), unsure) == ["source: expected jev, got confidenceFallback"])
-        #expect(EvalCheck.failures(EvalCase(query: "coffee near me", instinct: .map), unsure) == ["instinct: expected map, got web_results (confidenceFallback)"])
+        #expect(EvalCheck.failures(EvalCase(query: "coffee near me", expected: .planned), unsure).isEmpty)
+        #expect(EvalCheck.failures(EvalCase(query: "coffee near me", expected: .planned, pick: .map), unsure).isEmpty, "the lean can be pinned")
+        #expect(EvalCheck.failures(EvalCase(query: "coffee near me", instinct: .webResults), unsure) == ["instinct: expected web_results, got the planner (confidenceFallback)"], "web results are never the engine's own fallback now")
+        #expect(EvalCheck.failures(EvalCase(query: "coffee near me", instinct: .map), unsure) == ["instinct: expected map, got the planner (confidenceFallback)"])
+        let sure = try decision(choice: "map", confidence: 0.95, probabilities: ["map": 0.95, "web_results": 0.05])
+        #expect(EvalCheck.failures(EvalCase(query: "coffee near me", expected: .planned), sure) == ["planned: expected the planner, got map (jev)"])
+        let several = try decision(choice: "map", confidence: 0.95, probabilities: ["map": 0.95], reasoning: (score: ReasoningPolicy.threshold, confidence: 0.9))
+        #expect(EvalCheck.failures(EvalCase(query: "coffee near me", expected: .planned), several).isEmpty, "a sure pick with several steps is planned too")
     }
 
     @Test func aPickIsCheckedApartFromTheFormat() throws {
         let unsure = try decision(choice: "narrative", confidence: 0.3, probabilities: ["narrative": 0.4, "web_results": 0.3])
-        #expect(EvalCheck.failures(EvalCase(query: "is south africa safe right now", instinct: .webResults, pick: .narrative, source: "confidenceFallback"), unsure).isEmpty)
-        #expect(EvalCheck.failures(EvalCase(query: "is south africa safe right now", instinct: .webResults, pick: .oneLine), unsure) == ["pick: expected one_line, got narrative"])
+        #expect(EvalCheck.failures(EvalCase(query: "is south africa safe right now", expected: .planned, pick: .narrative, source: "confidenceFallback"), unsure).isEmpty)
+        #expect(EvalCheck.failures(EvalCase(query: "is south africa safe right now", expected: .planned, pick: .oneLine), unsure) == ["pick: expected one_line, got narrative"])
     }
 
     @Test func aRecentAnswerPickIsStillThePick() throws {

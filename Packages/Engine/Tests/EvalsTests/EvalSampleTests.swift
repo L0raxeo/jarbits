@@ -197,8 +197,8 @@ import Testing
         doubtful (2):
           "eiffel tower"
               acted web_results (confidenceFallback), picked image, confidence 0.42, recency 0.10, runner-up web_results .41
-              confidence 0.08 under the floor 0.5: web results   image .46  web_results .41  narrative .09
-              {"query": "eiffel tower", "instinct": "web_results"}
+              confidence 0.08 under the floor 0.5: planned   image .46  web_results .41  narrative .09
+              {"query": "eiffel tower", "instinct": "planned"}
           "who won the super bowl"
               acted one_line (jev), confidence 0.90, recency 0.62, runner-up web_results .10
               recency 0.12 over the threshold 0.5: the instinct shows web results   one_line .90  web_results .10
@@ -250,7 +250,7 @@ import Testing
         let eiffel = EngineRequest.request(for: "eiffel tower", locale: locale)
         try cache.store(key: try JevCache.key(for: eiffel), request: eiffel, response: Data(jevResponse(choice: "image", confidence: 0.42, probabilities: ["image": 0.46, "web_results": 0.41, "narrative": 0.09], recency: 0.1).utf8), latencyMs: 130)
 
-        let runner = EvalRunner(client: nil, cache: cache, locale: locale)
+        let runner = EvalRunner(client: nil, cache: cache, locale: locale, floor: 0.5)
         let rows = await EvalSample.run(["capital of peru", "what time is it in tokyo", "news", "eiffel tower", "apple.com"], runner: runner)
         #expect(rows.map(\.query) == ["eiffel tower", "what time is it in tokyo", "news", "capital of peru", "apple.com"])
         #expect(rows.map(\.result.cached) == [true, false, false, true, false])

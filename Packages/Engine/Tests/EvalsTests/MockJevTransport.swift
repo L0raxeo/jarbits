@@ -95,7 +95,7 @@ func decision(
     choice: String, confidence: Double, probabilities: [String: Double],
     recency: Double? = nil, rejects: Double? = nil, relevance: [Double]? = nil,
     reasoning: (score: Double, confidence: Double)? = nil, exchanges: [Exchange] = [],
-    nouls: [String: Double] = [:], floor: Double = EngineRequest.confidenceFloor
+    nouls: [String: Double] = [:], floor: Double = 0.5
 ) throws -> Pick {
     let json = jevResponse(choice: choice, confidence: confidence, probabilities: probabilities, recency: recency, rejects: rejects, relevance: relevance, reasoning: reasoning, nouls: nouls)
     let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(json.utf8))

@@ -17,10 +17,10 @@ import Testing
         #expect(!ReasoningPolicy.entersReasoning(decision(0.2)))
     }
 
-    @Test func anUnsurePickEntersFromTheLeanThreshold() {
+    @Test func anUnsurePickAlwaysEnters() {
         #expect(ReasoningPolicy.entersReasoning(decision(1.0, source: .confidenceFallback)))
-        #expect(ReasoningPolicy.entersReasoning(decision(1.1, source: .confidenceFallback)))
-        #expect(!ReasoningPolicy.entersReasoning(decision(0.9, source: .confidenceFallback)))
+        #expect(ReasoningPolicy.entersReasoning(decision(0.2, source: .confidenceFallback)))
+        #expect(ReasoningPolicy.entersReasoning(decision(nil, source: .confidenceFallback)), "whatever the score, or none")
         #expect(!ReasoningPolicy.entersReasoning(decision(1.1, source: .jev)), "a sure pick needs the full score")
     }
 
@@ -51,9 +51,9 @@ import Testing
     }
 
     @Test func theBoundsAreTheDocumentedOnes() {
-        #expect(ReasoningPolicy.maxRounds == 4)
-        #expect(ReasoningPolicy.timeBudget == .seconds(20))
-        #expect(ReasoningPolicy.roundTimeout == .seconds(8))
+        #expect(ReasoningPolicy.maxRounds == 6)
+        #expect(ReasoningPolicy.timeBudget == .seconds(120))
+        #expect(ReasoningPolicy.roundTimeout == .seconds(45))
         #expect(ReasoningPolicy.memoriesGiven == 5)
         #expect(ReasoningPolicy.threshold == EngineRequest.reasoningThreshold)
     }

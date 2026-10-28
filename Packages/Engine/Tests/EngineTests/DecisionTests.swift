@@ -37,7 +37,7 @@ import Testing
     }
 
     @Test func recallPassesTheGateLikeAnyFormat() throws {
-        let sure = try response(choice: "recall", confidence: 0.88, probabilities: ["recall": 0.88, "web_results": 0.1, "narrative": 0.02])
+        let sure = try response(choice: "recall", confidence: 0.95, probabilities: ["recall": 0.88, "web_results": 0.1, "narrative": 0.02])
         #expect(EngineRequest.decision(from: sure, latencyMs: 1).instinct == .recall)
         let unsure = try response(choice: "recall", confidence: 0.45, probabilities: ["recall": 0.45, "web_results": 0.4, "narrative": 0.15])
         let decision = EngineRequest.decision(from: unsure, latencyMs: 1)
@@ -102,8 +102,9 @@ import Testing
     }
 
     @Test func floorIsInclusive() throws {
-        let response = try response(choice: "narrative", confidence: 0.5, probabilities: ["narrative": 0.55, "web_results": 0.45])
+        let response = try response(choice: "narrative", confidence: EngineRequest.confidenceFloor, probabilities: ["narrative": 0.9, "web_results": 0.1])
         #expect(EngineRequest.decision(from: response, latencyMs: 1).source == .jev)
+        #expect(EngineRequest.confidenceFloor == 0.9, "the shortcut is near-certain")
     }
 
     @Test func unknownOptionFallsBackToWeb() throws {
@@ -140,7 +141,7 @@ import Testing
         // "can I use water" over a recipe: a confident answer pick grows the
         // thread; a confident web pick is a search with the recipe as context;
         // an unsure pick is web results, as anywhere.
-        let narrative = try decide(jevResponse(choice: "narrative", confidence: 0.8, probabilities: ["narrative": 0.8], relevance: [0.9]), exchanges: recipe)
+        let narrative = try decide(jevResponse(choice: "narrative", confidence: 0.95, probabilities: ["narrative": 0.8], relevance: [0.9]), exchanges: recipe)
         #expect(narrative.continuesThread && narrative.source == .jev)
         let web = try decide(jevResponse(choice: "web_results", confidence: 0.9, probabilities: ["web_results": 0.9], relevance: [0.9]), exchanges: recipe)
         #expect(web.instinct == .webResults && web.source == .jev && !web.continuesThread && web.chain == 1)
@@ -189,14 +190,14 @@ import Testing
 
     @Test func aChainEndingOnAPageKeepsThePickAndCountsTheChain() throws {
         // "wait no I meant brazil" after a search: web results, read with the correction.
-        let web = try decide(jevResponse(choice: "web_results", confidence: 0.8, probabilities: ["web_results": 0.85], relevance: [0.9]), exchanges: search)
+        let web = try decide(jevResponse(choice: "web_results", confidence: 0.95, probabilities: ["web_results": 0.85], relevance: [0.9]), exchanges: search)
         #expect(web.instinct == .webResults)
         #expect(web.source == .jev)
         #expect(web.chain == 1)
         #expect(!web.continuesThread, "a search is not an answer to grow")
         // "how big is it" after reading a page: a narrative with the page as context.
         let page = [Exchange.page(query: "brasil weather", title: "Weather in Brasília", address: URL(string: "https://weather.com/br")!)]
-        let narrative = try decide(jevResponse(choice: "narrative", confidence: 0.8, probabilities: ["narrative": 0.85], recency: 0.1, relevance: [0.9]), exchanges: page)
+        let narrative = try decide(jevResponse(choice: "narrative", confidence: 0.95, probabilities: ["narrative": 0.85], recency: 0.1, relevance: [0.9]), exchanges: page)
         #expect(narrative.instinct == .narrative)
         #expect(narrative.source == .jev)
         #expect(narrative.chain == 1)
@@ -274,7 +275,7 @@ import Testing
 
     @Test func chainRoundTripsAndOldLinesDecode() throws {
         let decision = Pick(
-            instinct: .narrative, suggested: .narrative, confidence: 0.8, probabilities: ["narrative": 0.8],
+            instinct: .narrative, suggested: .narrative, confidence: 0.95, probabilities: ["narrative": 0.8],
             recency: 0.1, relevance: [0.2, 0.8], chain: 1, continues: true, reasoning: 0.3, reasoningConfidence: 0.7, source: .jev
         )
         #expect(try JSONDecoder().decode(Pick.self, from: JSONEncoder().encode(decision)) == decision)
@@ -326,7 +327,7 @@ import Testing
         // "no not this one" over zillow: the site criterion says it is a site
         // request again, so a sure pick is site; the rejection rides along
         // and the site instinct forgets the name and shows the choices.
-        let sure = try decision(jevResponse(choice: "site", confidence: 0.8, probabilities: ["site": 0.82, "web_results": 0.1], recency: 0.2, rejects: 0.92))
+        let sure = try decision(jevResponse(choice: "site", confidence: 0.95, probabilities: ["site": 0.82, "web_results": 0.1], recency: 0.2, rejects: 0.92))
         #expect(sure.instinct == .site)
         #expect(sure.source == .jev)
         #expect(sure.rejection == 0.92)
@@ -338,7 +339,7 @@ import Testing
 
     @Test func aRejectionIsLoggedBesideTheChain() throws {
         let page = [Exchange.page(query: "pull up zillow", title: "Zillow", address: URL(string: "https://www.zillow.com/")!)]
-        let decision = try decision(jevResponse(choice: "site", confidence: 0.8, probabilities: ["site": 0.8], rejects: 0.9, relevance: [0.95]), exchanges: page)
+        let decision = try decision(jevResponse(choice: "site", confidence: 0.95, probabilities: ["site": 0.8], rejects: 0.9, relevance: [0.95]), exchanges: page)
         #expect(decision.rejectsSite)
         #expect(decision.chain == 1, "still logged")
         #expect(!decision.continuesThread, "a page is not an answer to grow")
@@ -355,9 +356,9 @@ import Testing
     }
 
     @Test func theRejectionThresholdIsInclusive() throws {
-        let at = try decision(jevResponse(choice: "site", confidence: 0.8, probabilities: ["site": 0.8], rejects: EngineRequest.rejectionThreshold))
+        let at = try decision(jevResponse(choice: "site", confidence: 0.95, probabilities: ["site": 0.8], rejects: EngineRequest.rejectionThreshold))
         #expect(at.rejectsSite)
-        let under = try decision(jevResponse(choice: "site", confidence: 0.8, probabilities: ["site": 0.8], rejects: EngineRequest.rejectionThreshold - 0.01))
+        let under = try decision(jevResponse(choice: "site", confidence: 0.95, probabilities: ["site": 0.8], rejects: EngineRequest.rejectionThreshold - 0.01))
         #expect(!under.rejectsSite)
     }
 }

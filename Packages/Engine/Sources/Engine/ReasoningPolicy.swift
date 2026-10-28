@@ -3,6 +3,12 @@ import Foundation
 /// When a query goes to advanced reasoning instead of the instinct Jev
 /// picked, and the bounds a plan runs within. Pure, so every rule is
 /// testable; the app's executor applies them.
+///
+/// The pick is a shortcut for a request Jev is near-certain about
+/// (`EngineRequest.confidenceFloor`). Everything else is reasoned: the
+/// planner reads the request with every instinct as a tool, the facts and
+/// the memories in view, and calls what fits. Accuracy over speed: the
+/// bounds are wide, and the model thinks.
 public enum ReasoningPolicy {
     /// A reasoning score at or above this leans to the top level, several
     /// steps or a condition: the query is planned, whatever the pick.
@@ -10,24 +16,21 @@ public enum ReasoningPolicy {
     /// vegetarian, then suggest a dinner recipe" scored 1.46 and a plain
     /// remember 0.82, the highest single step in twenty queries.
     public static let threshold = 1.2
-    /// An unsure pick with a score at or above this is planned rather than
-    /// sent to web results: Jev saw more than one thing in the words.
-    public static let leanThreshold = 1.0
     /// A plan asks the model this many times at most.
-    public static let maxRounds = 4
+    public static let maxRounds = 6
     /// And runs no longer than this in all, the user waiting the while.
-    public static let timeBudget: Duration = .seconds(20)
-    /// One round's wait for the model. A Flash-Lite round at minimal
-    /// thinking is about a second; gemini-3.8-flash at low measured eleven
-    /// on 2026-10-27, which is why it is not the planner's model.
-    public static let roundTimeout: Duration = .seconds(8)
+    public static let timeBudget: Duration = .seconds(120)
+    /// One round's wait for the model, with room to think.
+    public static let roundTimeout: Duration = .seconds(45)
     /// The most memories a plan is shown.
     public static let memoriesGiven = 5
 
+    /// An unsure pick is always planned; a sure one when its reasoning
+    /// score says it needs several steps.
     public static func entersReasoning(_ decision: Pick) -> Bool {
+        if decision.source == .confidenceFallback { return true }
         guard let reasoning = decision.reasoning else { return false }
-        if reasoning >= threshold { return true }
-        return decision.source == .confidenceFallback && reasoning >= leanThreshold
+        return reasoning >= threshold
     }
 
     /// A paid or destructive instinct is put to the user before it runs,

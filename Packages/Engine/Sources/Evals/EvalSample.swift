@@ -53,7 +53,7 @@ public struct TriageRow: Equatable, Sendable {
     public enum Doubt: Equatable, Sendable {
         /// Confidence passed the floor by this little.
         case nearFloor(by: Double)
-        /// Confidence missed the floor by this much: web results stand in.
+        /// Confidence missed the floor by this much: the query is planned.
         case confidenceFallback(by: Double)
         /// Recency stayed under the threshold by this little on an answer pick.
         case nearRecency(by: Double)
@@ -222,7 +222,8 @@ public enum EvalSample {
     /// format corrected when it was not.
     public static func goldenLine(_ row: TriageRow) -> String {
         let query = String(decoding: (try? OrderedJSON.encode(row.query)) ?? Data("\"\"".utf8), as: UTF8.self)
-        return "{\"query\": \(query), \"instinct\": \"\(row.decision.instinct.rawValue)\"}"
+        let expected = row.decision.source == .confidenceFallback ? Expectation.planned : .instinct(row.decision.instinct)
+        return "{\"query\": \(query), \"instinct\": \"\(expected)\"}"
     }
 
     /// What was done and what to doubt about it, in one line each.
@@ -239,7 +240,7 @@ public enum EvalSample {
         for doubt in row.doubts {
             switch doubt {
             case let .nearFloor(by): reasons.append("confidence \(number(by)) over the floor \(floor.formatted())")
-            case let .confidenceFallback(by): reasons.append("confidence \(number(by)) under the floor \(floor.formatted()): web results")
+            case let .confidenceFallback(by): reasons.append("confidence \(number(by)) under the floor \(floor.formatted()): planned")
             case let .nearRecency(by): reasons.append("recency \(number(by)) under the threshold \(recencyThreshold.formatted())")
             case let .recent(by): reasons.append("recency \(number(by)) over the threshold \(recencyThreshold.formatted()): the instinct shows web results")
             case let .error(message): reasons.append("error: \(message)")

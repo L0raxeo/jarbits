@@ -16,11 +16,11 @@ public enum EngineRequest {
     /// it; the pick itself stands.
     public static let recencyThreshold = 0.5
 
-    /// Below this the answer is treated as "unsure" and the app shows web
-    /// results. 0.5 is the floor TypeSafe's docs give for a genuinely unsure
-    /// Choice; a wrong format here costs the user one extra tap, so it starts
-    /// permissive. Revisit once the decision log has a few hundred rows.
-    public static let confidenceFloor = 0.5
+    /// The shortcut's bar: at or above this the pick runs straight. Below
+    /// it the query is planned (`ReasoningPolicy`), so the planner reads the
+    /// request with every instinct as a tool; web results only with no
+    /// planner. Near-certain on purpose: a coin-toss pick is not a pick.
+    public static let confidenceFloor = 0.9
 
     public static let instructions = """
         Which response format best answers this web search query? Judge the \
@@ -136,7 +136,7 @@ public enum EngineRequest {
                     instructions: lead + "Is its \(field.name) (\(field.description)) on, true or wanted?",
                     criteria: (yes: "The words turn it on, ask for it, or say yes to it.", no: "The words turn it off, decline it, or say nothing about it.")
                 )))
-            case .text, .number, .integer:
+            case .text, .number, .integer, .thing:
                 break
             }
             return out
@@ -152,7 +152,9 @@ public enum EngineRequest {
             guard case let .noul(stated)? = response.answers[statedQuestionID(spec, field)], stated >= argumentThreshold else { continue }
             switch response.answers[argumentQuestionID(spec, field)] {
             case let .choice(answer)?:
-                if answer.confidence >= floor { out[field.name] = answer.choice }
+                // A value is not a pick: an unsure choice is dropped at the
+                // argument threshold, whatever the shortcut's floor.
+                if answer.confidence >= argumentThreshold { out[field.name] = answer.choice }
             case let .noul(value)?:
                 out[field.name] = value >= argumentThreshold ? "true" : "false"
             default:
@@ -409,9 +411,9 @@ public enum EngineRequest {
                 source: .error("unknown instinct '\(answer.choice)'")
             )
         }
-        // The pick is Jev's. The one fallback is an unsure pick, which the
-        // architecture sends to web results; the instincts act on the rest
-        // (recency, a rejection) themselves.
+        // The pick is Jev's. An unsure pick is planned (web results with no
+        // planner); the instincts act on the rest (recency, a rejection)
+        // themselves.
         let passes = answer.confidence >= floor
         let (format, source): (Instinct, Pick.Source) = passes ? (suggested, .jev) : (.fallback, .confidenceFallback)
         // The chain ends on the answer on screen: an answer pick grows its thread.

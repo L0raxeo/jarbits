@@ -12,15 +12,15 @@
 {"query": "why are highschool students protesting france?", "instinct": "narrative", "source": "jev", "note": "picked as narrative, shown as web results: a recent event is past the model's knowledge (the pick is graded; the answer instinct shows web results for a recent one)"}
 {"query": "how is gingivitis healed", "instinct": "narrative"}
 {"query": "Why is INTR so low?", "instinct": "narrative", "source": "jev", "note": "why a price moved is an explanation, not a chart; and it is recent, so web results (the pick is graded; the answer instinct shows web results for a recent one)"}
-{"query": "Is south africa safe right now", "instinct": "narrative", "source": "jev", "note": "a judgement that needs context, but right now: web results (the pick is graded; the answer instinct shows web results for a recent one)"}
+{"query": "Is south africa safe right now", "instinct": "planned", "note": "a judgement that needs context, but right now: web results (the pick is graded; the answer instinct shows web results for a recent one)", "pick": "narrative"}
 {"query": "where did the phrase ok boomer come from", "instinct": "narrative"}
 {"query": "whats isi in ipe", "instinct": "narrative"}
 {"query": "what does gdp mean", "instinct": "narrative"}
 {"query": "define hegemony", "instinct": "narrative"}
-{"query": "coffee near me", "instinct": "map"}
-{"query": "directions to austin airport", "instinct": "map"}
-{"query": "where is machu picchu", "instinct": "map"}
-{"query": "blue bottle coffee san francisco", "instinct": "map"}
+{"query": "coffee near me", "instinct": "planned", "pick": "map"}
+{"query": "directions to austin airport", "instinct": "planned", "pick": "map"}
+{"query": "where is machu picchu", "instinct": "planned", "pick": "map"}
+{"query": "blue bottle coffee san francisco", "instinct": "planned", "pick": "map"}
 {"query": "nasdaq", "instinct": "stock"}
 {"query": "AAPL", "instinct": "stock"}
 {"query": "tesla stock", "instinct": "stock"}
@@ -38,12 +38,12 @@
 {"query": "that thing about gingivitis again", "instinct": "recall"}
 {"query": "go back to the reddit thread", "instinct": "recall"}
 {"query": "dominican flag", "instinct": "image"}
-{"query": "eiffel tower", "instinct": "image"}
+{"query": "eiffel tower", "instinct": "planned", "pick": "image"}
 {"query": "starry night painting", "instinct": "image"}
 {"query": "nvidia logo", "instinct": "image"}
 {"query": "what does a capybara look like", "instinct": "image"}
-{"query": "mona lisa", "instinct": "image"}
-{"query": "aston martin db5", "instinct": "image"}
+{"query": "mona lisa", "instinct": "planned", "pick": "image"}
+{"query": "aston martin db5", "instinct": "planned", "pick": "image"}
 {"query": "go to youtube", "instinct": "site", "source": "jev"}
 {"query": "pull up zillow", "instinct": "site", "source": "jev"}
 {"query": "open insta", "instinct": "site", "source": "jev"}
@@ -57,7 +57,7 @@
 {"query": "look up steve jobs", "instinct": "web_results", "source": "jev"}
 {"query": "search for flights to lima", "instinct": "web_results", "source": "jev"}
 {"query": "can you go to the zillow website please", "instinct": "site", "source": "jev", "note": "leads, an article and trailers around a known name"}
-{"query": "no not that, steve jobs", "instinct": "web_results", "note": "a correction with no search verb goes to Jev; a web pick drops the correction"}
+{"query": "no not that, steve jobs", "instinct": "planned", "note": "a correction with no search verb goes to Jev; a web pick drops the correction", "pick": "web_results"}
 {"query": "google stock", "instinct": "stock", "note": "a product word after google: not a search verb"}
 {"query": "Dominican flag, I said.", "instinct": "image", "note": "the correction and its punctuation come off the subject"}
 {"query": "apple.com", "instinct": "web_results", "source": "directURL", "note": "an address loads as typed; no term"}
@@ -69,13 +69,13 @@
 {"query": "how tall is it", "exchanges": [{"query": "eiffel tower", "kind": "search", "text": "eiffel tower"}], "instinct": "one_line", "chain": 1, "note": "a short fact about the picture on screen"}
 {"query": "why is it so humid there", "exchanges": [{"query": "brasil weather", "kind": "page", "title": "Weather in Brasília", "host": "weather.com", "address": "https://weather.com/br/brasilia"}], "instinct": "narrative", "chain": 1, "note": "a question that leans on the page read: a narrative with the page as context"}
 {"query": "capital of peru", "exchanges": [{"query": "golden retriever puppies", "kind": "search", "text": "golden retriever puppies"}], "instinct": "one_line", "chain": 0, "note": "an unrelated earlier search is no chain"}
-{"query": "no not this one", "exchanges": [{"query": "pull up zillow", "kind": "page", "title": "Zillow: Real Estate, Apartments, Mortgages & Home Values", "host": "www.zillow.com", "address": "https://www.zillow.com/"}], "opened": {"name": "zillow", "host": "www.zillow.com"}, "instinct": "site", "source": "jev", "note": "screenshot 2026-10-23 was a rejection override; since 2026-10-27 nothing overrules the pick: Jev leans site (.51) but is unsure, so web results; the site criterion names the case, and the case states intended behaviour"}
+{"query": "no not this one", "exchanges": [{"query": "pull up zillow", "kind": "page", "title": "Zillow: Real Estate, Apartments, Mortgages & Home Values", "host": "www.zillow.com", "address": "https://www.zillow.com/"}], "opened": {"name": "zillow", "host": "www.zillow.com"}, "instinct": "planned", "note": "screenshot 2026-10-23 was a rejection override; since 2026-10-27 nothing overrules the pick: Jev leans site (.51) but is unsure, so web results; the site criterion names the case, and the case states intended behaviour", "pick": "site"}
 {"query": "zillow homes in austin", "exchanges": [{"query": "pull up zillow", "kind": "page", "title": "Zillow: Real Estate, Apartments, Mortgages & Home Values", "host": "www.zillow.com", "address": "https://www.zillow.com/"}], "opened": {"name": "zillow", "host": "www.zillow.com"}, "instinct": "web_results", "note": "over the site, a search is still a search"}
 {"query": "open youtube", "exchanges": [{"query": "pull up zillow", "kind": "page", "title": "Zillow: Real Estate, Apartments, Mortgages & Home Values", "host": "www.zillow.com", "address": "https://www.zillow.com/"}], "opened": {"name": "zillow", "host": "www.zillow.com"}, "instinct": "site", "source": "jev", "note": "another site by its own name"}
-{"query": "Can you ask AI what are some alternatives to Dyson", "instinct": "narrative", "source": "jev", "note": "screenshot 2026-10-23: went to web results with the whole sentence in the box; an explicit ask is the model's, with no gate"}
-{"query": "ask ai about dyson alternatives", "instinct": "narrative", "source": "jev"}
+{"query": "Can you ask AI what are some alternatives to Dyson", "instinct": "planned", "note": "screenshot 2026-10-23: went to web results with the whole sentence in the box; an explicit ask is the model's, with no gate", "pick": "narrative"}
+{"query": "ask ai about dyson alternatives", "instinct": "planned", "pick": "narrative"}
 {"query": "hey could you ask the AI to tell me what GDP means please", "instinct": "narrative", "source": "jev"}
-{"query": "ask ai", "instinct": "web_results", "note": "nothing to ask: no rule, Jev decides"}
+{"query": "ask ai", "instinct": "planned", "note": "nothing to ask: no rule, Jev decides", "pick": "web_results"}
 {"query": "Yo, open up YouTube.", "instinct": "site", "source": "jev", "note": "screenshot 2026-10-23: 'yo' was not a lead, so the whole phrase became the name and the choices card asked 'Which yo open up youtube?'; a known name anywhere in the words now wins"}
 {"query": "hey siri open youtube", "instinct": "site", "source": "jev"}
 {"query": "um, yo, pull up zillow for me", "instinct": "site", "source": "jev"}
@@ -97,8 +97,8 @@
 {"query": "that article on reddit", "instinct": "recall", "recall": {"kinds": ["pages"], "named": true, "all": false}}
 {"query": "pull up what I was looking at", "instinct": "recall", "recall": {"kinds": [], "named": false}, "note": "nothing named: the newest memories go to the judge"}
 {"query": "Flag of North Korea.", "instinct": "image", "note": "screenshot 2026-10-23: spoken as 'there you go. Flag of North Korea.', which dictation now strips before routing; Wikipedia had been asked for the whole sentence"}
-{"query": "Can I use Mr. Cleaner with Clorox", "instinct": "one_line", "note": "screenshot 2026-10-24: one_line .50, narrative .29, web .21 fell under the floor and showed web; torn between two answers is still an answer (an unsure pick is web results now; this case states intended behaviour)"}
-{"query": "is it safe to mix mr clean and bleach", "instinct": "narrative", "note": "narrative .45, one_line .44: either answer is right, a page is not. Flipped to one_line .47 vs narrative .44 when remember and forget joined the options (2026-10-27); fails on purpose until the split is settled (an unsure pick is web results now; this case states intended behaviour)"}
+{"query": "Can I use Mr. Cleaner with Clorox", "instinct": "planned", "note": "screenshot 2026-10-24: one_line .50, narrative .29, web .21 fell under the floor and showed web; torn between two answers is still an answer (an unsure pick is web results now; this case states intended behaviour)", "pick": "one_line"}
+{"query": "is it safe to mix mr clean and bleach", "instinct": "planned", "note": "narrative .45, one_line .44: either answer is right, a page is not. Flipped to one_line .47 vs narrative .44 when remember and forget joined the options (2026-10-27); fails on purpose until the split is settled (an unsure pick is web results now; this case states intended behaviour)", "pick": "one_line"}
 {"query": "remember that I'm allergic to peanuts", "instinct": "remember", "note": "told outright: the opener comes off, the fact is kept as typed"}
 {"query": "keep in mind I'm vegetarian", "instinct": "remember"}
 {"query": "don't forget my wife's name is Ana", "instinct": "remember"}
@@ -114,3 +114,8 @@
 {"query": "how old is my mom", "instinct": "one_line"}
 {"query": "what do you know about me", "instinct": "narrative"}
 {"query": "whats my wifes name", "instinct": "one_line"}
+{"query": "There was this one time when I was a kid, back in middle school, my friend Noah, he came to school and declared he was vegan. And then the next day he came into school with pepperoni pizza. Can you remember the story for later? Thanks.", "instinct": "planned", "note": "a story told for the first time: Jev splits remember/recall, so the planner takes it and calls remember (2026-10-29)", "pick": "remember"}
+{"query": "Remember the story about my middle school friend Noah who declared he was vegan but then brought pepperoni pizza to school the next day.", "instinct": "planned", "pick": "remember", "note": "a story told for the first time: Jev splits remember/recall, so the planner takes it and calls remember (2026-10-29)"}
+{"query": "So my coworker Sam, she brought her dog into the office last week and it ate the whole birthday cake off the table before anyone noticed. Keep that one, it's a good story.", "instinct": "remember"}
+{"query": "my mom jasmine always burns the thanksgiving turkey, every single year, remember that for me", "instinct": "remember"}
+{"query": "do I know any vegans", "instinct": "one_line"}
