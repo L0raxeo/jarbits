@@ -61,6 +61,7 @@ public enum EvalReport {
         case let .local(rule): return "device rule \(rule)"
         case .directURL: return "address"
         case .noKey: return "no key"
+        case .plan: return "step of a plan"
         case let .error(message): return "error: \(message)"
         case .rejection: return compare("rejects", decision.rejection, EngineRouting.rejectionThreshold) ?? "rejects"
         case .continuation: return [chain, confidence].compactMap { $0 }.joined(separator: ", ")

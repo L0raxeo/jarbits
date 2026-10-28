@@ -25,6 +25,9 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         case image
         /// A results page; replays by asking the query again.
         case search
+        /// Something a plan did with no screen of its own (a fact kept, a
+        /// call made), by its name and what came of it; replays from the text.
+        case action
 
         /// The kind in words, for the picker.
         public var label: String {
@@ -34,6 +37,7 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
             case .oneLine: "answer"
             case .image: "picture"
             case .search: "search"
+            case .action: "action"
             }
         }
 
@@ -44,6 +48,7 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
             case .narrative, .oneLine: "text.alignleft"
             case .image: "photo"
             case .search: "magnifyingglass"
+            case .action: "bolt"
             }
         }
     }
@@ -111,6 +116,8 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
             } else {
                 contents = [.answer(question: query, text: text ?? "", format: kind == .oneLine ? .oneLine : .narrative)]
             }
+        case .action:
+            contents = [.action(name: title ?? "action", arguments: .object([:]), result: text ?? "")]
         }
         return contents.enumerated().map { index, content in MemoryPart(id: MemoryPart.derivedID(from: id, index: index), content) }
     }
@@ -126,6 +133,7 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         case .picture: .image
         case let .answer(_, _, format): format == .oneLine ? .oneLine : .narrative
         case .note: .narrative
+        case .action: .action
         }
     }
 
@@ -135,11 +143,15 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         return nil
     }
 
-    /// The first answer's markup, as `AnswerMarkup` renders it; nil when
-    /// there is none or it is empty (a bare one-line answer).
+    /// The first answer's markup, as `AnswerMarkup` renders it, or what an
+    /// action came to; nil when there is none or it is empty (a bare
+    /// one-line answer).
     public var text: String? {
-        guard case let .answer(_, text, _) = head.content, !text.isEmpty else { return nil }
-        return text
+        switch head.content {
+        case let .answer(_, text, _): text.isEmpty ? nil : text
+        case let .action(_, _, result): result.isEmpty ? nil : result
+        default: nil
+        }
     }
 
     /// Every answer part as a turn, first to last.
@@ -251,12 +263,18 @@ public struct MemoryPart: Codable, Sendable, Hashable, Identifiable {
         case picture(query: String)
         /// Words the user attached. Not produced yet.
         case note(text: String)
+        /// Something a plan did with no screen of its own: the tool by name,
+        /// what it was given, and what came of it.
+        case action(name: String, arguments: JSONValue, result: String)
 
-        /// The title a part brings of its own: a page's. The rest take the
-        /// memory's query.
+        /// The title a part brings of its own: a page's, or what an action
+        /// came to. The rest take the memory's query.
         var ownTitle: String? {
-            if case let .page(_, title) = self { return title }
-            return nil
+            switch self {
+            case let .page(_, title): title
+            case let .action(name, _, result): result.isEmpty ? name : result
+            default: nil
+            }
         }
     }
 
@@ -513,6 +531,9 @@ extension MemoryRecord {
                 words.append(query)
             case let .note(text):
                 words.append(text)
+            case let .action(name, _, result):
+                words.append(name)
+                words.append(result)
             }
         }
         return words.joined(separator: " ")

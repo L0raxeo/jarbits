@@ -7,6 +7,19 @@ import Foundation
 public enum GeminiPricing {
     public static let inputPerMillionUSD = 0.25
     public static let outputPerMillionUSD = 1.50
+    /// gemini-3.8-flash, read 2026-10-27 (tried as the planner's model and
+    /// measured too slow; kept so a logged round on it costs right): these
+    /// hold through 2026-12-31 and double on 2027-01-01 by Google's page.
+    public static let flashInputPerMillionUSD = 0.75
+    public static let flashOutputPerMillionUSD = 3.75
+
+    /// A Lite model at the Lite rates, any other Flash at the Flash rates.
+    public static func cost(_ usage: AnswerUsage, model: String) -> Double {
+        let lite = model.lowercased().contains("lite")
+        let input = lite ? inputPerMillionUSD : flashInputPerMillionUSD
+        let output = lite ? outputPerMillionUSD : flashOutputPerMillionUSD
+        return Double(usage.inputTokens) * input / 1_000_000 + Double(usage.outputTokens + usage.thoughtTokens) * output / 1_000_000
+    }
 }
 
 /// Token counts for one answer, as Gemini reports them.

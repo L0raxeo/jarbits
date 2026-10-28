@@ -190,6 +190,36 @@ import Testing
         }
     }
 
+    @Test func thePlannerReadsTheCallsAndMapsAFailure() async throws {
+        let client = MockGeminiTransport.client(status: 200, body: InteractionResponseTests.planBody)
+        let planner = Planner(client: client)
+        let bundle = PlanBundle(query: "q", exchanges: [], facts: [], memories: [], tools: Planner.tools(for: InstinctSpec.all), context: .example)
+        let round = await planner.propose(bundle, transcript: [.userText("Request: q")])
+        guard case let .calls(calls, steps, usage, _) = round else {
+            Issue.record("expected calls, got \(round)")
+            return
+        }
+        #expect(calls.map(\.name) == ["narrative", "done"])
+        #expect(steps.count == 4, "every model step kept for replay")
+        #expect(usage == AnswerUsage(inputTokens: 300, outputTokens: 20, thoughtTokens: 5))
+        let sent = try #require(MockGeminiTransport.requests.first { $0.value(forHTTPHeaderField: "Accept") == "application/json" })
+        let body = try #require(sent.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 2)
+
+        let silent = Planner(client: MockGeminiTransport.client(status: 200, body: #"{"id":"x","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"I would do this"}]}]}"#))
+        guard case .silent = await silent.propose(bundle, transcript: [.userText("Request: q")]) else {
+            Issue.record("prose and no calls is silent")
+            return
+        }
+        let failed = Planner(client: MockGeminiTransport.client(status: 400, body: #"{"error":{"message":"bad tool"}}"#))
+        guard case let .failed(reason, _) = await failed.propose(bundle, transcript: [.userText("Request: q")]) else {
+            Issue.record("an HTTP error fails the round")
+            return
+        }
+        #expect(reason.contains("400"))
+    }
+
     @Test func theExtractorGivesUpAtItsBudget() async {
         MockGeminiTransport.handler = { _ in
             Thread.sleep(forTimeInterval: 0.3)

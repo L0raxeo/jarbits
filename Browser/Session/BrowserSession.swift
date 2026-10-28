@@ -154,6 +154,10 @@ final class BrowserSession {
     /// Where the screen stood before the query in flight: what an instinct
     /// that shows nothing hands back to.
     private var stageBefore: Stage = .idle
+    /// Runs a plan when the engine says a query needs one; nil without a Gemini key.
+    @ObservationIgnored private lazy var executor: Executor? = engine.planner.map { Executor(planner: $0, session: self, instincts: engine.instincts, recall: recall) }
+    /// A Gemini key is configured, so an answer can be shown.
+    var canAnswer: Bool { answerClient != nil }
 
     init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared) {
         let microphone = Microphone()
@@ -287,6 +291,42 @@ final class BrowserSession {
     /// waited on something checks it before going on.
     func isCurrent(_ token: UUID) -> Bool {
         token == requestToken
+    }
+
+    // MARK: Plans
+
+    /// Shows a plan step's result as the ordinary path would, and waits
+    /// until it is on screen: true then, false when it never came within
+    /// `performWait` or the query was overtaken.
+    func perform(_ instinct: any Instinct, context: InstinctContext, token: UUID) async -> Bool {
+        guard token == requestToken else { return false }
+        lastQuery = context.query
+        apply(RouteResult(plan: instinct.plan(context), decision: context.decision), token: token)
+        let clock = ContinuousClock()
+        let start = clock.now
+        while clock.now - start < Self.performWait {
+            if stage == .ready { return true }
+            guard token == requestToken else { return false }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return stage == .ready
+    }
+
+    /// How long a plan step may take to reach the screen.
+    private static let performWait: Duration = .seconds(10)
+
+    /// A plan step that did something with no screen of its own becomes a
+    /// memory of its own, so "what did you just do" finds it.
+    func noteAction(name: String, arguments: JSONValue, result: String, query: String) {
+        let from = current?.currentMemory
+        Task { [memory] in
+            var record = MemoryRecord(query: query, parts: [MemoryPart(.action(name: name, arguments: arguments, result: result))])
+            record.cameFrom = await from?.value   // chained from what was on screen, which keeps its own memory
+            #if DEBUG
+            print("memory action \(name) \"\(result)\" for \"\(query)\"")
+            #endif
+            _ = await memory.remember(record)
+        }
     }
 
     /// This session's exchanges up to the layer on screen, oldest first,
@@ -662,6 +702,32 @@ final class BrowserSession {
             factSummary = FactSummary(action: "remembered", source: .inferred, text: inferred.text, remember: decision.remember)
             Task { await learn(inferred) }
         }
+        if result.reasoning {
+            // Several steps: the plan runs under the wave line, each step
+            // through the ordinary paths, until it shows something.
+            guard let executor else {
+                openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
+                record(decision, query: query)
+                return
+            }
+            Task {
+                let summary = await executor.run(query: query, decision: decision, exchanges: result.chained, token: token)
+                guard token == requestToken else { return }
+                #if DEBUG
+                print("plan \(summary.outcome) after \(summary.rounds) rounds, \(summary.steps.count) steps, \(summary.latencyMs) ms")
+                #endif
+                if !summary.shownSomething {
+                    if summary.didSomething || summary.outcome == .declined {
+                        // Done without a screen of its own: back to where the screen stood.
+                        stage = stageBefore
+                    } else {
+                        openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
+                    }
+                }
+                record(decision, query: query, engine: summary)
+            }
+            return
+        }
         if let action = result.action, let context = result.context {
             // An instinct that shows nothing: the screen goes back to where
             // it stood, and the instinct runs over it, asking if it must.
@@ -927,8 +993,8 @@ final class BrowserSession {
             layer.currentMemory = Task { record.id }
             open(layer)
             show(url, in: layer)
-        case .narrative, .oneLine where record.turns != nil:
-            // A conversation that began with one line replays from its turns, like a narrative.
+        case .narrative, .action, .oneLine where record.turns != nil:
+            // A conversation that began with one line replays from its turns, like a narrative; an action from what it came to.
             let layer = Layer(plan: .memory(record), query: query, decision: decision)
             layer.currentMemory = Task { record.id }
             open(layer)
@@ -1139,8 +1205,8 @@ final class BrowserSession {
         }
     }
 
-    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil) {
-        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image, recall: recall, site: site, extraction: extraction, fact: fact)
+    private func record(_ decision: RouteDecision, query: String, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil) {
+        let record = DecisionRecord(query: query, decision: decision, answer: answer, image: image, recall: recall, site: site, extraction: extraction, fact: fact, engine: engine)
         Task { await log.append(record) }
     }
 

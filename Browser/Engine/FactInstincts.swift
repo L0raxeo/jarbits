@@ -12,12 +12,17 @@ struct RememberInstinct: Instinct {
         .web(QueryParser.searchURL(for: context.query))
     }
 
+    /// Set by the executor, never by the model: the fact came off the sheet.
+    static let sourceField = "source"
+
     func act(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> ActOutcome {
         let gate = context.decision.remember
         guard let text = context.arguments["fact"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
             return ActOutcome(fact: FactSummary(action: "none", remember: gate), text: "nothing to remember")
         }
-        let kept = await session.learn(Fact(text: text, source: .told, madeBy: context.query))
+        // Told in the words; chosen when a plan asked on the sheet and the answer is being kept.
+        let source: Fact.Source = context.arguments[Self.sourceField]?.stringValue == Fact.Source.chosen.rawValue ? .chosen : .told
+        let kept = await session.learn(Fact(text: text, source: source, madeBy: context.query))
         return ActOutcome(fact: FactSummary(action: "remembered", source: kept.source, text: kept.text, remember: gate), text: "remembered \"\(kept.text)\"")
     }
 }

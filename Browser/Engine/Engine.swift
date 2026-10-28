@@ -19,14 +19,18 @@ struct Engine {
     /// Reads a pick's free-form values out of the words; nil without a
     /// Gemini key, in which case an instinct that needs one is web results.
     let extractor: ValueExtractor?
+    /// Plans a query that needs several steps; nil without a Gemini key, in
+    /// which case such a query runs its pick like any other.
+    let planner: Planner?
     let sites: SiteStore
     /// A Gemini key is configured, so an answer can be planned.
     let canAnswer: Bool
     let instincts: [any Instinct]
 
-    init(router: EngineRouter?, extractor: ValueExtractor? = nil, sites: SiteStore, canAnswer: Bool, instincts: [any Instinct] = InstinctRegistry.all()) {
+    init(router: EngineRouter?, extractor: ValueExtractor? = nil, planner: Planner? = nil, sites: SiteStore, canAnswer: Bool, instincts: [any Instinct] = InstinctRegistry.all()) {
         self.router = router
         self.extractor = extractor
+        self.planner = planner
         self.sites = sites
         self.canAnswer = canAnswer
         self.instincts = instincts
@@ -51,6 +55,11 @@ struct Engine {
         }
         let decision = outcome.decision
         let chained = Array(sent.suffix(decision.chainedCount))
+        // Several steps, a condition, or an unsure pick that leaned that
+        // way: the session plans it instead of running the pick.
+        if planner != nil, ReasoningPolicy.entersReasoning(decision) {
+            return RouteResult(plan: nil, decision: decision, reasoning: true, chained: chained.map(\.exchange))
+        }
         // The values the pick takes: what its grammars read (the device
         // rule's, then the pick's own), what Jev read for its closed-set
         // fields, and what a model reads out of the words for the free-form
@@ -124,7 +133,7 @@ struct Engine {
 /// when a model was asked; and a fact the words stated on the way, for
 /// the session to keep.
 struct RouteResult {
-    /// What to show; nil for an instinct that acts instead.
+    /// What to show; nil for an instinct that acts instead, or a query to plan.
     var plan: CardPlan?
     var decision: RouteDecision
     var extraction: ExtractionSummary? = nil
@@ -132,6 +141,9 @@ struct RouteResult {
     var action: (any Instinct)? = nil
     var context: InstinctContext? = nil
     var inferred: Fact? = nil
+    /// The query goes to advanced reasoning, with these exchanges as what it depends on.
+    var reasoning = false
+    var chained: [Exchange] = []
 }
 
 extension BrowserSession {
@@ -141,7 +153,8 @@ extension BrowserSession {
     static func makeEngine(sites: SiteStore = .shared) -> Engine {
         let router = Secrets.typeSafeAPIKey.map { EngineRouter(client: JevClient(apiKey: $0)) }
         let extractor = Secrets.geminiAPIKey.map { ValueExtractor(client: GeminiClient(apiKey: $0)) }
-        return Engine(router: router, extractor: extractor, sites: sites, canAnswer: Secrets.geminiAPIKey != nil)
+        let planner = Secrets.geminiAPIKey.map { Planner(client: GeminiClient(apiKey: $0, model: Planner.model, totalTimeout: ReasoningPolicy.roundTimeout)) }
+        return Engine(router: router, extractor: extractor, planner: planner, sites: sites, canAnswer: Secrets.geminiAPIKey != nil)
     }
 
     /// Brave's web search for the sites an unknown name might mean, when a

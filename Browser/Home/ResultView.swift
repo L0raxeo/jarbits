@@ -489,6 +489,8 @@ struct MemoryTile: View {
                         .multilineTextAlignment(.leading)
                         .padding(12)
                         .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                case .action:
+                    placeholder(record.text ?? record.title)
                 case .oneLine, .image, .search:
                     placeholder(record.query)
                 }

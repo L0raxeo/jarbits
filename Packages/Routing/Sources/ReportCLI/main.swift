@@ -26,6 +26,11 @@ import Sites
 //      metered call, printing the values read, the latency and the tokens. Kinds: text, number, integer,
 //      boolean, choice=a|b; a closed-set kind is Jev's question, not the model's. --timeout widens the
 //      app's one-second budget, to see how long the reply really takes)
+//   [GEMINI_API_KEY=…] swift run --package-path Packages/Routing report plan "remember I'm vegetarian, then suggest dinner" \
+//       [--after <q> <a>]... [--fact "I hate cilantro"]... [--timeout 30] [--dry-run]
+//     (advanced reasoning's first request, with every instinct as a tool; with the key and no --dry-run,
+//      one metered round on the planner's model, printing the calls the model asks for, the tokens and the cost;
+//      --timeout lifts the app's round budget of ReasoningPolicy.roundTimeout to measure a slow round)
 //   [BRAVE_API_KEY=…] swift run --package-path Packages/Routing report sites "go to hacker news"
 //     (what SiteQuery makes of the query, what the seeded book says, and with the key Brave's candidates)
 //   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Routing report eval [--out results.jsonl]
@@ -289,6 +294,57 @@ case "extract":
     case let .failed(summary):
         print("failed (\(summary.latencyMs) ms against a \(budget.formatted()) s budget): \(summary.outcome)")
     }
+case "plan":
+    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--fact <text>]... [--timeout <seconds>] [--dry-run]"
+    var rest = Array(arguments.dropFirst())
+    guard let query = rest.first else { fail(usage) }
+    rest.removeFirst()
+    var exchanges: [Exchange] = []
+    var facts: [String] = []
+    var dryRun = false
+    var roundTimeout = ReasoningPolicy.roundTimeout
+    while let flag = rest.first {
+        switch flag {
+        case "--after":
+            guard rest.count >= 3 else { fail(usage) }
+            exchanges.append(.answer(query: rest[1], text: rest[2]))
+            rest.removeFirst(3)
+        case "--fact":
+            guard rest.count >= 2 else { fail(usage) }
+            facts.append(rest[1])
+            rest.removeFirst(2)
+        case "--timeout":
+            guard rest.count >= 2, let seconds = Double(rest[1]), seconds > 0 else { fail(usage) }
+            roundTimeout = .milliseconds(Int(seconds * 1000))
+            rest.removeFirst(2)
+        case "--dry-run":
+            dryRun = true
+            rest.removeFirst()
+        default: fail(usage)
+        }
+    }
+    let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, memories: [], tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now))
+    let transcript: [InteractionStep] = [.userText(Planner.input(query: query, exchanges: exchanges, memories: [], now: .now))]
+    let request = Planner.request(bundle: bundle, transcript: transcript)
+    print("first round's request body (\(Planner.model), \(bundle.tools.count) tools, \(roundTimeout.components.seconds) s to answer):")
+    print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
+    guard !dryRun, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
+        print(dryRun ? "dry run: no call made" : "set GEMINI_API_KEY to make the call (one metered round of a plan, well under a tenth of a cent)")
+        exit(0)
+    }
+    let planner = Planner(client: GeminiClient(apiKey: key, model: Planner.model, totalTimeout: roundTimeout))
+    switch await planner.propose(bundle, transcript: transcript, timeout: roundTimeout) {
+    case let .calls(calls, steps, usage, latencyMs):
+        let tokens = usage.map { "\($0.inputTokens) in, \($0.outputTokens) out, \($0.thoughtTokens) thought; about $\(GeminiPricing.cost($0, model: Planner.model).formatted(.number.precision(.fractionLength(4))))" } ?? "no usage"
+        print("round 1 (\(latencyMs) ms, \(tokens)): \(calls.count) calls, \(steps.count) model steps")
+        for call in calls {
+            print("  \(call.name)(\(String(decoding: (try? call.arguments.data()) ?? Data(), as: UTF8.self)))")
+        }
+    case let .silent(steps, usage, latencyMs):
+        print("round 1 (\(latencyMs) ms): no calls; \(steps.count) model steps, \(usage.map { "\($0.outputTokens) out" } ?? "no usage")")
+    case let .failed(reason, latencyMs):
+        print("round 1 failed (\(latencyMs) ms): \(reason)")
+    }
 case "sites":
     guard arguments.count == 2 else { fail("usage: report sites <query>") }
     let query = arguments[1]
@@ -471,5 +527,5 @@ case "sample":
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report routing | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | sites <query> | eval [cases.jsonl] [--only <format>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report routing | decisions <decisions.jsonl> | recall <memories.jsonl> <query> | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | plan <query> [--after <q> <a>]... [--fact <text>]... [--timeout <seconds>] [--dry-run] | sites <query> | eval [cases.jsonl] [--only <format>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }

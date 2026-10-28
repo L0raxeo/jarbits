@@ -291,6 +291,7 @@ Answer: `noul`, the probability of yes (0–1). No confidence field.
 | `site` picked with confidence | The site, when the book knows the name; otherwise the choices card (see "After routing: sites") | `jev` |
 | `remember` picked with confidence | The fact is kept in the user's words (the words after the opener, or what a model read out of them) and a mark says so; what was on screen stays | `jev`, with `fact` |
 | `forget` picked with confidence | The facts the words point at are judged (one yes/no each, as a recall's are) and the one asked for is put to the user on the sheet; a tap forgets it | `jev`, with `fact` |
+| `reasoning` at or above 1.5 on any pick, or at or above 1 on an unsure one, with a Gemini key | The query is planned instead of run (see "Reasoning (function calling)" below): each step the plan shows or does runs through the ordinary paths and is logged as its own line | the pick's own source, with `engine` on its line; each step `plan` |
 | `remember` at or above 0.5 on any other pick | The pick runs as usual, and the lasting fact the words state is noted quietly, as a model distils it, with a mark | the pick's own line, with `fact` |
 | Over a site opened by name, `rejects` at or above 0.5, whatever the pick | The name is forgotten and the choices card shown again | `rejection` (the pick is kept as `suggested`) |
 
@@ -500,6 +501,70 @@ Request: <query>
 | No Gemini key | Web results when a required field is empty | `failed("no key")` |
 
 The extraction summary (model, latency, tokens, the fields read, the outcome) rides on the same `decisions.jsonl` line.
+
+### Reasoning (function calling)
+
+A query whose reasoning score reaches 1.5 (several steps, a condition, a schedule), or an unsure pick whose score reaches 1, is planned instead of run: `gemini-3.1-flash-lite` (price in `GeminiPricing`: $0.25 per 1M input tokens and $1.5 per 1M output; well under a cent a plan. `gemini-3.8-flash` was measured first on 2026-10-27: it refuses minimal thinking, and at low a round took eleven seconds and a thousand thought tokens, half a cent), thinking `minimal`, `store: false`, `tool_choice: any`, at most 4 rounds within 20 s, each round within 8 s. Every instinct is a tool, with a `query` field and the instinct's own; `ask` puts a question on the sheet and `done` ends the plan. The device runs each call in order (a paid or destructive tool is confirmed on the sheet first, unless the instinct asks for itself; the same call twice runs once; a second thing to show is refused) and sends the results back as `function_result` steps, every model step replayed verbatim, for the next round. Nothing the model writes is shown: it speaks through `narrative` or `one_line` with a query it writes.
+
+System instruction:
+
+```
+You plan what a phone's browser does for a request. You never answer in text: nothing you write is shown to anyone. You act only by calling the tools below, and the device runs them.
+
+Rules:
+- To tell the user anything, call narrative or one_line with a complete, self-contained question in its query, with whatever you learned from earlier steps folded in; the device answers it. Never summarise a result yourself.
+- To confirm something, to choose, or to get a value the request leaves out, call ask; the answer comes back as the result.
+- A tool that costs money or cannot be undone is confirmed with the user by the device before it runs, not by you.
+- Show at most one thing, as the last step: web_results, narrative, map, stock, one_line, recall, image, site, video each put a result on screen, and a second one would replace the first.
+- When an answer on the sheet is something lasting about the user, call remember with it next.
+- Call several tools in one turn only when none needs another's result; otherwise one at a time, and read the result before the next.
+- A step whose result says it ran is done: never call it again with the same arguments.
+- Call done when the request has been handled, or when nothing you can do would help.
+- Date and time: Wednesday 21 October 2026, 11:26 (America/Chicago). Locale: en_US.
+
+What you know about the user (told earlier; let it shape what you do, never repeat it):
+- <fact>
+```
+
+First turn (the request, the exchanges it depends on, the memories the words point at, at most 5):
+
+```
+Request: <query>
+
+Earlier in this session (oldest first):
+- Searched "<term searched>"
+
+Seen in this app before, that the request may mean (newest first):
+- A page from yesterday (example.com): "<page title>"
+```
+
+Tools (`tools` on the request), one per instinct, then `ask` and `done`:
+
+| Tool | Description | Fields |
+|---|---|---|
+| `web_results` | A standard page of web search results. The default for broad, vague or multi-part queries, for a search for something on a site, for browsing many pictures, and for anything the other formats do not clearly fit. A bare topic with no ask, such as "chocolate milk" or "quantum computing", is one of these: the user wants the general spread, not one answer. So is a query that asks for the search itself, such as "google steve jobs" or "look up flights to lima", whatever the topic. Not for: A question that asks why or how something happened, a single short fact, a specific place to find, a ticker, a request to open a website by its name, the bare name of one specific thing with a definitive look, which wants a picture, or videos to watch, which want video results. Puts its result on screen. | query |
+| `narrative` | A written explanation. The query asks why or how something happened or works, what something is or means (a definition, or the expansion of an acronym or term within a field, which needs the full name and a sentence or two of context), for the story behind something, where a phrase, slogan, name or meme came from, or for a judgement that needs context, such as whether somewhere is safe. Not for: Questions answered by one line, such as a time, a date, a number or a yes/no, and queries that only want a price chart. Puts its result on screen. | query |
+| `map` | A map with a pin. The query names a physical place to locate or get to: an address, a shop, a city, a landmark, directions, or something near me. Not for: Places mentioned only as the subject of a question or a fact, such as whether a country is safe or what time it is there. Puts its result on screen. | query |
+| `stock` | A price chart for a security. The query names a ticker, a public company's stock or share price, a market index, or a cryptocurrency price, and wants the price. Not for: Questions about why a price moved or company news, which want an explanation, and currency conversion. Puts its result on screen. | query |
+| `one_line` | A single short answer that fits on one line: a time, a date, a number, a duration, a yes/no, a conversion, or a quick fact that is itself a name, number or date, including live ones like the weather. Not for: Questions that ask why or how and need a few paragraphs; definitions and what-is questions, which need the full name and some context rather than one value; and anything that wants a price chart. Puts its result on screen. | query |
+| `recall` | Something the user saw in this app before and wants back: a page they were on, an answer they got, a list they made. The query points at the past ("that", "again", "my", "remember", "pull up", "where's", "go back to") instead of asking something new. Not for: A new question or search that merely contains such a word, like a film title or a package delivery; opening a website by its name with no pointer at the past ("pull up zillow"), which is site; anything the user has not seen in this app. Puts its result on screen. | query |
+| `image` | A single picture of one specific, named thing with a definitive look: a flag, a logo or emblem, a landmark or monument, a painting, a person, a product, a species, a chemical structure. The bare name of such a thing, with no other words, means the user wants to see it, not read about it. Not for: Browsing many pictures of a category, mood or idea, which wants web results; and questions about why something looks the way it does, which want an explanation. Puts its result on screen. | query |
+| `site` | Open a website or app by its name. The query is a go-to, open, pull-up or take-me-to verb and a site's name, or the bare name of a well-known site with nothing else; the user wants the site itself, not results about it. Not for: A search for something on a site ("zillow homes in austin"), a question about a site, a page the user saw in this app before ("that youtube page from earlier", which is recall), and an address, which loads directly. Puts its result on screen. | query |
+| `video` | A page of videos to watch. The query asks for videos, clips, highlights, a trailer, a music video, a performance, a tutorial to watch, or to watch or play something: the user wants to press play, not read. Not for: A video the user saw in this app before ("the video I was watching"), which is recall; a website or app by its name ("open youtube"), which is site; one still picture of a thing, which is image; and a topic that merely has videos about it, with no ask to watch, which is web results. Puts its result on screen. | query |
+| `remember` | The user asks the app to keep something in mind about them for later, or tells it something lasting about themselves with nothing else asked: a preference, an allergy, a name, where they live. The words are a remember, a keep-in-mind, a don't-forget, a note-that, or a plain statement about the user; nothing is wanted back but the keeping. Not for: Bringing back something seen in this app before ("remember that convo on the dyson pencilvac", "remember that page"), which is recall; a question that mentions a fact on the way to asking something ("I'm allergic to peanuts, what can I snack on" wants the snacks); a fact about the world. Shows nothing; a mark says what was done. | fact, query |
+| `forget` | The user asks the app to forget, drop or stop remembering something it knows about them: the fact just noted, or one named by its subject. Not for: Forgetting a page, a search or an answer, which is nothing the app keeps as a fact; a new question; "never mind" about a query just typed. Shows nothing; a mark says what was done. Asks the user itself before acting. | about, query |
+| `ask` | Put one short question to the user on a small sheet and get the answer back: to confirm, to choose, or to get a value the request leaves out. Give one to three options with the expected one first, or none for a line of text. | options, question |
+| `done` | Call once the request has been handled, or once nothing you can do would help. |  |
+
+| Outcome | Then | Logged as |
+|---|---|---|
+| `done`, or the rounds end after something was shown or done | What the steps showed stays; a plan that only did something hands the screen back | `engine.outcome = completed` |
+| Nothing shown and nothing done | Web results for the words | `fellBackToWeb(reason)` |
+| No on the sheet, or the sheet swiped away | The plan ends there | `declined` |
+| The rounds or the time ran out | As completed, or web results when nothing happened | `budget` |
+| A newer query took the screen | Nothing more | `stale` |
+
+The plan summary (model, rounds, every step with its outcome and latency, tokens, the facts and memories given, the outcome) rides on the same `decisions.jsonl` line; a step that did something with no screen of its own is also a memory of kind `action`, so "what did you just do" finds it.
 
 ## After routing: Wikipedia images
 

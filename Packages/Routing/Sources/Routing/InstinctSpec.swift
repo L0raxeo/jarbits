@@ -195,6 +195,9 @@ public struct InstinctSpec: Sendable, Identifiable {
     /// Running it puts a layer on screen; false for one that only acts.
     public let showsLayer: Bool
     public let sideEffects: SideEffects
+    /// It puts its own question to the user before acting, so a plan
+    /// need not confirm it first.
+    public let asksItself: Bool
     public let arguments: ArgumentSchema
     /// Questions this instinct adds to the request when they apply; a
     /// question two instincts both add is asked once.
@@ -209,6 +212,7 @@ public struct InstinctSpec: Sendable, Identifiable {
         self.format = format
         var showsLayer = true
         var sideEffects = SideEffects.none
+        var asksItself = false
         var arguments = ArgumentSchema.none
         var read: (@Sendable (String) -> Arguments)?
         switch format {
@@ -263,6 +267,7 @@ public struct InstinctSpec: Sendable, Identifiable {
             recognise = nil
             showsLayer = false
             sideEffects = .destructive
+            asksItself = true
             arguments = ArgumentSchema(fields: [.init(name: "about", kind: .text, description: "what the fact to forget is about, when the words say", required: false)])
         case .map, .stock, .image, .video:
             questions = { _ in [] }
@@ -270,6 +275,7 @@ public struct InstinctSpec: Sendable, Identifiable {
         }
         self.showsLayer = showsLayer
         self.sideEffects = sideEffects
+        self.asksItself = asksItself
         self.arguments = arguments
         self.read = read
     }
@@ -280,6 +286,7 @@ public struct InstinctSpec: Sendable, Identifiable {
         format: ResponseFormat,
         showsLayer: Bool = true,
         sideEffects: SideEffects = .none,
+        asksItself: Bool = false,
         arguments: ArgumentSchema = .none,
         questions: @escaping @Sendable (RequestContext) -> [(id: String, question: Question)] = { _ in [] },
         recognise: (@Sendable (String, RecogniseContext) -> Recognised?)? = nil,
@@ -288,6 +295,7 @@ public struct InstinctSpec: Sendable, Identifiable {
         self.format = format
         self.showsLayer = showsLayer
         self.sideEffects = sideEffects
+        self.asksItself = asksItself
         self.arguments = arguments
         self.questions = questions
         self.recognise = recognise

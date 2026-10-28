@@ -71,11 +71,12 @@ public enum RecallRouting {
         case .oneLine: "one-line answer"
         case .image: "picture"
         case .search: "search"
+        case .action: "thing the app did"
         }
     }
 
     /// "today", "yesterday", "3 days ago", or the date for anything older.
-    static func when(_ date: Date, now: Date, calendar: Calendar) -> String {
+    public static func when(_ date: Date, now: Date, calendar: Calendar) -> String {
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0
         switch days {
         case ...0: return "today"

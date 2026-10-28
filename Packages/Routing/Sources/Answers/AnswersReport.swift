@@ -75,7 +75,54 @@ public enum AnswersReport {
         out.append("The answer summary (model, tokens, first-token and total latency, outcome) is appended to the same `decisions.jsonl` line as the routing decision.")
         out.append("")
         out += valuesSection()
+        out.append("")
+        out += reasoningSection()
         return out.joined(separator: "\n") + "\n"
+    }
+
+    /// Advanced reasoning's request, quoted from the same `Planner` the app uses.
+    private static func reasoningSection() -> [String] {
+        let tools = Planner.tools(for: InstinctSpec.all)
+        let bundle = PlanBundle(query: "<query>", exchanges: [.search(query: "<earlier query>", term: "<term searched>")], facts: ["<fact>"], memories: [], tools: tools, context: .example)
+        let input = Planner.input(query: "<query>", exchanges: bundle.exchanges, memories: [
+            MemoryRecord(date: AnswerContext.example.now.addingTimeInterval(-86_400), kind: .page, query: "<earlier query>", title: "<page title>", url: URL(string: "https://example.com/<path>")),
+        ], now: AnswerContext.example.now)
+        var out: [String] = []
+        out.append("### Reasoning (function calling)")
+        out.append("")
+        out.append("A query whose reasoning score reaches \(ReasoningPolicy.threshold.formatted()) (several steps, a condition, a schedule), or an unsure pick whose score reaches \(ReasoningPolicy.leanThreshold.formatted()), is planned instead of run: `\(Planner.model)` (price in `GeminiPricing`: $\(GeminiPricing.inputPerMillionUSD) per 1M input tokens and $\(GeminiPricing.outputPerMillionUSD) per 1M output; well under a cent a plan. `gemini-3.8-flash` was measured first on 2026-10-27: it refuses minimal thinking, and at low a round took eleven seconds and a thousand thought tokens, half a cent), thinking `\(Planner.thinkingLevel)`, `store: false`, `tool_choice: any`, at most \(ReasoningPolicy.maxRounds) rounds within \(ReasoningPolicy.timeBudget.components.seconds) s, each round within \(ReasoningPolicy.roundTimeout.components.seconds) s. Every instinct is a tool, with a `query` field and the instinct's own; `ask` puts a question on the sheet and `done` ends the plan. The device runs each call in order (a paid or destructive tool is confirmed on the sheet first, unless the instinct asks for itself; the same call twice runs once; a second thing to show is refused) and sends the results back as `function_result` steps, every model step replayed verbatim, for the next round. Nothing the model writes is shown: it speaks through `narrative` or `one_line` with a query it writes.")
+        out.append("")
+        out.append("System instruction:")
+        out.append("")
+        out.append("```")
+        out.append(Planner.system(facts: bundle.facts, context: bundle.context))
+        out.append("```")
+        out.append("")
+        out.append("First turn (the request, the exchanges it depends on, the memories the words point at, at most \(ReasoningPolicy.memoriesGiven)):")
+        out.append("")
+        out.append("```")
+        out.append(input)
+        out.append("```")
+        out.append("")
+        out.append("Tools (`tools` on the request), one per instinct, then `ask` and `done`:")
+        out.append("")
+        out.append("| Tool | Description | Fields |")
+        out.append("|---|---|---|")
+        for tool in tools {
+            let fields = tool.parameters["properties"]?.objectValue?.keys.sorted().joined(separator: ", ") ?? ""
+            out.append("| `\(tool.name)` | \(tool.description) | \(fields) |")
+        }
+        out.append("")
+        out.append("| Outcome | Then | Logged as |")
+        out.append("|---|---|---|")
+        out.append("| `done`, or the rounds end after something was shown or done | What the steps showed stays; a plan that only did something hands the screen back | `engine.outcome = completed` |")
+        out.append("| Nothing shown and nothing done | Web results for the words | `fellBackToWeb(reason)` |")
+        out.append("| No on the sheet, or the sheet swiped away | The plan ends there | `declined` |")
+        out.append("| The rounds or the time ran out | As completed, or web results when nothing happened | `budget` |")
+        out.append("| A newer query took the screen | Nothing more | `stale` |")
+        out.append("")
+        out.append("The plan summary (model, rounds, every step with its outcome and latency, tokens, the facts and memories given, the outcome) rides on the same `decisions.jsonl` line; a step that did something with no screen of its own is also a memory of kind `action`, so \"what did you just do\" finds it.")
+        return out
     }
 
     /// The one small call that reads an instinct's free-form values out of

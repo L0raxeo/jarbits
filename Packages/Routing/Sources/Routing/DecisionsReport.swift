@@ -18,8 +18,10 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     public var extraction: ExtractionSummary?
     /// How the query touched the facts: remembered, forgotten, declined.
     public var fact: FactSummary?
+    /// What a plan came to, when the query went to advanced reasoning.
+    public var engine: EngineSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: RouteDecision, answer: AnswerSummary? = nil, image: ImageSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
@@ -29,6 +31,7 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
         self.site = site
         self.extraction = extraction
         self.fact = fact
+        self.engine = engine
     }
 
     public static let encoder: JSONEncoder = {
@@ -70,7 +73,8 @@ public enum DecisionsReport {
         let latencies = asked.compactMap(\.decision.latencyMs).sorted()
 
         let gated = asked.filter { $0.decision.source == .recencyFallback }
-        out.append("\(records.count) queries: \(asked.count) asked Jev, \(local.count) decided on the device, \(direct.count) addresses, \(noKey.count) without a key, \(errors.count) errors, \(gated.count) sent to web for recency.")
+        let planned = records.filter { $0.decision.source == .plan }
+        out.append("\(records.count) queries: \(asked.count) asked Jev, \(local.count) decided on the device, \(direct.count) addresses, \(noKey.count) without a key, \(errors.count) errors, \(gated.count) sent to web for recency, \(planned.count) steps of plans.")
         if let p50 = latencies.isEmpty ? nil : latencies[latencies.count / 2] {
             out.append("Median Jev latency \(p50) ms.")
         }
@@ -298,6 +302,27 @@ public enum DecisionsReport {
             }
             if !remembered.isEmpty {
                 out.append("Kept: " + remembered.suffix(10).map { "\"\($0.1.text ?? $0.0.query)\"" }.joined(separator: ", "))
+            }
+            out.append("")
+        }
+
+        let plans = records.compactMap { record in record.engine.map { (record, $0) } }
+        if !plans.isEmpty {
+            out.append("## Reasoning")
+            out.append("")
+            let completed = plans.filter { $0.1.outcome == .completed }.count
+            let fellBack = plans.filter { if case .fellBackToWeb = $0.1.outcome { true } else { false } }
+            let declined = plans.filter { $0.1.outcome == .declined }.count
+            let budget = plans.filter { $0.1.outcome == .budget }.count
+            let stale = plans.filter { $0.1.outcome == .stale }.count
+            let rounds = Double(plans.map(\.1.rounds).reduce(0, +)) / Double(plans.count)
+            let steps = Double(plans.map(\.1.steps.count).reduce(0, +)) / Double(plans.count)
+            let cost = plans.compactMap { plan in plan.1.usage.map { GeminiPricing.cost($0, model: plan.1.model) } }.reduce(0, +)
+            out.append("\(plans.count) plans: \(completed) completed, \(fellBack.count) fell back to web, \(declined) declined, \(budget) over budget, \(stale) overtaken. Mean \(rounds.formatted(.number.precision(.fractionLength(1)))) rounds and \(steps.formatted(.number.precision(.fractionLength(1)))) steps; median \(median(plans.map(\.1.latencyMs))); about $\(cost.formatted(.number.precision(.fractionLength(4)))) in tokens.")
+            if !fellBack.isEmpty {
+                out.append("Fell back: " + fellBack.suffix(10).map { record, plan in
+                    if case let .fellBackToWeb(reason) = plan.outcome { "\"\(record.query)\": \(reason)" } else { "\"\(record.query)\"" }
+                }.joined(separator: ", "))
             }
             out.append("")
         }

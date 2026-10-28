@@ -137,6 +137,19 @@ import Testing
                 format: .remember, suggested: .remember, confidence: 0.9,
                 probabilities: ["remember": 0.9, "recall": 0.1], model: "jev-1.13.0", latencyMs: 200, inputTokens: 500, remember: 0.95, source: .jev),
                 fact: FactSummary(action: "remembered", source: .told, text: "I'm vegetarian", remember: 0.95)),
+            DecisionRecord(timestamp: now.addingTimeInterval(840), query: "remember I'm vegetarian, then suggest dinner", decision: RouteDecision(
+                format: .narrative, suggested: .narrative, confidence: 0.6,
+                probabilities: ["narrative": 0.6, "remember": 0.4], model: "jev-1.13.0", latencyMs: 210, inputTokens: 520, reasoning: 1.8, reasoningConfidence: 0.7, source: .jev),
+                engine: EngineSummary(model: "gemini-3.8-flash", rounds: 2, steps: [
+                    .init(name: "remember", arguments: ["query": "I'm vegetarian", "fact": "I'm vegetarian"], outcome: "ran", latencyMs: 15),
+                    .init(name: "narrative", arguments: ["query": "suggest a vegetarian dinner"], outcome: "shown", latencyMs: 1200),
+                ], usage: AnswerUsage(inputTokens: 6000, outputTokens: 120, thoughtTokens: 80), latencyMs: 4200, factsGiven: 1, memoriesGiven: 0, outcome: .completed)),
+            DecisionRecord(timestamp: now.addingTimeInterval(900), query: "do the thing", decision: RouteDecision(
+                format: .webResults, suggested: .narrative, confidence: 0.3,
+                probabilities: ["narrative": 0.3, "web_results": 0.3], model: "jev-1.13.0", latencyMs: 190, inputTokens: 400, reasoning: 1.1, reasoningConfidence: 0.5, source: .confidenceFallback),
+                engine: EngineSummary(model: "gemini-3.8-flash", rounds: 1, steps: [], usage: AnswerUsage(inputTokens: 5000, outputTokens: 40, thoughtTokens: 20), latencyMs: 1500, factsGiven: 0, memoriesGiven: 2, outcome: .fellBackToWeb("round 1: no calls"))),
+            DecisionRecord(timestamp: now.addingTimeInterval(845), query: "suggest a vegetarian dinner", decision: RouteDecision(format: .narrative, suggested: nil, confidence: 1, source: .plan),
+                answer: AnswerSummary(model: "gemini-3.1-flash-lite", format: .narrative, usage: AnswerUsage(inputTokens: 900, outputTokens: 180, thoughtTokens: 0), firstTokenMs: 500, latencyMs: 2000, outcome: .completed)),
         ]
         let lines = try records.map { String(decoding: try DecisionRecord.encoder.encode($0), as: UTF8.self) }.joined(separator: "\n") + "\n"
         let parsed = try DecisionsReport.parse(Data(lines.utf8))
@@ -144,7 +157,11 @@ import Testing
 
         let oldRecord = #"{"timestamp":"2026-10-01T00:00:00Z","query":"x","decision":{"format":"web_results","probabilities":{},"source":{"noKey":{}}}}"#
         let markdown = DecisionsReport.markdown(records: parsed)
-        #expect(markdown.contains("16 queries: 11 asked Jev, 3 decided on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency."))
+        #expect(markdown.contains("19 queries: 13 asked Jev, 3 decided on the device, 1 addresses, 0 without a key, 1 errors, 1 sent to web for recency, 1 steps of plans."))
+        #expect(markdown.contains("## Reasoning"))
+        #expect(markdown.contains("2 plans: 1 completed, 1 fell back to web, 0 declined, 0 over budget, 0 overtaken. Mean 1.5 rounds and 1.0 steps; median 4200 ms; about $0.0092 in tokens."))
+        #expect(markdown.contains("Fell back: \"do the thing\": round 1: no calls"))
+        #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).engine == nil, "lines without a plan decode")
         #expect(markdown.contains("1 asked a model for a value: 1 read one, 0 came back empty, 0 failed. Median latency 400 ms."))
         #expect(markdown.contains("1 touched the facts: 1 remembered (1 told, 0 chosen, 0 inferred), 0 forgotten, 0 declined, 0 found nothing to keep or drop."))
         #expect(markdown.contains("Remember gate (threshold 0.5): mean 0.95 where a fact was kept, 0.95 over every query asked."))
@@ -162,7 +179,7 @@ import Testing
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).decision.chain == nil, "lines without a chain decode")
         #expect(markdown.contains("| `web_results` | 1 | 1 | 0 | 0 | 0.30 | \"can I use water\" |"), "a continuation counts as acted on")
         #expect(markdown.contains("Queries with earlier exchanges: 2 asked, 2 depended on the newest (mean chain 1.0), 2 continued an answer (1 as one line), 0 went to another card."))
-        #expect(markdown.contains("Reasoning (0 direct, 2 several steps): mean score 0.95 over 2; 1 unsure picks leaned to several steps."))
+        #expect(markdown.contains("Reasoning (0 direct, 2 several steps): mean score 1.20 over 4; 1 unsure picks leaned to several steps."))
         #expect(markdown.contains("## Decided on the device"))
         #expect(markdown.contains("- `time`: 1, most recent \"what time is it in tokyo\""))
         #expect(markdown.contains("- `search`: 1, most recent \"look up steve jobs\""))

@@ -181,7 +181,7 @@ public enum EvalSample {
                 if let confidence = decision.confidence { doubts.append(.confidenceFallback(by: floor - confidence)) }
             case .recencyFallback:
                 if let recency = decision.recency { doubts.append(.recencyFallback(by: recency - recencyThreshold)) }
-            case .jev, .answerSplit, .continuation, .rejection, .directURL, .noKey:
+            case .jev, .answerSplit, .continuation, .rejection, .directURL, .noKey, .plan:
                 break
             }
             if decision.source != .confidenceFallback, let confidence = decision.confidence, confidence >= floor, confidence - floor < band {

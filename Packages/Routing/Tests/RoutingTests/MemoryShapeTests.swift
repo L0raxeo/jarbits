@@ -120,6 +120,24 @@ import Testing
         #expect(!MemoryRecord(kind: .search, query: "dyson").sameThing(as: MemoryRecord(kind: .narrative, query: "dyson")))
     }
 
+    @Test func anActionPartIsWhatAPlanDid() throws {
+        let record = MemoryRecord(date: Date(timeIntervalSince1970: 1_792_700_000), query: "remember I'm vegetarian, then suggest dinner", parts: [
+            MemoryPart(.action(name: "remember", arguments: ["query": "I'm vegetarian", "fact": "I'm vegetarian"], result: "kept: I'm vegetarian")),
+        ])
+        #expect(record.kind == .action)
+        #expect(record.kind.label == "action" && record.kind.symbol == "bolt")
+        #expect(record.title == "kept: I'm vegetarian", "the result is its title")
+        #expect(record.text == "kept: I'm vegetarian")
+        #expect(record.url == nil && record.turns == nil)
+        let back = try roundTrip(record)
+        #expect(back == record)
+        #expect(back.parts[0].content == .action(name: "remember", arguments: ["query": "I'm vegetarian", "fact": "I'm vegetarian"], result: "kept: I'm vegetarian"))
+        #expect(MemorySearch.matches([record], query: "the vegetarian thing you kept") == [record], "found by its result")
+        let factory = MemoryRecord(kind: .action, query: "q", title: "forget", text: "dropped: I'm vegetarian")
+        #expect(factory.kind == .action && factory.text == "dropped: I'm vegetarian")
+        #expect(MemoryRecord(kind: .action, query: "q", title: "remember").title == "remember", "a bare action is titled by its name")
+    }
+
     @Test func theHaystackCoversEveryPart() {
         let record = MemoryRecord(title: "Dyson PencilVac | Dyson", query: "", parts: [
             MemoryPart(.page(address: URL(string: "https://www.dyson.com/pencilvac")!, title: "Dyson PencilVac | Dyson")),

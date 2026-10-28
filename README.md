@@ -569,8 +569,9 @@ A fact comes to be known three ways (`Fact.source`):
   as usual and the same small call distils the fact into one sentence in
   the user's voice, which is kept quietly. The query waits for that call
   (about a second) before the pick runs.
-- **chosen**: the answer to a question on the sheet, when a plan asks one
-  (not built yet).
+- **chosen**: the answer to a question a plan put on the sheet, when the
+  plan keeps it (a `remember` step right after an `ask`; see "Advanced
+  reasoning").
 
 Keeping a fact shows one quiet line for three seconds, "Remembered: I'm
 vegetarian", above the capsule over a result or under the clay on the idle
@@ -597,6 +598,67 @@ decisions` summarises them. The facts live in
 `Application Support/Browser/facts.jsonl` (`FactStore`, in the package so
 it is tested against a file of its own); Debug builds' "Clear memory"
 empties it with the rest.
+
+## Advanced reasoning
+
+A query that needs several steps, a condition, or a value no instinct has
+on its own ("remember I'm vegetarian, then suggest a dinner", "find that
+car page again and tell me where the nearest dealer is") is planned
+instead of run. Every routing request carries a reasoning `score`
+(ROUTING.md: direct, needs a value, needs sequencing); at or above
+`ReasoningPolicy.threshold` (1.5), whatever Jev picked, or at or above
+`leanThreshold` (1.0) when the pick was unsure, the engine hands the query
+to the executor (`Browser/Engine/Executor.swift`) rather than to the pick.
+Without a Gemini key the pick runs as it would. The device's rules go
+first as ever, so a plain "go to youtube" never reaches a plan.
+
+The planner (`Planner` in the Answers library) asks `gemini-3.1-flash-lite`,
+the extractor's model at its minimal thinking (`store: false`; well under
+a cent a plan at the prices in `GeminiPricing`), with every instinct as a tool,
+each taking a `query` and its own fields, plus two the executor answers
+itself: `ask` puts one question on the sheet (up to three options, or a
+line to type) and `done` ends the plan. The model's text is never shown:
+the system instruction says it acts only by calling tools and speaks
+through `narrative` or `one_line` with a query it writes, folding in what
+earlier steps returned. The first turn carries the request, the exchanges
+it depends on (the chain) and up to five memories the words point at (the
+recall shortlist, judged by Jev when it can); every fact goes in the
+system instruction, as it does for an answer.
+
+The executor runs each call in order through the same paths a single
+query takes: a showing instinct through the session, waiting until its
+layer is ready; an acting one through its `act`. A paid or destructive
+step is put to the user first ("Go ahead: …?") unless the instinct asks
+for itself, as `forget` does; the same call twice runs once; a second
+thing to show is refused, since a new layer would replace the first; an
+answer on the sheet goes back to the model as the step's result, and a
+`remember` right after it keeps the fact as **chosen**. Each result goes
+back as a `function_result`, with every model step replayed verbatim, for
+at most four rounds within twenty seconds, each round within eight. The
+plan ends on `done`; when nothing was shown or done, web results for the
+words; on a no on the sheet; when the rounds or the time run out; or when
+a newer query takes the screen, where it stands and never after a step
+with a side effect. The wave line stays up while the plan runs; a plan
+that only did something hands the screen back to where it stood, as
+`remember` does.
+
+Every step a plan did with no screen of its own (a fact kept; later, a
+call made) is a memory of kind `action`, chained from what was on screen,
+so "what did you just do" can find it. The decision log carries `engine`
+on the query's line (model, rounds, each step with its outcome and
+latency, tokens, the facts and memories given, the outcome); each step the
+plan showed is a line of its own with source `plan`; `report decisions`
+summarises the plans. `report plan "<query>" --dry-run` prints the first
+request with every tool; with the key it makes one round and prints the
+calls the model asked for, the tokens and the cost.
+
+`gemini-3.8-flash` was the first choice and was measured on 2026-10-27
+before being set aside: it refuses minimal thinking, and at low its first
+round on "remember I'm vegetarian, then suggest a dinner recipe" took
+eleven seconds and a thousand thought tokens, half a cent, for one right
+call. A plan is sequencing under explicit rules, so the Lite model does it
+at the Lite price; `Planner.model` is the one constant to raise if the
+log shows poor plans.
 
 ## Sites
 
@@ -682,8 +744,9 @@ coming from it. Nothing of this outlives the app.
 
 | Path | Role |
 |---|---|
-| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the instinct registry (`InstinctSpec`), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and decision (`EngineRouting`: the pick, the relevance chain, the reasoning score, the confidence, recency and rejection gates), `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, `RememberQuery`, over `QueryTokens`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a value or a plan), SSE parsing, the per-format prompts, the emphasis markup and the value extractor. `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
-| `Browser/Engine/Engine.swift` | The cognitive engine's first stage: the device's rules (each instinct's grammar), then one Jev request over the registry carrying the session's exchanges, then the chosen instinct's plan; the chain decides whether a follow-up grows the answer on screen or gets the exchanges as context. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
+| `Packages/Routing/` | Foundation-only Swift package with four libraries. `Routing`: the formats and their Jev criteria, the instinct registry (`InstinctSpec`), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and decision (`EngineRouting`: the pick, the relevance chain, the reasoning score, the confidence, recency and rejection gates), `QueryParser`, the on-device rules (`LocalAnswers`, `TimeQuery`, `PlaceTimeZones`, `LocalTimeAnswer`, `SiteQuery`, `SiteBook`, `SearchQuery`), the command grammars the routes apply at the edge (`SearchQuery`, `ImageQuery`, `RememberQuery`, over `QueryTokens`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Images`: the Wikipedia search and summary client, the Brave image search client and the lookup that runs them in order. `Sites`: the Brave web search client. Tests run on macOS. |
+| `Browser/Engine/Engine.swift` | The cognitive engine's first stage: the device's rules (each instinct's grammar), then one Jev request over the registry carrying the session's exchanges, then the chosen instinct's plan, or the hand-off to the executor when the reasoning score says the query needs several steps; the chain decides whether a follow-up grows the answer on screen or gets the exchanges as context. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
+| `Browser/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat or a second thing to show, and sending every result back to the planner until `done` or the bounds. |
 | `Browser/Engine/Instinct.swift`, `Instincts.swift` | The `Instinct` protocol (a spec from the registry and a `plan` for a decision), the registry of conformers in order, and the nine instincts the app has today. |
 | `Browser/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |
 | `Browser/Engine/FactInstincts.swift` | The two instincts that show nothing: `remember` keeps a fact, `forget` judges which one the words mean and asks on the sheet. |
@@ -756,11 +819,14 @@ the day shift and clock format against a fixed instant); the site grammar,
 the seed, learning and forgetting, the `rejects` question's shape and gate,
 and the Brave client against canned results; the facts (the remember
 grammar, the store against a file of its own, the forget judge's request
-and picks, the shortlist); and for Gemini, the request body and key order
-(and that no tool is sent for an answer), the per-format prompts
-and budgets, the context block, SSE parsing, a canned stream end to end,
-error frames, timeouts, and old log lines without answers. Nothing here needs
-a simulator.
+and picks, the shortlist); the gate into advanced reasoning, a plan's
+bounds, the action memory part and the plan summary on a log line; and
+for Gemini, the request body and key order (and that no tool is sent for
+an answer), the per-format prompts and budgets, the context block, the
+planner's tools, system instruction, first turn and request, a canned
+round with its calls, SSE parsing, a canned stream end to end, error
+frames, timeouts, and old log lines without answers. Nothing here needs a
+simulator.
 
 ## Deliberately absent
 

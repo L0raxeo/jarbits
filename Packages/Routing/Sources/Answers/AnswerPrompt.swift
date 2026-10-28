@@ -178,7 +178,7 @@ public enum AnswerPrompt {
         return max(0, months)
     }
 
-    private static func dateText(_ context: AnswerContext) -> String {
+    static func dateText(_ context: AnswerContext) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = context.timeZone

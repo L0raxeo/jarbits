@@ -60,6 +60,9 @@ public struct RouteDecision: Codable, Sendable, Equatable {
         case recencyFallback
         /// The query was an address, so Jev was not asked.
         case directURL
+        /// A step of a plan: the planner chose the instinct, not Jev, so
+        /// there is no pick to grade; the plan's own line carries `engine`.
+        case plan
         /// No API key is configured, so Jev was not asked.
         case noKey
         /// The relevance chain ends on an answer exchange: the query
