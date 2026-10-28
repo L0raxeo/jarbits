@@ -21,7 +21,7 @@ public struct ValueExtractor: Sendable {
     public static var system: String { system(Persona()) }
 
     public static func system(_ persona: Persona) -> String {
-        persona.identityLine + "\n" + """
+        persona.readerLine + "\n" + """
         You read values out of a request \(persona.user) made to you. Reply with JSON matching the schema and nothing else.
         A value is what the request says: a number as a number, words as the words used. Anything the request does not state is null.
         Never guess, never add fields. Earlier exchanges of the session may come before the request, oldest first; "it", "that" and the like resolve against them. Today's date may come too: a day the request names ("yesterday", "last week") is read against it.

@@ -2,9 +2,13 @@ import Foundation
 
 /// Who the assistant is and who it assists. The assistant is Jarvits; the
 /// user is the person holding the phone, by name once they have given it.
-/// Every Gemini instruction Jarvits sends opens with `identityLine`, so no
-/// model mistakes the speaker for itself, and a fact is kept from Jarvits's
-/// point of view ("Lorcan's friend Noah is vegan"). Jev never sees it.
+/// Every Gemini instruction Jarvits sends opens with one of two lines, so
+/// no model mistakes the speaker for itself: `identityLine` where he writes
+/// or answers (the fact reader, the answers, the planner), so a fact is
+/// kept from his point of view ("Lorcan's friend Noah is vegan");
+/// `readerLine` where he only reads (the reading, the value reader), so the
+/// user's words come back as the user's, never recast in his. Jev never
+/// sees either.
 public struct Persona: Sendable, Equatable {
     public static let assistant = "Jarvits"
 
@@ -25,12 +29,21 @@ public struct Persona: Sendable, Equatable {
     /// The possessive: "Lorcan's", or "the person's" when the name is not known.
     public var users: String { userName.map { $0 + "'s" } ?? "the person's" }
 
-    /// The first line of every system instruction Jarvits sends.
+    /// The first line of the instructions where Jarvits writes or answers.
     public var identityLine: String {
         if let userName {
             return "You are \(Self.assistant), the assistant in \(userName)'s phone browser. \(userName) is the person speaking to you; you are not \(userName). Speak of \(userName) by name and of yourself as \(Self.assistant)."
         }
         return "You are \(Self.assistant), the assistant in a phone browser. The person speaking to you is the person you assist, whose name you do not know yet; you are not them. Speak of them as the person and of yourself as \(Self.assistant)."
+    }
+
+    /// The first line of the instructions where Jarvits only reads: the
+    /// words he hands back are the user's, in the user's own voice.
+    public var readerLine: String {
+        if let userName {
+            return "You are \(Self.assistant), the assistant in \(userName)'s phone browser. \(userName) is the person speaking to you; you are not \(userName). What you hand back is \(userName)'s request in \(userName)'s own words, not your words about it."
+        }
+        return "You are \(Self.assistant), the assistant in a phone browser. The person speaking to you is the person you assist, whose name you do not know yet; you are not them. What you hand back is their request in their own words, not your words about it."
     }
 }
 

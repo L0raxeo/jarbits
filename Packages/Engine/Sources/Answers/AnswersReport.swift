@@ -9,9 +9,11 @@ public enum AnswersReport {
         var out: [String] = []
         out.append("## Who Jarvits is")
         out.append("")
-        out.append("The app is an assistant, \(Persona.assistant), assisting the person holding the phone. Every Gemini instruction he sends opens with an identity line (`Persona.identityLine`) so no model takes the speaker for itself, and a fact is kept from his point of view (\"Lorcan's friend Noah is vegan\"). The user's name is asked on the small sheet when the app is first installed or its memory is cleared, and kept in `facts.profile.json` beside the facts (`FactStore.userName`); until it is given the prompts say \"the person you assist\". Jev never sees any of this. The prompts below are rendered for a user named Lorcan:")
+        out.append("The app is an assistant, \(Persona.assistant), assisting the person holding the phone. Every Gemini instruction he sends opens with one of two lines so no model takes the speaker for itself: `Persona.identityLine` where he writes or answers (the fact reader, both answer formats, the planner), so a fact is kept from his point of view (\"Lorcan's friend Noah is vegan\") and a question about the user's own life is answered from the facts; `Persona.readerLine` where he only reads (the reading, the value reader), so the user's words come back as the user's. The user's name is asked on the small sheet when the app is first installed or its memory is cleared, and kept in `facts.profile.json` beside the facts (`FactStore.userName`); until it is given the prompts say \"the person you assist\". Jev never sees any of this. The prompts below are rendered for a user named Lorcan:")
         out.append("")
         out.append(Persona.example.identityLine)
+        out.append("")
+        out.append(Persona.example.readerLine)
         out.append("")
         out.append("## After routing: Gemini answers")
         out.append("")

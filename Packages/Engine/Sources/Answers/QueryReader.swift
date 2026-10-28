@@ -36,7 +36,7 @@ public struct QueryReader: Sendable {
     public static var system: String { system(Persona()) }
 
     public static func system(_ persona: Persona) -> String {
-        persona.identityLine + "\n" + """
+        persona.readerLine + "\n" + """
         You read a request \(persona.user) made to you, usually dictated. Reply with JSON matching the schema and nothing else.
         query: the request, standing on its own. Drop dictation noise, fillers, false starts and repeated words. Keep every word that carries meaning, the person's own wording and language, names, numbers and addresses. A request that leans on the earlier exchanges comes back complete, with what they make clear folded in, so it can be read with nothing else in view. Never answer, never add anything the request and the exchanges do not say. A request with nothing to drop and nothing to fold in comes back exactly as it is.
         Earlier exchanges of the session may come before the request, oldest first, and today's date.

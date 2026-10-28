@@ -204,12 +204,21 @@ import Testing
     @Test func everyInstructionOpensWithWhoJarvitsIs() {
         let line = Persona.example.identityLine
         #expect(line == "You are Jarvits, the assistant in Lorcan's phone browser. Lorcan is the person speaking to you; you are not Lorcan. Speak of Lorcan by name and of yourself as Jarvits.")
-        for system in [AnswerPrompt.system(for: .narrative, persona: .example), AnswerPrompt.system(for: .oneLine, persona: .example), QueryReader.system(.example), ValueExtractor.system(.example), ValueExtractor.factSystem(.example), Planner.system(facts: [], context: .example, persona: .example)] {
-            #expect(system.hasPrefix(line + "\n"))
+        for system in [AnswerPrompt.system(for: .narrative, persona: .example), AnswerPrompt.system(for: .oneLine, persona: .example), ValueExtractor.factSystem(.example), Planner.system(facts: [], context: .example, persona: .example)] {
+            #expect(system.hasPrefix(line + "\n"), "where Jarvits writes or answers")
+        }
+        let reader = Persona.example.readerLine
+        #expect(reader.hasSuffix("What you hand back is Lorcan's request in Lorcan's own words, not your words about it."))
+        #expect(!reader.contains("by name"))
+        for system in [QueryReader.system(.example), ValueExtractor.system(.example)] {
+            #expect(system.hasPrefix(reader + "\n"), "where Jarvits only reads")
         }
         let nameless = Persona().identityLine
         #expect(nameless.contains("whose name you do not know yet"))
-        #expect(QueryReader.system.hasPrefix(nameless))
+        #expect(QueryReader.system.hasPrefix(Persona().readerLine))
+        for system in [AnswerPrompt.system(for: .narrative, persona: .example), AnswerPrompt.system(for: .oneLine, persona: .example)] {
+            #expect(system.contains("A question about Lorcan's own life, people, preferences or situation is answered from that block alone."))
+        }
         #expect(Persona(userName: "  ").userName == nil)
         #expect(ValueExtractor.factSystem(.example).contains("\"Lorcan's friend Noah is vegan\", \"Lorcan is allergic to peanuts\""))
     }

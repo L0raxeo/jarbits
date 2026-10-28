@@ -277,14 +277,16 @@ public enum EngineRequest {
         or its aftermath, or a phrase, slogan or meme that became known recently. \
         Something worked out from a settled fact and today's date, such as an age \
         or how long ago something happened, does not depend on such a thing: the \
-        settled fact is known and today's date is given. A question handed to the \
-        AI by name ("ask AI ...") never depends on such a thing: the person wants \
-        the AI's own answer, knowing what it is.
+        settled fact is known and today's date is given. A question about the \
+        user's own life, people, preferences or situation does not depend on such \
+        a thing either: the assistant answers it from what the user told it. A \
+        question handed to the AI by name ("ask AI ...") never depends on such a \
+        thing: the person wants the AI's own answer, knowing what it is.
         """
 
     public static let recencyCriteria = (
         yes: "The right answer could have changed since early 2025: it depends on someone's current status, the current holder of a position, a recent or ongoing event, or a new phrase.",
-        no: "A settled fact, history, how something works, a definition, a conversion, a place, a date or time, something worked out from a settled fact and today's date such as an age or an elapsed time, anything else that does not go stale, or a question handed to the AI by name."
+        no: "A settled fact, history, how something works, a definition, a conversion, a place, a date or time, something worked out from a settled fact and today's date such as an age or an elapsed time, a question about the user's own life, people, preferences or situation, which the assistant answers from what the user told it, anything else that does not go stale, or a question handed to the AI by name."
     )
 
     // MARK: The request

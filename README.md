@@ -520,12 +520,19 @@ control yet.
 ## Jarvits and the user
 
 The app is an assistant, Jarvits, assisting the person holding the phone;
-he is not that person. Every Gemini instruction he sends (the reading, the
-value reader, the fact reader, both answer formats, the planner) opens
-with one identity line (`Persona.identityLine` in the Answers library):
+he is not that person. Every Gemini instruction he sends opens with one
+of two lines (`Persona` in the Answers library). Where he writes or
+answers (the fact reader, both answer formats, the planner):
 "You are Jarvits, the assistant in Lorcan's phone browser. Lorcan is the
 person speaking to you; you are not Lorcan. Speak of Lorcan by name and of
-yourself as Jarvits." For that he needs the user's name: with none known,
+yourself as Jarvits." Where he only reads (the reading, the value reader)
+the last sentence is instead "What you hand back is Lorcan's request in
+Lorcan's own words, not your words about it", so a search or a pick never
+sees the user's words recast in his. A question about the user's own life
+("do I have any vegan friends") is answered from the facts: Jev's recency
+question says such a question does not go stale, and the answer prompts
+say to answer it from the facts block alone, or to say in a line that
+Jarvits does not know that yet. For that he needs the user's name: with none known,
 the home screen puts "What's your name?" on the small sheet as soon as the
 circle is idle (`BrowserSession.askNameIfNeeded`), once per launch; a
 swipe away asks again at the next launch, and until a name is given the
