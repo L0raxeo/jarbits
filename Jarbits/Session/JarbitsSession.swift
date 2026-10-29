@@ -107,7 +107,7 @@ final class JarbitsSession {
     /// screen when `address` is nil or is its address, else the newest live
     /// layer that ended on that address; nil when no such page is open.
     func pageHost(for address: URL?) -> PageHost? {
-        if let shown = current, let host = shown.page, address == nil || shown.pageAddress == address { return host }
+        if let shown = askedOver ?? current, let host = shown.page, address == nil || shown.pageAddress == address { return host }
         guard let address else { return nil }
         return layers.reversed().first { $0.page != nil && $0.pageAddress == address }?.page
     }
@@ -115,6 +115,11 @@ final class JarbitsSession {
     private(set) var lastQuery = ""
     /// Where the query in flight is; the instincts move it as they open their layers.
     var stage: Stage = .idle
+    /// The layer the query in flight works against: the one on screen when
+    /// it was asked, then each layer the query itself opens. The user may
+    /// move on meanwhile; the planner's look and a continued conversation
+    /// still mean this one.
+    private weak var askedOver: Layer?
 
     /// What the current layer shows, and the bookkeeping that goes with it.
     var plan: CardPlan? { current?.plan }
@@ -241,6 +246,7 @@ final class JarbitsSession {
         // interpret see it; Jev does not wait for it.
         let screenRead: Task<Screen?, Never>? = shown.map { layer in Task { await layer.screen() } }
         lastQuery = trimmed
+        askedOver = shown
         if stage == .idle || stage == .ready { stageBefore = stage }
         stage = .routing
         let token = UUID()
@@ -415,20 +421,30 @@ final class JarbitsSession {
         return stacked + reply.exchanges
     }
 
-    /// The answer card has nothing to fade out for: a follow-up over it is
-    /// being routed, or a turn that continues it is on its way. The stage is
-    /// `routing` or `loading`, but the home screen keeps the card up.
-    var showsThread: Bool {
+    /// The layer on screen is up and usable. A query in flight leaves it up
+    /// when it was asked over a result: the query works in the background
+    /// until it opens a layer of its own, which shows once it is drawn.
+    var screenShown: Bool {
+        guard current?.drawn == true else { return false }
         switch stage {
-        // A spoken follow-up over the card is cleaned before it is routed.
-        case .routing, .cleaning:
-            return !(current?.thread ?? []).isEmpty
-        case .loading:
-            if case let .answer(_, _, history, _) = plan { return !history.isEmpty }
-            return false
-        case .idle, .ready:
-            return false
+        case .ready: return true
+        case .idle: return false
+        case .cleaning, .routing, .loading: return stageBefore == .ready
         }
+    }
+
+    /// A query is being worked on.
+    private var busy: Bool {
+        switch stage {
+        case .cleaning, .routing, .loading: true
+        case .idle, .ready: false
+        }
+    }
+
+    /// The user put a layer on screen themself: ready, unless a query is in
+    /// flight, whose stage is its own; it then goes back to the screen.
+    private func showedByUser() {
+        if busy { stageBefore = .ready } else { stage = .ready }
     }
 
     // MARK: Speaking
@@ -524,22 +540,20 @@ final class JarbitsSession {
     /// results a recall fell through to are not memorised as a search.
     func showWebResults() {
         guard let layer = current, !layer.query.isEmpty else { return }
-        requestToken = UUID()
         if case let .siteChoices(name, _) = layer.plan {
             let next = Layer(plan: .web(QueryParser.searchURL(for: name)), query: layer.query, decision: layer.decision)
             next.learningSite = name
-            open(next)
-            show(QueryParser.searchURL(for: name), in: next)
+            open(next, byQuery: false)
+            show(QueryParser.searchURL(for: name), in: next, byQuery: false)
             return
         }
-        openPage(QueryParser.searchURL(for: layer.query), query: layer.query, decision: layer.decision)
+        openPage(QueryParser.searchURL(for: layer.query), query: layer.query, decision: layer.decision, byQuery: false)
     }
 
     /// A page the result links to, such as the article or the site behind an
     /// image: a new layer, the card one swipe back.
     func open(_ url: URL) {
-        requestToken = UUID()
-        openPage(url, query: current?.query ?? lastQuery, decision: current?.decision)
+        openPage(url, query: current?.query ?? lastQuery, decision: current?.decision, byQuery: false)
     }
 
     /// Back to the idle screen: whatever is in flight stops, the result goes
@@ -554,6 +568,7 @@ final class JarbitsSession {
         }
         spokenGeneration += 1
         requestToken = UUID()
+        askedOver = nil
         dismissReply()
         stage = .idle
     }
@@ -562,9 +577,14 @@ final class JarbitsSession {
 
     /// Opens `layer` on top: whatever was ahead of the current layer goes,
     /// like browser history after going back; the layer left behind stops
-    /// playing; then the live pages are brought back under the cap.
-    private func open(_ layer: Layer) {
-        if let bubble = reply, bubble !== layer { dismissReply() }
+    /// playing; then the live pages are brought back under the cap. A card
+    /// is drawn at once; a page once it commits. `byQuery` is false when
+    /// the user opened it, so a query in flight keeps its own layer.
+    private func open(_ layer: Layer, byQuery: Bool = true) {
+        // An answer still on its way to the bubble is the query's: the user's own move keeps it.
+        if let bubble = reply, bubble !== layer, byQuery || replyShown { dismissReply() }
+        if !layer.isWeb { layer.drawn = true }
+        if byQuery { askedOver = layer }
         if let leaving = current {
             leaving.answer?.cancel()
             Task { await leaving.page?.pause() }
@@ -585,10 +605,10 @@ final class JarbitsSession {
     }
 
     /// A new web layer for `url`.
-    private func openPage(_ url: URL, query: String, decision: Pick?) {
+    private func openPage(_ url: URL, query: String, decision: Pick?, byQuery: Bool = true) {
         let layer = Layer(plan: .web(url), query: query, decision: decision)
-        open(layer)
-        show(url, in: layer)
+        open(layer, byQuery: byQuery)
+        show(url, in: layer, byQuery: byQuery)
     }
 
     // MARK: What an instinct opens
@@ -638,8 +658,8 @@ final class JarbitsSession {
     func promoteReply() {
         guard let layer = reply, !layer.lingers else { return }
         reply = nil
-        open(layer)
-        stage = .ready
+        open(layer, byQuery: false)
+        showedByUser()
     }
 
     /// The bubble put away.
@@ -722,17 +742,15 @@ final class JarbitsSession {
     /// Opens a page kept in a note, by a tap on its link, in a new layer.
     func openLink(_ url: URL, title: String) {
         lastQuery = title
-        requestToken = UUID()
-        openPage(url, query: title, decision: current?.decision)
+        openPage(url, query: title, decision: current?.decision, byQuery: false)
     }
 
     /// Opens a note by a tap in the grid, in a new layer.
     func openNote(_ note: Note) {
         lastQuery = note.title
-        requestToken = UUID()
         let layer = Layer(plan: .note(note), query: note.title, decision: current?.decision)
-        open(layer)
-        stage = .ready
+        open(layer, byQuery: false)
+        showedByUser()
     }
 
     /// What the planner said, in the bubble as it is, and kept as a
@@ -754,12 +772,15 @@ final class JarbitsSession {
         let layer: Layer
         if context.decision.continuesThread, let bubble = reply, !bubble.lingers, !bubble.thread.isEmpty {
             promoteReply()
+            askedOver = bubble
             layer = bubble
             layer.plan = plan
             layer.query = context.query
             layer.decision = context.decision
             layer.lastShown = .now
-        } else if context.decision.continuesThread, let shown = current, !shown.thread.isEmpty {
+        } else if context.decision.continuesThread, let shown = current, shown === askedOver, !shown.thread.isEmpty {
+            // Only while the conversation is still on screen; one the user
+            // moved away from meanwhile gets its turn in the bubble.
             layer = shown
             layer.plan = plan
             layer.query = context.query
@@ -803,15 +824,18 @@ final class JarbitsSession {
         record(context.decision, query: context.query, recall: recall, site: site, extraction: context.extraction, fact: context.fact, reading: context.reading)
     }
 
-    /// `layer` shows the page at `url`, in its live page or a new one; the
-    /// stage is loading while it is the layer on screen. `notes` put a
+    /// `layer` shows the page at `url`, in its live page or a new one; for
+    /// the query's own page the stage is loading while it is the layer on
+    /// screen. A page the user opened moves no stage: it shows once drawn,
+    /// and the capsule waves meanwhile for the page itself. `notes` put a
     /// reloaded page back where it stood.
-    private func show(_ url: URL, in layer: Layer, restoring notes: PageNotes? = nil) {
+    private func show(_ url: URL, in layer: Layer, restoring notes: PageNotes? = nil, byQuery: Bool = true) {
         layer.plan = .web(url)
+        if layer.page == nil { layer.drawn = false }   // a fresh host: nothing on screen until it commits
         let host = layer.page ?? makeHost(for: layer)
         layer.page = host
         layer.notes = nil
-        if layer === current { stage = .loading }
+        if byQuery, layer === current { stage = .loading }
         host.load(url, restoring: notes)
     }
 
@@ -820,7 +844,13 @@ final class JarbitsSession {
         host.window = window
         host.topInset = topInset
         host.onCommitted = { [weak self, weak layer] in
-            guard let self, let layer, layer === current, stage == .loading else { return }
+            guard let self, let layer else { return }
+            let first = !layer.drawn
+            layer.drawn = true
+            // Only the query's own page, on its first commit, ends the
+            // query's loading: a page the user opened or a link tapped
+            // meanwhile is theirs.
+            guard first, layer === askedOver, layer === current, stage == .loading else { return }
             stage = .ready
         }
         host.onDocumentFinished = { [weak self, weak layer] in
@@ -863,8 +893,8 @@ final class JarbitsSession {
         return answer
     }
 
-    var canSwipeBack: Bool { stage == .ready && index > 0 }
-    var canSwipeForward: Bool { stage == .ready && index + 1 < layers.count }
+    var canSwipeBack: Bool { screenShown && index > 0 }
+    var canSwipeForward: Bool { screenShown && index + 1 < layers.count }
 
     /// A swipe back on the clay: the previous layer, as it was left.
     func swipeBack() {
@@ -879,12 +909,13 @@ final class JarbitsSession {
     }
 
     /// Shows `layers[target]`: live, it is on screen as it was; unloaded, its
-    /// page reloads to where its notes say it stood.
+    /// page reloads to where its notes say it stood. A query in flight goes
+    /// on: its result lands over wherever the user went.
     private func move(to target: Int) {
         takePicture(reason: "leave")
         question?.cancel()
-        dismissReply()
-        requestToken = UUID()
+        // An answer still on its way to the bubble is the query's: it shows when its text comes.
+        if replyShown { dismissReply() }
         let leaving = current
         Task { await leaving?.page?.pause() }
         #if DEBUG
@@ -901,9 +932,9 @@ final class JarbitsSession {
             // The notes may still be on their way from an unload a moment
             // ago; the layer's first address then stands in.
             let notes = layer.notes ?? PageNotes(address: url)
-            show(notes.reloadAddress, in: layer, restoring: notes)
+            show(notes.reloadAddress, in: layer, restoring: notes, byQuery: false)
         } else {
-            stage = .ready
+            showedByUser()
         }
         enforceLive()
     }
@@ -1025,7 +1056,7 @@ final class JarbitsSession {
             return
         }
         var listed = exchanges
-        if let onScreen = current?.exchanges.last?.exchange, !listed.contains(onScreen) { listed.append(onScreen) }
+        if let onScreen = (askedOver ?? current)?.exchanges.last?.exchange, !listed.contains(onScreen) { listed.append(onScreen) }
         Task {
             let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, token: token)
             guard token == requestToken else { return }
@@ -1067,11 +1098,10 @@ final class JarbitsSession {
     /// A choice tapped: `name` now means this site, which opens in a new
     /// layer, the choices one swipe back.
     func choose(_ candidate: SiteCandidate, for name: String) {
-        requestToken = UUID()
         let layer = Layer(plan: .web(candidate.url), query: current?.query ?? lastQuery, decision: current?.decision)
         learned(name, url: candidate.url, in: layer)
-        open(layer)
-        show(candidate.url, in: layer)
+        open(layer, byQuery: false)
+        show(candidate.url, in: layer, byQuery: false)
     }
 
     /// The book learns `name` as the origin of `url` and the site counts as
@@ -1096,7 +1126,6 @@ final class JarbitsSession {
     func replay(_ record: MemoryRecord) {
         let query = record.query.isEmpty ? record.title : record.query
         lastQuery = query
-        requestToken = UUID()
         let decision = current?.decision
         switch record.kind {
         case .page, .search:
@@ -1104,14 +1133,14 @@ final class JarbitsSession {
             let layer = Layer(plan: .web(url), query: query, decision: decision)
             // What follows (a link tapped on the recalled page) came from it.
             layer.currentMemory = Task { record.id }
-            open(layer)
-            show(url, in: layer)
+            open(layer, byQuery: false)
+            show(url, in: layer, byQuery: false)
         case .narrative, .action, .oneLine where record.turns != nil:
             // A conversation that began with one line replays from its turns, like a narrative; an action from what it came to.
             let layer = Layer(plan: .memory(record), query: query, decision: decision)
             layer.currentMemory = Task { record.id }
-            open(layer)
-            stage = .ready
+            open(layer, byQuery: false)
+            showedByUser()
         case .oneLine, .image:
             replayingQuery = record.query
             submit(record.query)
@@ -1220,7 +1249,7 @@ final class JarbitsSession {
     }
 
     private func takePicture(of layer: Layer, reason: String) {
-        guard layer === current, stage == .ready, layer.isWeb, layer.page != nil, !layer.pictureFixed, let id = layer.pictureID else { return }
+        guard layer === current, layer.drawn, layer.isWeb, layer.page != nil, !layer.pictureFixed, let id = layer.pictureID else { return }
         let now = Date.now
         if reason != "leave", let last = layer.lastPicture, now.timeIntervalSince(last) < Self.pictureGap { return }
         let reserve = ClayCapsule.footprint(compact: false) + bottomInset

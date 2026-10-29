@@ -4,12 +4,12 @@ import UIKit.UIGestureRecognizerSubclass
 
 /// Sees every touch in the window and changes none of them: a recognizer on
 /// the window that never recognises, added by a view of no size. Touches
-/// that land inside `excluding` (window coordinates: the foot row, so the
-/// listening buttons and the clay work before anything can forget the words)
-/// are not interactions. The keyboard lives in its own window and is never
+/// that land inside any of `excluding` (window coordinates: the foot row, so
+/// the listening buttons and the clay work before anything can forget the
+/// words, and the bubble) are not interactions. The keyboard lives in its own window and is never
 /// seen; focus covers it.
 struct TouchObserver: UIViewRepresentable {
-    var excluding: CGRect
+    var excluding: [CGRect]
     /// The first finger down.
     var onBegan: () -> Void
     /// The last finger up, or the touch cancelled.
@@ -43,7 +43,7 @@ final class ObserverView: UIView {
 }
 
 final class TouchRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
-    var exclusion = CGRect.null
+    var exclusion: [CGRect] = []
     var onBegan: () -> Void = {}
     var onEnded: () -> Void = {}
 
@@ -60,7 +60,7 @@ final class TouchRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesBegan(touches, with: event)
-        let fresh = touches.filter { !exclusion.contains($0.location(in: nil)) }
+        let fresh = touches.filter { touch in !exclusion.contains { $0.contains(touch.location(in: nil)) } }
         let wasEmpty = observed.isEmpty
         observed.formUnion(fresh)
         if wasEmpty, !observed.isEmpty { onBegan() }

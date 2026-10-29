@@ -48,7 +48,11 @@ narrative or a one-liner, Jev is also asked whether it continues that
 answer, and if so the card grows into a conversation instead of being
 replaced (see "How a query runs"). The capsule itself
 becomes the wave line, small, at the foot, until the new result is ready; a
-link tapped inside a page shows the same line while the page loads. Tapping
+link tapped inside a page shows the same line while the page loads. The
+query works in the background: the result on screen stays up and usable
+(scroll, tap, swipe the line between layers) and clears only when the query
+opens a layer of its own; a reply in the bubble never clears it. Only a new
+query or the circle stops the one in flight. Tapping
 the line while it waves returns to the circle. Pulling down at the top of
 a page reloads it, with the system's spinner. Over a result the microphone
 listens too, but only while you do nothing: no finger on the screen, no
@@ -92,10 +96,15 @@ UIKit aborted touch delivery whenever such a page was scrolled far.
 ## How a query runs
 
 `JarbitsSession.submit` → `Engine.route` → `EngineResult { instinct, context, decision }` → `instinct.run`.
-`JarbitsSession.stage` (`idle`, `routing`, `loading`, `ready`) is what the
-home screen reads to show the line or the result; a page counts as ready
-when WebKit commits its first content (or after 8 s), an answer when its
-first text arrives.
+`JarbitsSession.stage` (`idle`, `cleaning`, `routing`, `loading`, `ready`)
+is where the query is; what the screen shows is `screenShown`: the layer on
+screen is `drawn` (a card at once, a page when WebKit commits its first
+content, or after 8 s) and either the stage is ready or the query was asked
+over a result. So a query asked over a result leaves it up until the query
+opens a layer, which shows once drawn. The user's own moves (a swipe, a tap
+on a card, a link) never move the stage or cancel the query; the query keeps
+`askedOver`, the layer it was asked from, for the planner's look and for a
+conversation it continues.
 
 The engine (`Jarbits/Engine/Engine.swift`) is the cognitive engine's first
 stage: it knows the session's **exchanges**, every earlier query up to the
@@ -407,12 +416,15 @@ block without changing the cards.
 
 A reply that does not need the whole screen is shown in the bubble
 (`ReplyBubble`, `JarbitsSession.reply`): one view in the page's own
-layout, never a sheet, grown upward from the clay. Over a result it sits
-directly above the query capsule in the keyboard-aware layer of
-`HomeView`, the capsule's width, and rides the keyboard with it; on the
-idle screen it sits above the clay's circle, mid-screen, and the capsule
-at the foot appears only once a layer is shown. The page stays live and
-tappable around it. Three sizes, picked on the device from the content
+layout, never a sheet, hung from the top of the screen just under the
+island (the top of the safe area, so the same on every iPhone, with no
+measurements per model), clear of the thumb. It grows down from the top
+centre as it comes and shrinks back up as it goes; a new one replaces the
+old through the same pair (`HomeView.bubbleKey`). On the idle screen it
+stops short of the clay's circle. The page stays live and tappable around
+it. Every form has an x at the left of its foot row, "Read on" at the
+right where the form has it. A drag stretches the body with the finger
+(down longer, showing more of a cut card; up shorter) and springs back. Three sizes, picked on the device from the content
 (layout, not interpretation):
 
 - a line: a one-liner, the time, a mark ("Remembered: I'm vegetarian",
@@ -424,7 +436,7 @@ tappable around it. Three sizes, picked on the device from the content
   of the screen, and past that the text is cut at the foot with "Read
   on";
 - the full view: the answer layer as before, reached by "Read on", by a
-  drag up on the card, or by a follow-up that continues the reply ("why?"
+  pull down on the card, or by a follow-up that continues the reply ("why?"
   after a narrative): the same layer object is put into the stack
   (`promoteReply`), its text and turns carried over, and from then on it
   swipes like any other.
@@ -434,7 +446,7 @@ pushed onto the stack. So its thread and exchanges reach Jev, the reader
 and the planner as the newest exchange ("Asked X and got Y"; `focus` is
 the reply when one is up, else the current layer), an `AnswerSession`
 streams into it, its memory is written against it, and its record is
-kept. A drag down puts it away; a new layer opening, a swipe between
+kept. The x or a push up puts it away; a new layer opening, a swipe between
 layers, or the circle clears it; a question put away answers nil, as the
 sheet's swipe did. A fresh one-line or narrative answer goes to the
 bubble (the clay or the capsule waves until the first text, then the

@@ -49,15 +49,28 @@ struct HomeView: View {
     private static let interruptionLinger: Duration = .milliseconds(1500)
     /// The bubble's card grows no taller than this share of the window.
     private static let bubbleShare: CGFloat = 0.4
-    /// Above the clay's centre on the idle screen, where the bubble's foot
-    /// sits: clear of the circle (168 pt, swelling to 1.17 with a voice).
+    /// Below the top of the safe area, just under the island, where the
+    /// bubble hangs from.
+    private static let bubbleTop: CGFloat = 6
+    /// Above the clay's centre on the idle screen, as far down as the
+    /// bubble reaches: clear of the circle (168 pt, swelling to 1.17 with a voice).
     private static let bubbleAboveClay: CGFloat = 104
-    /// What the bubble adds around a card's text: its padding and the "Read on" row.
+    /// What the bubble adds around a card's text: its padding and the foot row.
     private static let bubbleChrome: CGFloat = 72
+    /// In: grown down from a sliver at the top centre. Out: shrunk back up, quicker.
+    private static let bubbleTransition: AnyTransition = .asymmetric(
+        insertion: .scale(scale: 0.3, anchor: .top).combined(with: .opacity).combined(with: .offset(y: -8)),
+        removal: .scale(scale: 0.6, anchor: .top).combined(with: .opacity).animation(.easeIn(duration: 0.2))
+    )
 
     /// The bubble has something to show: a question first, else the reply
     /// with something to read (a narrative shows once its first text is in).
     private var bubbleUp: Bool { session.question != nil || session.replyShown }
+    /// What the bubble shows, by identity: a new one replaces the old
+    /// through the transition rather than changing in place.
+    private var bubbleKey: UUID? { bubbleUp ? (session.question?.id ?? session.reply?.id) : nil }
+    /// The bubble in window coordinates: touches there are not interactions.
+    @State private var bubbleFrame = CGRect.null
 
     private var mode: ClayForm {
         switch session.stage {
@@ -66,9 +79,9 @@ struct HomeView: View {
         }
     }
 
-    /// Ready, or a narrative conversation that stays up while a follow-up
-    /// over it is routed and its next turn arrives.
-    private var showsResult: Bool { session.stage == .ready || session.showsThread }
+    /// The layer on screen is drawn: ready, or left up while a query asked
+    /// over it works in the background.
+    private var showsResult: Bool { session.screenShown }
     private var showsHint: Bool { mode == .circle }
     /// The microphone is on while the circle is on screen, and over a result
     /// while the user does nothing: no finger down, no keyboard, nothing
@@ -240,13 +253,27 @@ struct HomeView: View {
                     }
                     #endif
 
-                    // On the idle screen the bubble sits above the clay, which
-                    // is back to its circle under it. Over a result it rides
-                    // with the capsule below, in the keyboard-aware layer.
-                    if bubbleUp, !claysOut {
-                        // Capped so the card never runs into the top of the screen.
-                        IdleBubble(width: proxy.size.width - 48, maxHeight: min(window.height * Self.bubbleShare, clayY - Self.bubbleAboveClay - Self.bubbleChrome - 24), bottom: proxy.size.height - clayY + Self.bubbleAboveClay)
+                    // The bubble hangs from the top, just under the island,
+                    // over the idle screen and over a result alike, clear of
+                    // the thumb. On the idle screen it stops short of the circle.
+                    VStack {
+                        if let key = bubbleKey {
+                            SessionBubble(
+                                width: proxy.size.width - 32,
+                                maxHeight: claysOut
+                                    ? window.height * Self.bubbleShare
+                                    : min(window.height * Self.bubbleShare, clayY - Self.bubbleAboveClay - Self.bubbleTop - Self.bubbleChrome)
+                            )
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { bubbleFrame = $0 }
+                            .onDisappear { bubbleFrame = .null }
+                            .id(key)
+                            .transition(Self.bubbleTransition)
+                        }
+                        Spacer(minLength: 0)
                     }
+                    .padding(.top, Self.bubbleTop)
+                    .frame(maxWidth: .infinity)
+                    .animation(.spring(duration: 0.45, bounce: 0.25), value: bubbleKey)
                 }
                 .onChange(of: window, initial: true) { _, window in
                     session.window = window
@@ -262,9 +289,6 @@ struct HomeView: View {
             GeometryReader { proxy in
                 VStack(spacing: 10) {
                     Spacer()
-                    if bubbleUp, claysOut {
-                        SessionBubble(width: proxy.size.width - 32, maxHeight: proxy.size.height * Self.bubbleShare)
-                    }
                     HStack(spacing: 16) {
                         ClayCapsule(
                             text: capsuleText,
@@ -299,17 +323,17 @@ struct HomeView: View {
                     .padding(.bottom, followingUp ? 8 : ClayCapsule.bottomPadding)
                     .animation(.spring(duration: 0.35, bounce: 0.1), value: hearing)
                 }
-                // The foot: the bubble and the capsule row, both outside `attention`.
+                // The foot: the capsule row, outside `attention`.
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { footFrame = $0 }
             }
             .opacity(showsCapsule ? 1 : 0)
             .allowsHitTesting(showsCapsule)
             .animation(.easeInOut(duration: 0.25), value: showsCapsule)
         }
-        // Every touch in the window, except on the foot row, for `attention`.
+        // Every touch in the window, except on the foot row and the bubble, for `attention`.
         .background {
             TouchObserver(
-                excluding: footFrame.insetBy(dx: -8, dy: -8),
+                excluding: [footFrame.insetBy(dx: -8, dy: -8), bubbleFrame],
                 onBegan: session.attention.touchBegan,
                 onEnded: session.attention.touchEnded
             )
@@ -463,23 +487,6 @@ private struct SessionBubble: View {
             onReadOn: session.promoteReply,
             onDismiss: session.dismissReply
         )
-    }
-}
-
-/// The bubble on the idle screen: its foot `bottom` up from the screen's
-/// foot, so it sits above the clay's circle.
-private struct IdleBubble: View {
-    let width: CGFloat
-    let maxHeight: CGFloat
-    let bottom: CGFloat
-
-    var body: some View {
-        VStack {
-            Spacer()
-            SessionBubble(width: width, maxHeight: maxHeight)
-                .padding(.bottom, bottom)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

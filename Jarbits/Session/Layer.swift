@@ -71,6 +71,10 @@ final class Layer: Identifiable {
     /// write's confirmation ("Added to Watch List: …"); "Read on" shows the
     /// content itself.
     var summary: String?
+    /// The layer has something on screen: a card from the moment it opens,
+    /// a page from its first commit. A page starting in a fresh host is not
+    /// drawn until it commits; the home screen hides the layer meanwhile.
+    var drawn = false
 
     init(plan: CardPlan, query: String, decision: Pick? = nil) {
         self.plan = plan

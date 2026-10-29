@@ -89,7 +89,7 @@ struct ClayCapsule: View {
 
     /// The label does not fit on one line: it is cut, and a hold shows it.
     private var truncated: Bool { labelWidth + 2 * Self.labelInset > maxWidth + 0.5 }
-    private var holdable: Bool { swipeable && truncated }
+    private var holdable: Bool { swipeable && !loading && truncated }
 
     private var height: CGFloat? {
         if expanded { return nil }
@@ -111,8 +111,11 @@ struct ClayCapsule: View {
     private var circular: Bool { hearing && !editing && !loading }
     private var widest: CGFloat { editing ? fieldWidth : circular ? Self.openHeight : maxWidth }
     private var hidesText: Bool { editing || loading || hearing }
-    /// Only the plain label swipes: not the field, the line or the circle.
-    private var swipeable: Bool { !editing && !loading && !hearing && !expanded }
+    /// The plain label swipes, and the wave line too, since a query works
+    /// in the background: not the field or the circle.
+    private var swipeable: Bool { !editing && !hearing && !expanded }
+    /// The wave line is too thin to swipe: its hit area grows to about the capsule's height.
+    private static let lineReach: CGFloat = (openHeight - lineThickness - 2 * waveHeight) / 2
 
     /// A rest of `holdDuration` grows the capsule; lifting shrinks it back.
     private var hold: some Gesture {
@@ -240,7 +243,7 @@ struct ClayCapsule: View {
         // it in the row sit right next to it rather than at the far edge.
         .frame(maxWidth: widest)
         .offset(y: compact && !editing && !loading && !hearing && !expanded ? Self.compactDrop : 0)
-        .contentShape(Capsule())
+        .contentShape(Capsule().inset(by: loading ? -Self.lineReach : 0))
         .onTapGesture {
             if !editing && !loading && !expanded && !justHeld { onTap() }
         }

@@ -3,13 +3,14 @@ import Answers
 import SwiftUI
 
 /// The bubble: one surface for a reply that does not need the whole screen,
-/// grown upward from the clay (the capsule at the foot over a result, the
-/// circle on the idle screen). Three sizes, picked from the content: a line
-/// (a one-liner, the time, a mark, a short say), a card (a narrative, a
-/// longer say, a question with its buttons or a line to type), and the full
-/// answer layer it becomes on "Read on", on a drag up, or when a follow-up
-/// continues it. Never modal: the page stays live around it. A drag down
-/// puts it away; a question put away answers nil, as the sheet's swipe did.
+/// hung from the top of the screen just under the island, clear of the
+/// thumb. Three sizes, picked from the content: a line (a one-liner, the
+/// time, a mark, a short say), a card (a narrative, a longer say, a question
+/// with its buttons or a line to type), and the full answer layer it becomes
+/// on "Read on", on a pull down, or when a follow-up continues it. Never
+/// modal: the page stays live around it. Every form has an x at the foot;
+/// a push up puts it away too, as a notification goes; a question put away
+/// answers nil. A drag stretches the body with the finger and springs back.
 struct ReplyBubble: View {
     /// The reply shown, when there is one and no question is up.
     let layer: Layer?
@@ -24,16 +25,35 @@ struct ReplyBubble: View {
     @State private var typed = ""
     @State private var textHeight: CGFloat = 0
     @FocusState private var focused: Bool
+    /// The bubble's height at rest, measured; the drag stretches from it.
+    @State private var restingHeight: CGFloat = 0
+    /// How far the drag has stretched the body: down is longer, up shorter.
+    @State private var stretch: CGFloat = 0
 
     private static let radius: CGFloat = 24
-    /// A drag this far decides: up reads on, down puts the bubble away.
+    /// A drag this far decides: down reads on, up puts the bubble away.
     private static let dragThreshold: CGFloat = 40
+    /// The most a pull down lengthens the body, and a push up shortens it.
+    private static let stretchDown: CGFloat = 60
+    private static let stretchUp: CGFloat = 24
+    /// The finger travel over which the stretch eases toward its most.
+    private static let stretchTravel: CGFloat = 160
 
     var body: some View {
         content
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
             .frame(width: width, alignment: .leading)
+            // Its own height, whatever room it is offered: the stretch below
+            // is the only thing that sizes the body.
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                if stretch == 0 { restingHeight = height }
+            }
+            .frame(height: restingHeight > 0 ? restingHeight + stretch : nil, alignment: .top)
+            .clipped()
+            // Streamed text lengthens the card smoothly rather than in steps.
+            .animation(.smooth(duration: 0.2), value: restingHeight)
             .background {
                 RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
                     .fill(.white)
@@ -43,16 +63,28 @@ struct ReplyBubble: View {
             .contentShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
             .gesture(
                 DragGesture(minimumDistance: 12)
+                    .onChanged { value in
+                        let dy = value.translation.height
+                        let reach = dy > 0 ? Self.stretchDown : Self.stretchUp
+                        stretch = reach * tanh(dy / Self.stretchTravel)
+                    }
                     .onEnded { value in
-                        if value.translation.height > Self.dragThreshold {
-                            if let question { question.cancel() } else { onDismiss() }
-                        } else if value.translation.height < -Self.dragThreshold, question == nil, expandable {
+                        let dy = value.translation.height
+                        if dy < -Self.dragThreshold {
+                            close()
+                        } else if dy > Self.dragThreshold, question == nil, expandable {
                             onReadOn()
+                        } else {
+                            withAnimation(.spring(duration: 0.35, bounce: 0.3)) { stretch = 0 }
                         }
                     }
             )
             .accessibilityElement(children: .contain)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    /// The x, a push up: a question answers nil, a reply goes.
+    private func close() {
+        if let question { question.cancel() } else { onDismiss() }
     }
 
     /// A narrative, or anything cut by the cap, can open as the full layer.
@@ -66,6 +98,8 @@ struct ReplyBubble: View {
         }
     }
 
+    /// The text's cap, lengthened by a pull down so the pull shows more.
+    private var cap: CGFloat { maxHeight + max(stretch, 0) }
     private var cut: Bool { textHeight > maxHeight }
 
     @ViewBuilder
@@ -74,6 +108,38 @@ struct ReplyBubble: View {
             ask(question)
         } else if let layer {
             reply(layer)
+        }
+    }
+
+    /// The row at the foot of every form: the x at the left, then what the
+    /// form says there, and "Read on" at the right where the form has it.
+    private func foot(_ label: Text? = nil, readOn: Bool) -> some View {
+        HStack(spacing: 8) {
+            Button(action: close) {
+                Image(systemName: "xmark")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(Palette.quiet)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            // The glyph lines up with the text above; the tap area reaches past it.
+            .padding(.leading, -10)
+            .padding(.vertical, -8)
+            .accessibilityLabel("Dismiss")
+            if let label {
+                label
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Palette.quiet)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if readOn {
+                Button("Read on", action: onReadOn)
+                    .buttonStyle(.plain)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Palette.quiet)
+            }
         }
     }
 
@@ -89,20 +155,17 @@ struct ReplyBubble: View {
                     .foregroundStyle(Palette.ink)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                HStack {
-                    Spacer()
-                    Button("Read on", action: onReadOn)
-                        .buttonStyle(.plain)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Palette.quiet)
-                }
+                foot(readOn: true)
             }
         } else if layer.lingers {
             // A mark: "Remembered: I'm vegetarian", quiet, for a moment.
-            Text(layer.plan.replyText)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(Palette.quiet)
-                .lineLimit(2)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(layer.plan.replyText)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Palette.quiet)
+                    .lineLimit(2)
+                foot(readOn: false)
+            }
         } else {
             switch layer.plan {
             case .time:
@@ -124,10 +187,13 @@ struct ReplyBubble: View {
 
     /// One row: the fact itself, the size an answer's line has in a thread.
     private func line(_ spans: [StyledSpan]) -> some View {
-        Text(AttributedString(spans: spans, ink: Palette.ink))
-            .font(.title3.weight(.semibold))
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(AttributedString(spans: spans, ink: Palette.ink))
+                .font(.title3.weight(.semibold))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            foot(readOn: false)
+        }
     }
 
     /// Prose up to the cap; cut at the foot when longer, with "Read on".
@@ -138,7 +204,7 @@ struct ReplyBubble: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
-                .frame(maxHeight: maxHeight, alignment: .top)
+                .frame(maxHeight: cap, alignment: .top)
                 .clipped()
                 .overlay(alignment: .bottom) {
                     if cut {
@@ -147,18 +213,7 @@ struct ReplyBubble: View {
                             .allowsHitTesting(false)
                     }
                 }
-            HStack {
-                if stoppedEarly {
-                    Text("Stopped early.")
-                        .font(.footnote)
-                        .foregroundStyle(Palette.quiet)
-                }
-                Spacer()
-                Button("Read on", action: onReadOn)
-                    .buttonStyle(.plain)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Palette.quiet)
-            }
+            foot(stoppedEarly ? Text("Stopped early.") : nil, readOn: true)
         }
     }
 
@@ -171,7 +226,7 @@ struct ReplyBubble: View {
                 .foregroundStyle(Palette.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
-                .frame(maxHeight: maxHeight, alignment: .top)
+                .frame(maxHeight: cap, alignment: .top)
                 .clipped()
                 .overlay(alignment: .bottom) {
                     if cut {
@@ -180,16 +235,7 @@ struct ReplyBubble: View {
                             .allowsHitTesting(false)
                     }
                 }
-            HStack {
-                Text(note.title)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(Palette.quiet)
-                Spacer()
-                Button("Read on", action: onReadOn)
-                    .buttonStyle(.plain)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Palette.quiet)
-            }
+            foot(Text(note.title), readOn: true)
         }
     }
 
@@ -197,7 +243,7 @@ struct ReplyBubble: View {
 
     /// The question in a line or two, then one to three buttons in the
     /// listening buttons' look, or a plain line to type into. A tap or a
-    /// return answers.
+    /// return answers; the x answers nil.
     private func ask(_ question: PendingQuestion) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(question.title)
@@ -238,6 +284,7 @@ struct ReplyBubble: View {
                 }
                 .onAppear { focused = true }
             }
+            foot(readOn: false)
         }
         .id(question.id)
     }
