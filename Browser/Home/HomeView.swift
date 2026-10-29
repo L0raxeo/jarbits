@@ -47,6 +47,17 @@ struct HomeView: View {
     @State private var interrupted = false
     @State private var interruptionTask: Task<Void, Never>?
     private static let interruptionLinger: Duration = .milliseconds(1500)
+    /// The bubble's card grows no taller than this share of the window.
+    private static let bubbleShare: CGFloat = 0.4
+    /// Above the clay's centre on the idle screen, where the bubble's foot
+    /// sits: clear of the circle (168 pt, swelling to 1.17 with a voice).
+    private static let bubbleAboveClay: CGFloat = 104
+    /// What the bubble adds around a card's text: its padding and the "Read on" row.
+    private static let bubbleChrome: CGFloat = 72
+
+    /// The bubble has something to show: a question first, else the reply
+    /// with something to read (a narrative shows once its first text is in).
+    private var bubbleUp: Bool { session.question != nil || session.replyShown }
 
     private var mode: ClayForm {
         switch session.stage {
@@ -66,7 +77,7 @@ struct HomeView: View {
     /// recording on purpose stands it aside. The inactive phase is ignored:
     /// the permission alert itself causes it.
     private var listening: Bool {
-        // A question on the sheet is the user's to answer; nothing listens under it.
+        // A question in the bubble is the user's to answer; nothing listens under it.
         guard scenePhase != .background, !session.microphone.exclusive, session.question == nil else { return false }
         if mode == .circle { return true }
         return session.stage == .ready && !followingUp && !capsuleLoading && !swiping && session.attention.idle
@@ -229,8 +240,13 @@ struct HomeView: View {
                     }
                     #endif
 
-                    // "Remembered: …" for a moment after a fact is kept or dropped.
-                    RememberedMarkOverlay(overResult: showsCapsule, clayY: clayY)
+                    // On the idle screen the bubble sits above the clay, which
+                    // is back to its circle under it. Over a result it rides
+                    // with the capsule below, in the keyboard-aware layer.
+                    if bubbleUp, !claysOut {
+                        // Capped so the card never runs into the top of the screen.
+                        IdleBubble(width: proxy.size.width - 48, maxHeight: min(window.height * Self.bubbleShare, clayY - Self.bubbleAboveClay - Self.bubbleChrome - 24), bottom: proxy.size.height - clayY + Self.bubbleAboveClay)
+                    }
                 }
                 .onChange(of: window, initial: true) { _, window in
                     session.window = window
@@ -244,8 +260,11 @@ struct HomeView: View {
             // The row is centred; while a word is being heard the clay slides
             // to the left corner and the two buttons sit at the right.
             GeometryReader { proxy in
-                VStack {
+                VStack(spacing: 10) {
                     Spacer()
+                    if bubbleUp, claysOut {
+                        SessionBubble(width: proxy.size.width - 32, maxHeight: proxy.size.height * Self.bubbleShare)
+                    }
                     HStack(spacing: 16) {
                         ClayCapsule(
                             text: capsuleText,
@@ -275,12 +294,13 @@ struct HomeView: View {
                             }
                         }
                     }
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { footFrame = $0 }
                     .padding(.horizontal, hearing ? 16 : 0)
                     .frame(maxWidth: .infinity, alignment: hearing ? .leading : .center)
                     .padding(.bottom, followingUp ? 8 : ClayCapsule.bottomPadding)
                     .animation(.spring(duration: 0.35, bounce: 0.1), value: hearing)
                 }
+                // The foot: the bubble and the capsule row, both outside `attention`.
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { footFrame = $0 }
             }
             .opacity(showsCapsule ? 1 : 0)
             .allowsHitTesting(showsCapsule)
@@ -295,8 +315,8 @@ struct HomeView: View {
             )
             .frame(width: 0, height: 0)
         }
-        // The small sheet the app asks with: a question and a tap or a line to answer it.
-        .modifier(AskSheetPresenter())
+        // A question arriving in the bubble, with a light haptic.
+        .modifier(QuestionHaptic())
         // Jarvits asks the user's name once, on the idle circle, while none is known.
         .onChange(of: mode == .circle && session.stage == .idle && session.question == nil && session.userName == nil && session.nameLoaded, initial: true) { _, idle in
             if idle { session.askNameIfNeeded() }
@@ -425,5 +445,52 @@ struct HomeView: View {
         followingUp = false
         capsuleSubmitted = false
         session.reset()
+    }
+}
+
+/// The session's bubble: its reply, or the question that takes it over.
+private struct SessionBubble: View {
+    @Environment(BrowserSession.self) private var session
+    let width: CGFloat
+    let maxHeight: CGFloat
+
+    var body: some View {
+        ReplyBubble(
+            layer: session.reply,
+            question: session.question,
+            maxHeight: maxHeight,
+            width: width,
+            onReadOn: session.promoteReply,
+            onDismiss: session.dismissReply
+        )
+    }
+}
+
+/// The bubble on the idle screen: its foot `bottom` up from the screen's
+/// foot, so it sits above the clay's circle.
+private struct IdleBubble: View {
+    let width: CGFloat
+    let maxHeight: CGFloat
+    let bottom: CGFloat
+
+    var body: some View {
+        VStack {
+            Spacer()
+            SessionBubble(width: width, maxHeight: maxHeight)
+                .padding(.bottom, bottom)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// A light haptic as a question comes into the bubble. Kept out of
+/// `HomeView`'s body, which is long enough for the type checker already.
+private struct QuestionHaptic: ViewModifier {
+    @Environment(BrowserSession.self) private var session
+
+    func body(content: Content) -> some View {
+        content.sensoryFeedback(.impact(weight: .light), trigger: session.question?.id) { _, id in
+            id != nil
+        }
     }
 }

@@ -64,6 +64,9 @@ final class Layer: Identifiable {
     /// The picture is the video's own thumbnail (a YouTube page): no
     /// screenshots, which would only show the player's black box.
     var pictureFixed = false
+    /// A reply that only lingers in the bubble for a moment (a mark such as
+    /// "Remembered: …"): not an exchange, not a thread, never promoted.
+    var lingers = false
 
     init(plan: CardPlan, query: String, decision: Pick? = nil) {
         self.plan = plan

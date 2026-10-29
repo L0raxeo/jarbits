@@ -78,8 +78,26 @@ final class BrowserSession {
     private let pictureWidth: CGFloat = 120
     private let pictureQuality: CGFloat = 0.6
 
-    /// The question the small sheet is showing, if any; see `ask`.
+    /// The question the bubble is showing, if any; see `ask`.
     private(set) var question: PendingQuestion?
+
+    /// A reply shown in the bubble above the clay rather than as a layer
+    /// in the stack: a one-liner, the time, a narrative not yet read on, a
+    /// mark, what the planner said. It is a layer all the same, so its
+    /// thread, its exchanges, its memory and its record work as for any
+    /// other; `promoteReply` puts the same object into the stack as the
+    /// full view. Nil when nothing is up. See `ReplyBubble`.
+    private(set) var reply: Layer?
+    /// The layer the next query reads as the newest: the reply when one is
+    /// up (a follow-up continues it), else the one on screen.
+    var focus: Layer? { reply.flatMap { $0.lingers ? nil : $0 } ?? current }
+    /// The bubble holds a reply with something to read: a plan step that
+    /// put one there counts as shown.
+    var replyShown: Bool {
+        guard let reply else { return false }
+        if case .answer = reply.plan { return !(reply.answer?.text.isEmpty ?? true) }
+        return true
+    }
 
     /// The layers, oldest first, and which one is on screen.
     private(set) var layers: [Layer] = []
@@ -158,8 +176,7 @@ final class BrowserSession {
     private var askedName = false
     /// Jev judging which fact a forget means; nil offers the shortlist in word order.
     let factResolver: FactResolver?
-    /// The fact kept or dropped a moment ago, shown for `FactMark.linger`.
-    private(set) var remembered: FactMark?
+    /// Clears the mark in the bubble after `FactMark.linger`.
     private var markTask: Task<Void, Never>?
     /// Where the screen stood before the query in flight: what an instinct
     /// that shows nothing hands back to.
@@ -217,6 +234,9 @@ final class BrowserSession {
         let exchanges = exchanges   // the session so far, before anything moves
         let opened = openedSite   // and the site opened by name, if one is on screen
         let shown = current
+        // The newest thing the words may lean on: the reply in the bubble
+        // when one is up, else the layer on screen.
+        let newest = focus
         // What is on screen, read as the query begins: the models that
         // interpret see it; Jev does not wait for it.
         let screenRead: Task<Screen?, Never>? = shown.map { layer in Task { await layer.screen() } }
@@ -226,7 +246,7 @@ final class BrowserSession {
         let token = UUID()
         requestToken = token
         Task {
-            let result = await engine.route(trimmed, exchanges: exchanges, current: shown, opened: opened, persona: persona, screen: screenRead)
+            let result = await engine.route(trimmed, exchanges: exchanges, current: newest, opened: opened, persona: persona, screen: screenRead)
             guard token == requestToken else { return }   // a newer query won, or cancelled
             lastQuery = result.query   // the words that ran: the label, the exchange, the layer and the record carry them
             #if DEBUG
@@ -249,19 +269,19 @@ final class BrowserSession {
         }
     }
 
-    /// The conversation on screen, oldest first, when the current layer
-    /// shows one; see `Layer.thread`.
+    /// The conversation the user is in, oldest first: the reply in the
+    /// bubble when it is one, else the current layer's; see `Layer.thread`.
     var thread: [AnswerTurn] {
-        current?.thread ?? []
+        focus?.thread ?? []
     }
 
     // MARK: Asking
 
-    /// Puts `title` to the user on the small sheet and waits for the
-    /// answer: nil when they swiped it away, when a newer query took the
-    /// screen, or when the app went back to idle. One question at a time:
-    /// a new one cancels the old. `token` is the request asking; a stale
-    /// one is answered nil at once.
+    /// Puts `title` to the user in the bubble and waits for the answer: nil
+    /// when they put it away, when a newer query took the screen, or when
+    /// the app went back to idle. One question at a time: a new one cancels
+    /// the old. `token` is the request asking; a stale one is answered nil
+    /// at once.
     func ask(_ title: String, _ input: PendingQuestion.Input, token: UUID) async -> AskAnswer? {
         guard token == requestToken else { return nil }
         question?.cancel()
@@ -272,7 +292,7 @@ final class BrowserSession {
         return answer
     }
 
-    /// The sheet was swiped away.
+    /// The question was put away.
     func dismissQuestion() {
         question?.cancel()
     }
@@ -280,9 +300,9 @@ final class BrowserSession {
     /// The name has been read from the store; until then nothing asks for it.
     private(set) var nameLoaded = false
 
-    /// Puts "What's your name?" on the sheet while no name is known, once
+    /// Puts "What's your name?" in the bubble while no name is known, once
     /// per launch, and keeps the answer. Called by the home screen when the
-    /// circle is idle and nothing else is on the sheet.
+    /// circle is idle and nothing else is asked.
     func askNameIfNeeded() {
         guard nameLoaded, userName == nil, !askedName, question == nil, stage == .idle else { return }
         askedName = true
@@ -330,14 +350,17 @@ final class BrowserSession {
         factTexts = await facts.all().map(\.text)
     }
 
-    /// The mark, for a moment.
+    /// The mark, for a moment, as a line in the bubble: "Remembered: …".
     private func note(_ mark: FactMark) {
-        remembered = mark
+        let layer = Layer(plan: .said(query: lastQuery, text: (mark.kind == .remembered ? "Remembered: " : "Forgotten: ") + mark.text), query: lastQuery, decision: nil)
+        layer.lingers = true
+        reply?.answer?.cancel()
+        reply = layer
         markTask?.cancel()
         markTask = Task { [weak self] in
             try? await Task.sleep(for: FactMark.linger)
-            guard !Task.isCancelled, let self, remembered == mark else { return }
-            remembered = nil
+            guard !Task.isCancelled, let self, reply === layer else { return }
+            reply = nil
         }
     }
 
@@ -360,11 +383,11 @@ final class BrowserSession {
         let clock = ContinuousClock()
         let start = clock.now
         while clock.now - start < Self.performWait {
-            if stage == .ready { return (true, nil) }
+            if stage == .ready || replyShown { return (true, nil) }
             guard token == requestToken else { return (false, nil) }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return (stage == .ready, nil)
+        return (stage == .ready || replyShown, nil)
     }
 
     /// How long a plan step may take to reach the screen.
@@ -387,7 +410,9 @@ final class BrowserSession {
     /// This session's exchanges up to the layer on screen, oldest first,
     /// for the engine: the layers ahead are history a new query drops.
     var exchanges: [SessionExchange] {
-        layers.prefix(index + 1).flatMap(\.exchanges)
+        let stacked = layers.prefix(index + 1).flatMap(\.exchanges)
+        guard let reply, !reply.lingers else { return stacked }
+        return stacked + reply.exchanges
     }
 
     /// The answer card has nothing to fade out for: a follow-up over it is
@@ -397,7 +422,7 @@ final class BrowserSession {
         switch stage {
         // A spoken follow-up over the card is cleaned before it is routed.
         case .routing, .cleaning:
-            return !thread.isEmpty
+            return !(current?.thread ?? []).isEmpty
         case .loading:
             if case let .answer(_, _, history, _) = plan { return !history.isEmpty }
             return false
@@ -529,6 +554,7 @@ final class BrowserSession {
         }
         spokenGeneration += 1
         requestToken = UUID()
+        dismissReply()
         stage = .idle
     }
 
@@ -538,6 +564,7 @@ final class BrowserSession {
     /// like browser history after going back; the layer left behind stops
     /// playing; then the live pages are brought back under the cap.
     private func open(_ layer: Layer) {
+        if let bubble = reply, bubble !== layer { dismissReply() }
         if let leaving = current {
             leaving.answer?.cancel()
             Task { await leaving.page?.pause() }
@@ -591,6 +618,37 @@ final class BrowserSession {
         return layer
     }
 
+    /// A reply in the bubble, over the screen as it stood: the stage goes
+    /// back to where it was before the query, and the layer is held as
+    /// `reply` rather than opened.
+    @discardableResult
+    func showReply(_ plan: CardPlan, context: InstinctContext, recording: Bool = true) -> Layer {
+        let layer = Layer(plan: plan, query: context.query, decision: context.decision)
+        layer.extraction = context.extraction
+        layer.fact = context.fact
+        layer.reading = context.reading
+        reply?.answer?.cancel()
+        reply = layer
+        stage = stageBefore
+        if recording { record(context) }
+        return layer
+    }
+
+    /// The reply read on: the same layer, now in the stack as the full view.
+    func promoteReply() {
+        guard let layer = reply, !layer.lingers else { return }
+        reply = nil
+        open(layer)
+        stage = .ready
+    }
+
+    /// The bubble put away.
+    func dismissReply() {
+        reply?.answer?.cancel()
+        reply = nil
+        markTask?.cancel()
+    }
+
     /// A thing a plan points at, shown: a page loads, a search loads its
     /// results, a saved answer shows as it was, an answer from this session
     /// shows its text. Unlike `replay`, the request's token stands, so the
@@ -606,7 +664,7 @@ final class BrowserSession {
             if let id = reference.noteID, let note = await notebook.note(id: id) {
                 showNote(note, context: context)
             } else {
-                showCard(.said(query: context.query, text: "I no longer have that note in my notebook."), context: context)
+                showReply(.said(query: context.query, text: "I no longer have that note in my notebook."), context: context)
             }
         case .answer, .action, .picture, .page, .recall, .site:
             var saved: MemoryRecord?
@@ -618,7 +676,7 @@ final class BrowserSession {
                 stage = .ready
                 record(context)
             } else if let text = reference.text, !text.isEmpty {
-                showCard(.said(query: context.query, text: text), context: context)
+                showReply(.said(query: context.query, text: text), context: context)
             } else {
                 openPage(QueryParser.searchURL(for: reference.term ?? reference.title), context: context)
             }
@@ -674,29 +732,41 @@ final class BrowserSession {
         stage = .ready
     }
 
-    /// What the planner said, on a card as it is, and kept as a narrative
-    /// memory so it can be brought back.
+    /// What the planner said, in the bubble as it is, and kept as a
+    /// narrative memory so it can be brought back.
     func showSaid(_ text: String, context: InstinctContext) {
         lastQuery = context.query   // the capsule shows the user's words, not the planner's
-        let layer = showCard(.said(query: context.query, text: text), context: context)
+        let layer = showReply(.said(query: context.query, text: text), context: context)
         remember(MemoryRecord(kind: .narrative, query: context.query, text: text), in: layer)
     }
 
-    /// An answer streamed from Gemini: a follow-up that continues the
-    /// conversation on screen grows its layer; anything else is a new one.
-    /// Recorded when the answer finishes, with its summary attached.
+    /// An answer streamed from Gemini. A fresh one goes to the bubble: a
+    /// one-liner as a line, a narrative as a card. A follow-up that
+    /// continues the reply in the bubble reads it on first, so the thread
+    /// grows in the full view; one that continues the conversation on
+    /// screen grows its layer. Recorded when the answer finishes, with its
+    /// summary attached.
     func showAnswer(format: Instinct, context: InstinctContext) {
         let plan = CardPlan.answer(format: format, query: context.query, history: context.thread, earlier: context.earlier)
         let layer: Layer
-        if context.decision.continuesThread, let shown = current, !shown.thread.isEmpty {
+        if context.decision.continuesThread, let bubble = reply, !bubble.lingers, !bubble.thread.isEmpty {
+            promoteReply()
+            layer = bubble
+            layer.plan = plan
+            layer.query = context.query
+            layer.decision = context.decision
+            layer.lastShown = .now
+        } else if context.decision.continuesThread, let shown = current, !shown.thread.isEmpty {
             layer = shown
             layer.plan = plan
             layer.query = context.query
             layer.decision = context.decision
             layer.lastShown = .now
         } else {
+            // The bubble, once the first text is in; the wave meanwhile.
             layer = Layer(plan: plan, query: context.query, decision: context.decision)
-            open(layer)
+            reply?.answer?.cancel()
+            reply = layer
         }
         layer.extraction = context.extraction
         layer.fact = context.fact
@@ -810,6 +880,7 @@ final class BrowserSession {
     private func move(to target: Int) {
         takePicture(reason: "leave")
         question?.cancel()
+        dismissReply()
         requestToken = UUID()
         let leaving = current
         Task { await leaving?.page?.pause() }
@@ -963,10 +1034,28 @@ final class BrowserSession {
                     // Done without a screen of its own: back to where the screen stood.
                     stage = stageBefore
                 } else {
-                    openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
+                    // Nothing came of it: said so, with the choice left to the user.
+                    offerRetry(query: query, decision: decision, message: summary.outcome == .budget ? "That took too long to work out." : "I couldn't get through that one.", token: token)
                 }
             }
             record(decision, query: query, engine: summary, reading: reading)
+        }
+    }
+
+    /// A query that brought nothing: the screen as it stood, and the
+    /// question in the bubble, "Try again" or "Search instead". Nothing is
+    /// searched for the words on its own: for "add this to my wishlist" a
+    /// search would read as a mishearing.
+    private func offerRetry(query: String, decision: Pick, message: String, token: UUID) {
+        stage = stageBefore
+        Task {
+            let answer = await ask(message, .options(["Try again", "Search instead"]), token: token)
+            guard token == requestToken else { return }
+            switch answer {
+            case .option(0, _)?: submit(query)
+            case .option(1, _)?: openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
+            default: break
+            }
         }
     }
 
@@ -1173,10 +1262,11 @@ final class BrowserSession {
         remember(MemoryRecord(kind: kind, query: term?.isEmpty == false ? term! : layer.query), in: layer)
     }
 
-    /// First answer text arrived: fade the line out, the text in.
+    /// First answer text arrived: fade the line out, the text in. For a
+    /// reply, the screen goes back to where it stood and the bubble shows.
     private func answerStarted(in layer: Layer) {
-        guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query, layer === current else { return }
-        stage = .ready
+        guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
+        if layer === reply { stage = stageBefore } else if layer === current { stage = .ready }
     }
 
     private func answerFinished(_ summary: AnswerSummary, in layer: Layer) {
@@ -1192,9 +1282,19 @@ final class BrowserSession {
             // is the context the user is in. No first text ever came, so
             // the stage is still loading: the card is on screen, so ready.
             if layer === current, stage == .loading { stage = .ready }
-        case .fellBackToWeb, .needsLiveData:
-            // The layer becomes the results page.
+        case .needsLiveData:
+            // The layer becomes the results page: live data is what the
+            // web has. A reply leaves the bubble for the stack first.
+            if layer === reply { reply = nil; open(layer) }
             show(QueryParser.searchURL(for: answer.query), in: layer)
+        case .fellBackToWeb:
+            // Nothing came back: said so, the choice left to the user.
+            if layer === reply { reply = nil }
+            if let decision = layer.decision {
+                offerRetry(query: answer.query, decision: decision, message: "Nothing came back.", token: requestToken)
+            } else {
+                stage = stageBefore
+            }
         case .completed:
             let turns = answer.history + [AnswerTurn(query: answer.query, answer: answer.text, format: answer.format)]
             if turns.count > 1, let first = turns.first {

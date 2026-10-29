@@ -82,7 +82,7 @@ struct TimeInstinct: InstinctRunner {
         guard let text = LocalTimeAnswer.text(place: place, now: .now, locale: .current, homeZone: .current) else {
             return .failed(place.map { "I don't know where \($0) is" } ?? "I don't know which place is meant")
         }
-        session.showCard(.time(query: context.query, text: text), context: context)
+        session.showReply(.time(query: context.query, text: text), context: context)
         return .nothing
     }
 }

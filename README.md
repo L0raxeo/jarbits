@@ -403,6 +403,53 @@ outcome. If live answers are wanted later, a search source such as Serper
 (prepaid, about $1 per 1,000 queries) can feed results into the same input
 block without changing the cards.
 
+## The bubble
+
+A reply that does not need the whole screen is shown in the bubble
+(`ReplyBubble`, `BrowserSession.reply`): one view in the page's own
+layout, never a sheet, grown upward from the clay. Over a result it sits
+directly above the query capsule in the keyboard-aware layer of
+`HomeView`, the capsule's width, and rides the keyboard with it; on the
+idle screen it sits above the clay's circle, mid-screen, and the capsule
+at the foot appears only once a layer is shown. The page stays live and
+tappable around it. Three sizes, picked on the device from the content
+(layout, not interpretation):
+
+- a line: a one-liner, the time, a mark ("Remembered: I'm vegetarian",
+  quiet, gone after three seconds), a limit the planner states;
+- a card: a narrative, what the planner said (`say`), or a question with
+  its one to three buttons or a line to type (`ask`, "What's your
+  name?", "Delete my note …?", "Forget which?"); it grows to at most 40%
+  of the screen, and past that the text is cut at the foot with "Read
+  on";
+- the full view: the answer layer as before, reached by "Read on", by a
+  drag up on the card, or by a follow-up that continues the reply ("why?"
+  after a narrative): the same layer object is put into the stack
+  (`promoteReply`), its text and turns carried over, and from then on it
+  swipes like any other.
+
+The one idea underneath: a reply is a `Layer` held in `reply` instead of
+pushed onto the stack. So its thread and exchanges reach Jev, the reader
+and the planner as the newest exchange ("Asked X and got Y"; `focus` is
+the reply when one is up, else the current layer), an `AnswerSession`
+streams into it, its memory is written against it, and its record is
+kept. A drag down puts it away; a new layer opening, a swipe between
+layers, or the circle clears it; a question put away answers nil, as the
+sheet's swipe did. A fresh one-line or narrative answer goes to the
+bubble (the clay or the capsule waves until the first text, then the
+screen goes back to where it stood and the bubble shows); a follow-up
+that continues a conversation already in the full view grows that layer
+as before. A narrative that needs live data still becomes web results,
+in the stack.
+
+A plan or an answer that brings nothing no longer becomes a web search
+for the words, which read as a mishearing on "add this to my wishlist":
+the bubble says so ("I couldn't get through that one.", "That took too
+long to work out.", "Nothing came back.") with "Try again" and "Search
+instead" under it, and the screen stays as it stood
+(`BrowserSession.offerRetry`). Without a planner at all, web results
+still stand in.
+
 ## Images
 
 `image` is for one specific, named thing with a definitive look: a flag, a
@@ -575,7 +622,7 @@ sees the user's words recast in his. A question about the user's own life
 question says such a question does not go stale, and the answer prompts
 say to answer it from the facts block alone, or to say in a line that
 Jarvits does not know that yet. For that he needs the user's name: with none known,
-the home screen puts "What's your name?" on the small sheet as soon as the
+the home screen puts "What's your name?" in the bubble as soon as the
 circle is idle (`BrowserSession.askNameIfNeeded`), once per launch; a
 swipe away asks again at the next launch, and until a name is given the
 prompts say "the person you assist". The name lives in
@@ -633,7 +680,7 @@ only: bare words directly after a list item continue that list, as a
 return at the end of a list does in Notes (`NoteMarkdown.continuing`),
 and a numbered run the lines land in is counted again from 1. Several notes shown at once go to the grid
 (`NotesGridView`, the recall grid's layout, headed in his voice: "My
-notes · 3"), by `open` with several handles or the notebook's `all`. A delete asks on the sheet ("Delete
+notes · 3"), by `open` with several handles or the notebook's `all`. A delete asks in the bubble ("Delete
 my note 'Packing list'?") and moves the file to `.trash/`, never gone.
 Every append or replace first copies the text as it was to
 `.versions/<id>/`, so any edit by Jarvits can be undone. Every change
@@ -717,7 +764,7 @@ A fact comes to be known three ways (`Fact.source`):
   as usual and the same small call distils the fact into one sentence as
   Jarvits notes it, which is kept quietly. The query waits for that call
   (about a second) before the pick runs.
-- **chosen**: the answer to a question a plan put on the sheet, when the
+- **chosen**: the answer to a question a plan put in the bubble, when the
   plan keeps it (a `remember` step right after an `ask`; see "Advanced
   reasoning").
 
@@ -898,8 +945,8 @@ The planner (`Planner` in the Answers library) asks `gemini-3.1-flash-lite`,
 the extractor's model, at high thinking (accuracy over speed and cost,
 Lorcan 2026-10-29; `store: false`; prices in `GeminiPricing`), with every instinct as a tool,
 each taking a `query` and its own fields, plus three the executor answers
-itself: `ask` puts one question on the sheet (up to three options, or a
-line to type), `say` shows the planner's own text on a card as it is, and
+itself: `ask` puts one question in the bubble (up to three options, or a
+line to type), `say` shows the planner's own text in the bubble as it is, and
 `done` ends the plan. `say` is for what the planner already holds in full
 (the facts, the memories shown to it, earlier steps' results), including
 "I don't know that yet"; a question needing knowledge beyond that goes
@@ -930,13 +977,13 @@ layer is ready; an acting one through its `act`. A paid or destructive
 step is put to the user first ("Go ahead: …?") unless the instinct asks
 for itself, as `forget` does; the same call twice runs once; a second
 thing to show is refused, since a new layer would replace the first; an
-answer on the sheet goes back to the model as the step's result, and a
+answer in the bubble goes back to the model as the step's result, and a
 `remember` right after it keeps the fact as **chosen**. Each result goes
 back as a `function_result`, with every model step replayed verbatim, for
 at most six rounds within two minutes, each round within forty-five
 seconds. The
 plan ends on `done`; when nothing was shown or done, web results for the
-words; on a no on the sheet; when the rounds or the time run out; or when
+words; on a no in the bubble; when the rounds or the time run out; or when
 a newer query takes the screen, where it stands and never after a step
 with a side effect. The wave line stays up while the plan runs; a plan
 that only did something hands the screen back to where it stood, as
@@ -1075,16 +1122,16 @@ coming from it. Nothing of this outlives the app.
 | `Browser/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat or a second thing to show, and sending every result back to the planner until `done` or the bounds. |
 | `Browser/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the memories and Jev's judge. |
 | `Browser/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |
-| `Browser/Engine/FactInstincts.swift` | The two instincts that show nothing: `remember` keeps a fact, `forget` judges which one the words mean and asks on the sheet. |
-| `Browser/Engine/PendingQuestion.swift` | One question put to the user on the sheet and the wait on its answer, resumed once by a tap, a return or a cancel. |
+| `Browser/Engine/FactInstincts.swift` | The two instincts that show nothing: `remember` keeps a fact, `forget` judges which one the words mean and asks in the bubble. |
+| `Browser/Engine/PendingQuestion.swift` | One question put to the user in the bubble and the wait on its answer, resumed once by a tap, a return or a cancel. |
 | `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
 | `Browser/Memory/MemoryStore.swift` | The memories file: load once, append as results appear, refresh a repeat within a day, drop the oldest past the cap, search by words (`MemorySearch` in the package). |
 | `Browser/Memory/SiteStore.swift` | The site book on disk: seeded on first load, written whole on each learn, touch, forget or clear. |
-| `Browser/Home/AskSheet.swift`, `RememberedMark.swift` | The small sheet the app asks with (a question, then up to three buttons or a line to type; sized to its content), and the quiet line shown for a moment after a fact is kept or dropped. |
+| `Browser/Home/ReplyBubble.swift`, `RememberedMark.swift` | The bubble (see "The bubble"): a reply in a line or a card above the clay, a question with its buttons or a line to type, "Read on" to the full view; and the mark's type, the quiet line shown in it for a moment after a fact is kept or dropped. |
 | `Browser/Engine/DecisionLog.swift` | JSON Lines log of every decision and answer. |
 | `Browser/Engine/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`, `BraveAPIKey`). |
 | `Browser/Engine/CardPlan.swift` | The renderable plans. One enum case per card type. |
-| `Browser/Session/BrowserSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the engine, applies the plan (a recall through the memories, a site through the book or the search) or runs an instinct that shows nothing, keeps the facts and the mark, puts a question on the sheet and waits for it, opens, swipes between, unloads and reloads layers under the live cap, memorises what each layer shows, writes the log. |
+| `Browser/Session/BrowserSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the engine, applies the plan (a recall through the memories, a site through the book or the search) or runs an instinct that shows nothing, keeps the facts and the mark, holds the reply in the bubble and puts a question there and waits for it, opens, swipes between, unloads and reloads layers under the live cap, memorises what each layer shows, writes the log. |
 | `Browser/Session/Layer.swift` | One query's result: its plan, its live page (`PageHost`) or the notes left by an unload, its own answer stream and pictures, the page it ended on (for the engine's exchanges), its opened site and memory chain, when it was last shown. |
 | `Browser/Web/PageHost.swift` | One live web page: the `WebPage` with its watcher, what it pins to its edges, whether it loads or plays or is in use, the navigation watch and the document bookkeeping behind the chrome, the notes read as it goes and the restore when it comes back. |
 | `Browser/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, address changes for the memories, audio, and whether the page is in use), the page's notes for an unload, the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |

@@ -38,7 +38,7 @@ public struct Planner: Sendable {
     /// handle, and the end of the plan.
     public static let askTool = ToolDeclaration(
         name: "ask",
-        description: "Put one short question to the user on a small sheet and get the answer back: to confirm, to choose, or to get a value the request leaves out. Give one to three options with the expected one first, or none for a line of text.",
+        description: "Put one short question to the user, in a short reply over what they are looking at, and get the answer back: to confirm, to choose, or to get a value the request leaves out. Give one to three options with the expected one first, or none for a line of text.",
         parameters: [
             "type": "object",
             "properties": [
@@ -49,11 +49,11 @@ public struct Planner: Sendable {
             "additionalProperties": false,
         ]
     )
-    /// Text the planner already holds in full, shown on a card as it is: no
+    /// Text the planner already holds in full, shown in the bubble as it is: no
     /// second model reads it. The description is the whole rule for when.
     public static let sayTool = ToolDeclaration(
         name: "say",
-        description: "Show the user something you already know in full, as the complete answer, on a card: from the facts you were given, the memories shown to you, or earlier steps' results, including \"I don't know that yet\" when the facts hold nothing on a question about their life. In your own voice to them: you for them, I for yourself. Never for anything that needs knowledge beyond that, which narrative and one_line are for: a page or a thing you have only seen listed by its title is not something you know, so a comparison, a summary or a judgement of it goes through narrative with about, never say.",
+        description: "Show the user something you already know in full, as the complete answer, in a short reply over what they are looking at (a line or a card, never the whole screen): from the facts you were given, the memories shown to you, or earlier steps' results, including \"I don't know that yet\" when the facts hold nothing on a question about their life. In your own voice to them: you for them, I for yourself. Never for anything that needs knowledge beyond that, which narrative and one_line are for: a page or a thing you have only seen listed by its title is not something you know, so a comparison, a summary or a judgement of it goes through narrative with about, never say.",
         parameters: [
             "type": "object",
             "properties": ["text": ["type": "string", "description": "what to show, complete, a sentence or a few"]],
