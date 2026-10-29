@@ -14,17 +14,16 @@ final class Executor {
     private let planner: Planner
     private unowned let session: BrowserSession
     private let instincts: [any InstinctRunner]
-    private let recall: RecallResolver?
 
-    init(planner: Planner, session: BrowserSession, instincts: [any InstinctRunner], recall: RecallResolver?) {
+    init(planner: Planner, session: BrowserSession, instincts: [any InstinctRunner]) {
         self.planner = planner
         self.session = session
         self.instincts = instincts
-        self.recall = recall
     }
 
     /// `exchanges` are the ones the query depends on, oldest first.
-    func run(query: String, decision: Pick, exchanges: [Exchange], token: UUID) async -> EngineSummary {
+    /// `lead` is the line that tells the planner why it has the query.
+    func run(query: String, decision: Pick, exchanges: [Exchange], lead: String? = nil, token: UUID) async -> EngineSummary {
         let clock = ContinuousClock()
         let start = clock.now
         var steps: [EngineSummary.Step] = []
@@ -44,13 +43,10 @@ final class Executor {
             usage = AnswerUsage(inputTokens: usage.inputTokens + found.inputTokens, outputTokens: usage.outputTokens + found.outputTokens, thoughtTokens: usage.thoughtTokens + found.thoughtTokens)
         }
 
-        // The newest memories, judged by Jev when it can, so the plan sees
-        // what the words may point at without any word deciding it.
-        var memories = await session.memory.shortlist(topic: nil, ask: RecallAsk(intent: RecallIntent(named: false, all: true)))
-        if let recall, !memories.isEmpty, case let .picked(picks, _) = await recall.resolve(query, candidates: memories, threshold: RecallRouting.maybeThreshold) {
-            memories = picks.map(\.record)
-        }
-        memories = Array(memories.prefix(ReasoningPolicy.memoriesGiven))
+        // The memories nearest the request in meaning (the newest, without
+        // an index): the planner reads them itself, and recall is its tool
+        // for anything beyond them.
+        let memories = await session.memory.nearest(to: query, limit: ReasoningPolicy.memoriesGiven)
         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
 
         let now = Date.now
@@ -60,10 +56,16 @@ final class Executor {
             context: AnswerContext(locale: .current, timeZone: .current, now: now),
             persona: session.persona
         )
-        // The handles: the chain's exchanges and the memories, tagged, so
-        // the plan points at a thing and the device resolves it.
-        var things = ThingTable(exchanges: exchanges, memories: memories)
-        var transcript: [InteractionStep] = [.userText(Planner.input(query: query, things: things, now: now))]
+        // The handles: the chain's exchanges, the memories and every note
+        // of the notebook, tagged, so the plan points at a thing and the
+        // device resolves it. The whole notebook stands in the listing, a
+        // line each, newest first: the planner reads which note a request
+        // means, whatever words it uses for it, and nothing thins or
+        // re-judges its choice.
+        let notes = await session.notebook.all()
+        guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
+        var things = ThingTable(exchanges: exchanges, memories: memories, notes: notes)
+        var transcript: [InteractionStep] = [.userText(Planner.input(query: query, things: things, now: now, lead: lead))]
         func noSuchThing(_ handle: String) -> String {
             "no such thing: \(handle); the things are \(things.handles.isEmpty ? "none" : things.handles.joined(separator: ", "))"
         }
@@ -112,9 +114,6 @@ final class Executor {
                         result = "nothing to say"
                         outcome = "failed: empty"
                         failures += 1
-                    } else if shown {
-                        result = "something is already on screen; call done"
-                        outcome = "skipped: already showing"
                     } else {
                         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                         let context = InstinctContext(
@@ -129,27 +128,45 @@ final class Executor {
                     }
                     answered = false
                 } else if call.name == Planner.openTool.name {
-                    // A thing by its handle; the device knows what it is.
-                    let handle = call.arguments["thing"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-                    if shown {
-                        result = "something is already on screen; call done"
-                        outcome = "skipped: already showing"
-                    } else if let thing = things[handle] {
+                    // Things by their handles; the device knows what they are.
+                    // One shows itself; several of a kind go to a grid.
+                    var handles = (call.arguments["things"]?.arrayValue ?? []).compactMap { $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                    if handles.isEmpty, let one = call.arguments["thing"]?.stringValue ?? call.arguments["things"]?.stringValue { handles = [one.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()] }
+                    let resolved = handles.map { ($0, things[$0]) }
+                    if let missing = resolved.first(where: { $0.1 == nil }) {
+                        result = noSuchThing(missing.0)
+                        outcome = "failed: no such thing"
+                        failures += 1
+                    } else if resolved.isEmpty {
+                        result = "nothing to open: give one handle or several"
+                        outcome = "failed: empty"
+                        failures += 1
+                    } else {
                         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                         let context = InstinctContext(
                             query: query,
                             decision: Pick(instinct: .recall, suggested: nil, confidence: 1, source: .plan),
                             opened: nil, canAnswer: session.canAnswer, thread: [], earlier: exchanges, arguments: [:]
                         )
-                        await session.open(Reference(thing), context: context)
+                        let found = resolved.compactMap(\.1)
+                        let notes = found.compactMap { if case let .note(note) = $0 { note } else { nil } }
+                        let records = found.compactMap { if case let .memory(record) = $0 { record } else { nil } }
+                        if found.count == 1 {
+                            await session.open(Reference(found[0]), context: context)
+                            result = "shown on screen"
+                        } else if notes.count == found.count {
+                            session.showNotes(notes, title: "My notes", context: context)
+                            result = "shown together in a grid"
+                        } else if records.count == found.count {
+                            session.showCard(.recallPicker(records, title: nil), context: context)
+                            result = "shown together in a grid"
+                        } else {
+                            await session.open(Reference(found[0]), context: context)
+                            result = "only things of one kind, notes or memories, can be shown together: opened \(handles[0]) alone"
+                        }
                         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                         shown = true
-                        result = "shown on screen"
                         outcome = "shown"
-                    } else {
-                        result = noSuchThing(handle)
-                        outcome = "failed: no such thing"
-                        failures += 1
                     }
                     answered = false
                 } else if call.name == Planner.askTool.name {
@@ -189,9 +206,6 @@ final class Executor {
                     } else if ran.contains(key) {
                         result = "already done"
                         outcome = "already ran"
-                    } else if spec.showsLayer, shown {
-                        result = "something is already on screen; call done"
-                        outcome = "skipped: already showing"
                     } else if ReasoningPolicy.needsConfirmation(spec),
                               !(await confirmed(spec, stepQuery, token: token)) {
                         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
@@ -216,18 +230,24 @@ final class Executor {
                             result = Planner.found(handles, in: things, now: now)
                             outcome = act.found.isEmpty ? "found nothing" : "found \(act.found.count)"
                         } else if spec.showsLayer {
-                            let didShow = await session.perform(instinct, context: context, token: token)
+                            let (didShow, reason) = await session.perform(instinct, context: context, token: token)
                             guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                             shown = didShow
-                            result = didShow ? "shown on screen" : "could not be shown"
-                            outcome = didShow ? "shown" : "failed: not shown"
+                            result = didShow ? "shown on screen" : "could not: \(reason ?? "not shown")"
+                            outcome = didShow ? "shown" : "failed: \(reason ?? "not shown")"
                             if !didShow { failures += 1 }
                         } else {
                             let act = await instinct.run(context, in: session, token: token)
                             guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
-                            result = act.text.isEmpty ? "done" : act.text
-                            outcome = "ran"
-                            session.noteAction(name: call.name, arguments: call.arguments, result: result, query: query)
+                            if let reason = act.failed {
+                                result = "could not: \(reason)"
+                                outcome = "failed: \(reason)"
+                                failures += 1
+                            } else {
+                                result = act.text.isEmpty ? "done" : act.text
+                                outcome = "ran"
+                                session.noteAction(name: call.name, arguments: call.arguments, result: result, query: query)
+                            }
                         }
                         ran.insert(key)
                     }

@@ -30,6 +30,11 @@ enum CardPlan: Hashable, Sendable {
     case memory(MemoryRecord)
     /// The sites a name might mean; a tap learns one and opens it.
     case siteChoices(name: String, [SiteCandidate])
+    /// One of Jarvits's notes, open for typing.
+    case note(Note)
+    /// Several of his notes the words may mean; a tap opens one. `title`
+    /// says what they are, in his voice ("My notes about the trip").
+    case notes([Note], title: String?)
 
     /// Which card a plan is, for the console: a short name, an answer's
     /// carrying the thread's first query (which a time answer shares).
@@ -43,6 +48,8 @@ enum CardPlan: Hashable, Sendable {
         case .recallPicker: "picker"
         case let .memory(record): "memory:\(record.id)"
         case .siteChoices: "choices"
+        case let .note(note): "note:\(note.id)"
+        case .notes: "notes"
         }
     }
 }

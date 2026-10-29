@@ -22,13 +22,16 @@ public enum ReasoningPolicy {
     public static let timeBudget: Duration = .seconds(120)
     /// One round's wait for the model, with room to think.
     public static let roundTimeout: Duration = .seconds(45)
-    /// The most memories a plan is shown.
+    /// The most memories a plan is shown: the newest; recall finds the rest.
     public static let memoriesGiven = 5
 
     /// An unsure pick is always planned; a sure one when its reasoning
-    /// score says it needs several steps.
-    public static func entersReasoning(_ decision: Pick) -> Bool {
+    /// score says it needs several steps, or when its instinct has not
+    /// earned the shortcut (`InstinctSpec.shortcut`): the planner runs
+    /// such an instinct with the screen, the stores and every tool in view.
+    public static func entersReasoning(_ decision: Pick, spec: InstinctSpec? = nil) -> Bool {
         if decision.source == .confidenceFallback { return true }
+        if let spec, decision.source == .jev, !spec.shortcut { return true }
         guard let reasoning = decision.reasoning else { return false }
         return reasoning >= threshold
     }

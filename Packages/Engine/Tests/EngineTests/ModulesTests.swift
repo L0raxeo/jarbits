@@ -22,8 +22,16 @@ import Testing
         }
     }
 
+    @Test func theNotebookIsTheNewestInstinct() {
+        #expect(Instinct.allCases.last == .notebook, "appended last, so the options Jev knew keep their order")
+        #expect(Instinct.allCases.dropLast().last == .time)
+        #expect(Instinct.notebook.outranksConversation && !Instinct.notebook.isAnswered)
+        #expect(Instinct.notebook.criterion.examples.contains("add milk to my shopping list"))
+        #expect(Instinct.remember.criterion.notFor.contains("which is notebook"), "a note to write is not a fact to keep")
+        #expect(Instinct.notebook.criterion.notFor.contains("which is remember"))
+    }
+
     @Test func timeIsAnInstinctOfItsOwn() {
-        #expect(Instinct.allCases.last == .time, "appended last, so the options Jev knew keep their order")
         #expect(Instinct.time.outranksConversation)
         #expect(!Instinct.time.isAnswered, "the clock answers it, not a model")
         #expect(Instinct.time.criterion.examples.contains("what time is it in tokyo"))

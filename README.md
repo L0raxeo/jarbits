@@ -190,6 +190,24 @@ reading (see "The reading") in parallel:
   page, "and chile?" after "capital of peru" answers in one line, "why?"
   after it answers in a paragraph, and "pictures of it" is a picture of
   the thing.
+- **Only an instinct whose whole input is in the words runs straight.**
+  A search, a question, a picture, videos, a site name, a place, a fact
+  to keep or drop, something to recall: those earned the shortcut
+  (`InstinctSpec.shortcut`). Everything else is reasoned, however sure
+  Jev was: the planner runs it with the screen, the stores and every tool
+  in view and fills its values itself, told "The classifier picked
+  notebook with confidence; you run it, because it acts on things". A
+  new instinct is reasoned unless it earns the shortcut, so the next
+  module lands on the planner with nothing to anticipate. The notebook is
+  reasoned.
+- **An instinct that cannot do the thing hands the query to the planner.**
+  Nothing found to recall, no note the words mean, no site found for a
+  name, a place the clock does not know, no fact to forget: the instinct
+  returns why, in Jarvits's words (`InstinctOutcome.failed`), shows
+  nothing, and the session plans the query under the wave line with
+  "Tried first, and could not: …" as the planner's first line, so it
+  does what the request needs another way, or says so. Without a planner,
+  web results. In a plan, a failed step's result reads "could not: …".
 - **The instinct runs** (`Browser/Engine/Instincts.swift` and the files
   beside it): `web_results`, `map` and `stock` load a Google results page
   for the words; `narrative` and `one_line` stream an answer, or show web
@@ -198,7 +216,8 @@ reading (see "The reading") in parallel:
   when it read none; `image` loads Google's image results for the words;
   `video` loads Google's video results for them; `recall` works the memories (see
   "Recall"); `site` works the site book and the search (see "Sites");
-  `remember` and `forget` work the facts (see "Facts"). A query whose
+  `remember` and `forget` work the facts (see "Facts"); `notebook` works
+  Jarvits's notes (see "Notebook"). A query whose
   reasoning score says it needs several steps goes to the executor instead
   (see "Advanced reasoning").
 - Each decision is appended to `Application Support/Browser/decisions.jsonl`
@@ -465,6 +484,10 @@ their queries, titles, addresses and text; a name spelt nearly right
 still counts ("hennessy" finds "hennessey", as dictation spells names);
 records holding every word win, then records holding any, then the rest
 of the filtered set newest first; at most ten (`MemorySearch.shortlist`).
+When the meaning index can say (below), the records nearest the topic in
+meaning lead, taking turns with the word matches, so "that car page"
+reaches a page titled "Hennessey Performance" with no word in common;
+a count or nothing named stays by recency whatever the index says.
 With no filter and no topic there is nothing to go on, and the words go
 to the web. Last, the
 shortlist goes to Jev in one request, a yes/no question per memory naming
@@ -557,6 +580,90 @@ swipe away asks again at the next launch, and until a name is given the
 prompts say "the person you assist". The name lives in
 `facts.profile.json` beside the facts (`FactStore.userName`) and goes with
 "Clear memory", which asks it again at once. Jev never sees any of this.
+
+## Notebook
+
+Jarvits keeps a notebook: notes the user types into, with bold, italic,
+headings, bullets, numbered lists and checkboxes, kept as Markdown files
+on the device (`Application Support/Browser/Notebook/<id>.md`: the first
+line `# Title`, a blank line, the body), permanent, not memories. There
+are no folders and no tags: the user asks for a note and Jarvits finds
+it. He speaks of "my notebook" and "my notes": it is his way of keeping
+things for the user.
+
+The `notebook` instinct, the thirteenth, is reasoned: Jev picks it and
+the planner runs it, with the page on screen, every note of the notebook
+and the facts in view. It takes what to do as a closed-set value Jev
+reads in the request (`action`: `new`, `add`, `replace`, `open`,
+`delete`), whether the whole notebook is asked for (`all`, a yes/no Jev
+reads too: "pull up all the notes in your notebook" shows the grid of
+every note, newest first, "My notes · N", or "My notebook is empty."),
+two things by handle, and `topic`, `title` and `text` as values the
+extractor reads. The two things: `note` is the note to act on, `item` is
+a page or answer to put into it, whose title and link go in as a link
+line. "Add this to my watchlist" on a video is `notebook(add, note: n1,
+item: p1)`; "add milk to my shopping list" is `notebook(add, note: n1,
+text: milk)`. Which note a request means is the planner's reading of the
+listing, where every note stands as a line (title, when it was edited,
+its first words), whatever words the request uses for it: "my watchlist"
+reaches a note titled Watch List because the planner reads that they
+mean the same, and nothing on the device re-judges its choice. (A Jev
+yes/no judge once stood between the two and scored "Watch List" 0.32
+against that request, under the 0.5 it acted on, so a second note named
+"watchlist" was made; a classifier was asked to read.) A `topic` with no
+`note` handle means no listed note was it: `add` and `new` make a note
+by that name; `open` and `delete` fail ("no note of mine is "x"; the
+notes I have are listed"), and the planner takes the next step, with the
+listing still in view. `new` with nothing to write makes an empty titled
+note and opens it for typing. Several notes shown at once go to the grid
+(`NotesGridView`, the recall grid's layout, headed in his voice: "My
+notes · 3"), by `open` with several handles or the notebook's `all`. A delete asks on the sheet ("Delete
+my note 'Packing list'?") and moves the file to `.trash/`, never gone.
+Every append or replace first copies the text as it was to
+`.versions/<id>/`, so any edit by Jarvits can be undone. Every change
+shows the note afterwards.
+
+The note card (`NoteView`) is the title as the first line and the body in
+a rich editor over an attributed string, with a bar above the keyboard
+for the six forms. Typing saves after a pause and on leaving; the file is
+the truth, and a note Jarvits changes while it is on screen is reloaded.
+`NoteMarkdown` in the Engine library turns the file's Markdown into the
+editor's text and back, exactly the six forms, a paragraph attribute
+carrying each line's form; the editor shows bullets, numbers and
+checkboxes as marker characters at the line's start (`NoteDisplay`), and
+the file never holds a marker. A page kept in a note is a link, the
+seventh form: the file holds `[title](url)`, the editor shows the title,
+and a row under the body opens the page. Anything else is kept as plain
+text. Opening or changing a note is an exchange (`note`), so "what
+does it say" works and the planner sees it; notes are never memories and
+recall never searches them. The planner's listing holds every note as
+`n1, n2…`, newest first, beside the memories; nothing thins it. "Clear
+memory" leaves the notebook alone.
+
+**Finding by meaning.** `MeaningIndex` in the Engine library keeps,
+beside a store, the meaning of each thing as a vector from an `Embedder`
+and answers "the nearest to this request" by cosine; `NoteSearch.shortlist`
+and `MemorySearch.shortlist` take its order (`ranked`) and put the nearest
+first, taking turns with the word matches. The memories have one
+(`Application Support/Browser/memories.index`, a compact binary file of
+id and vector, rewritten a second after the last change, only ever a
+cache of the memories file): every record kept is embedded from its
+title, query, host and first words (`MemoryRecord.indexText`), a forget
+or a flush removes it, and the first look after a load catches up on
+anything kept before the index existed or while offline, a hundred at a
+time. The embedder is Gemini's (`GeminiEmbedder` in the Answers library,
+`gemini-embedding-001` at 768 dimensions, a record embedded as a
+document and a request as a query, Google's two task types; nil on any
+failure, never a throw, so the look falls back to words and recency).
+The notebook has none: every note is listed and the planner reads.
+Apple's on-device models were measured first (2026-10-28) and are not
+it: the sentence embedding ranked "add this to my watchlist" nearer
+"Ideas" and "Packing list" than "Watch List", and "shopping list" nearer
+"Packing list" than "Shopping"; the word embedding did better on notes
+but put "Watch List" first for "open my grocery list" and knows no names
+(Hennessey, Dyson), so memories ranked wrong. `swift run --package-path
+Packages/Engine report nearest "<request>" "<text>"...` prints Gemini's
+ranking of a few texts for a request, from the Mac.
 
 ## Facts
 
@@ -652,8 +759,15 @@ several steps, so the request may need one tool or many; and a request
 about the user's own life is served from what it knows of them (remember,
 recall, answer from the facts, or say it does not know), never made up.
 The first turn carries the request, the exchanges it depends on (the
-chain) and up to five of the newest memories (judged by Jev when it can);
-every fact goes in the system instruction, as it does for an answer.
+chain) with the layer on screen always among them, so "this" is a thing
+the planner can point at, the five memories nearest the request in
+meaning (the newest, without the index; recall is its tool for anything
+beyond them), and every note of the notebook, a line each; nothing in
+the listing is judged or thinned by a second model, since reading what a
+request means is the planner's work. Every fact
+goes in the system instruction, as it does for an answer. A later showing step replaces what the step before
+showed; the planner is told to end on what the user should see, and
+nothing refuses a second card.
 
 The executor runs each call in order through the same paths a single
 query takes: a showing instinct through the session, waiting until its
@@ -674,8 +788,8 @@ that only did something hands the screen back to where it stood, as
 `remember` does.
 
 **Things and handles.** The first turn tags each earlier exchange of the
-session (`p1`, `p2`, oldest first) and each memory shown (`m1`, `m2`):
-a handle (`ThingTable` in the Engine library). The planner points at a
+session (`p1`, `p2`, oldest first), each memory shown (`m1`, `m2`) and
+each note (`n1`, `n2`): a handle (`ThingTable` in the Engine library). The planner points at a
 thing by its handle and never sees or writes an address; the device knows
 each thing exactly (a page's address, a search's term, an answer's text, a
 memory's record) and swaps the handle for it before a step runs. A tool
@@ -683,7 +797,9 @@ field of kind thing takes a handle: `open.thing`, and an answer's
 optional `about`, which puts the thing in the answer's context block. In
 a plan, `recall` shows nothing: its result names what it found by handle
 ("found m6: A page from yesterday (dyson.com): …"), minted into the
-listing, so the next step can `open` one, `say` something about it, or
+listing, so the next step can `open` one or several (several of a kind,
+notes or memories, go to a grid, which the tool's description says is how
+the user sees more than one at once), `say` something about it, or
 answer with it in view; "find that car page again and tell me where the
 nearest dealer is" is a recall, then an open or an answer, in one plan. A
 handle not in the listing fails the step ("no such thing: p3; the things

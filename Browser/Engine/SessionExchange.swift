@@ -55,6 +55,10 @@ extension Layer {
             return [SessionExchange(exchange: .recall(query: query, title: title, titles: records.map(\.title)), turn: nil, layerID: id)]
         case let .siteChoices(name, candidates):
             return [SessionExchange(exchange: .site(query: query, name: name, hosts: candidates.map(\.host)), turn: nil, layerID: id)]
+        case let .note(note):
+            return [SessionExchange(exchange: .note(query: query, title: note.title, excerpt: note.excerpt), turn: nil, layerID: id)]
+        case let .notes(notes, title):
+            return [SessionExchange(exchange: .note(query: query, title: title ?? "my notes", excerpt: notes.map(\.title).joined(separator: "; ")), turn: nil, layerID: id)]
         }
     }
 }

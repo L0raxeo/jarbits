@@ -31,6 +31,10 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
     /// The time or date now, here or in a named place, from the device
     /// clock; the reading names the place. See `LocalTimeAnswer`.
     case time
+    /// Jarvits's notebook: writing the user wants kept, added to, changed,
+    /// opened, read back or deleted, as Markdown files on the device, found
+    /// by title and text and judged by Jev. See `Note`.
+    case notebook
 
     /// What the app shows when the router cannot or should not decide.
     public static let fallback: Instinct = .webResults
@@ -45,7 +49,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
     public var outranksConversation: Bool {
         switch self {
         case .narrative, .oneLine, .webResults: false
-        case .map, .stock, .recall, .image, .video, .site, .remember, .forget, .time: true
+        case .map, .stock, .recall, .image, .video, .site, .remember, .forget, .time, .notebook: true
         }
     }
 
@@ -64,6 +68,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .remember: "Remember"
         case .forget: "Forget"
         case .time: "Time"
+        case .notebook: "Notebook"
         }
     }
 
@@ -82,6 +87,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .remember: nil
         case .forget: nil
         case .time: nil
+        case .notebook: nil
         }
     }
 
@@ -181,7 +187,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .remember:
             Criterion(
                 what: "The user asks the app to keep something in mind about them for later, or tells it something lasting about themselves with nothing else asked: a preference, an allergy, a name, where they live. The words are a remember, a keep-in-mind, a don't-forget, a note-that, or a plain statement about the user; nothing is wanted back but the keeping.",
-                notFor: "Bringing back something seen in this app before (\"remember that convo on the dyson pencilvac\", \"remember that page\"), which is recall; a question that mentions a fact on the way to asking something (\"I'm allergic to peanuts, what can I snack on\" wants the snacks); a fact about the world.",
+                notFor: "Bringing back something seen in this app before (\"remember that convo on the dyson pencilvac\", \"remember that page\"), which is recall; writing the user wants kept as a note or a list (\"make a note that…\", \"add milk to my shopping list\"), which is notebook; a question that mentions a fact on the way to asking something (\"I'm allergic to peanuts, what can I snack on\" wants the snacks); a fact about the world.",
                 examples: ["remember that I'm allergic to peanuts", "keep in mind I'm vegetarian", "don't forget my wife's name is Ana", "note that I don't eat pork", "I live in austin now"]
             )
         case .forget:
@@ -195,6 +201,12 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
                 what: "The time or date right now, here or in a named place: what time it is, the time in Tokyo, today's date, what day it is. The device clock answers it.",
                 notFor: "Time zones as a topic, how long something takes, a date in history, the weather, and when an event starts, which are answers; and a place to find, which is map.",
                 examples: ["what time is it in tokyo", "what's the time in costa rica", "What time is it in Mexico?", "what's the time", "what day is it today"]
+            )
+        case .notebook:
+            Criterion(
+                what: "Jarvits's notebook: writing the user wants kept as a note or a list, added to, changed, opened, read back or deleted. A note to make, something to put in a list, a page to keep in the notes, a note to open or read out, a note to delete. The notes are the user's own writing, kept as files, not facts about the user.",
+                notFor: "A lasting fact about the user with nothing to write down (\"remember that I'm allergic to peanuts\"), which is remember; dropping such a fact, which is forget; bringing back a page, an answer or a search seen in this app before, which is recall.",
+                examples: ["make a note that the plumber comes tuesday", "add milk to my shopping list", "open my packing list", "what's in my notes about the trip", "put this page in my notes", "delete that note", "start a new note called ideas"]
             )
         }
     }

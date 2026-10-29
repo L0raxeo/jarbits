@@ -34,6 +34,24 @@ import Testing
         #expect(MemorySearch.shortlist(all, topic: "chocolate", ask: RecallAsk(intent: RecallIntent(kinds: [.searches], named: true, all: false), window: today)) == [microwave, water], "words first, then the rest of the allowed set")
     }
 
+    @Test func theMeaningOrderLeadsTheShortlistWhenAThingIsNamed() {
+        let now = Date()
+        let hennessey = MemoryRecord(date: now.addingTimeInterval(-86_400), kind: .page, query: "", title: "Hennessey Performance | Official Website", url: URL(string: "https://www.hennesseyperformance.com/"))
+        let dyson = MemoryRecord(date: now.addingTimeInterval(-3_600), kind: .page, query: "dyson pencilvac", title: "Dyson PencilVac | Dyson", url: URL(string: "https://www.dyson.com/pencilvac"))
+        let cars = MemoryRecord(date: now.addingTimeInterval(-600), kind: .search, query: "fastest cars 2026")
+        let all = [hennessey, dyson, cars]
+        #expect(MemorySearch.shortlist(all, topic: "car page") == [cars], "by words alone, only the search holds \"car\"")
+        #expect(MemorySearch.shortlist(all, topic: "car page", ranked: [hennessey.id, cars.id, dyson.id]) == [hennessey, cars, dyson], "the nearest first, then the word match, then the rest")
+        let pages = RecallAsk(intent: RecallIntent(kinds: [.pages], named: true, all: false))
+        #expect(MemorySearch.shortlist(all, topic: "car page", ask: pages, ranked: [cars.id, hennessey.id]) == [hennessey, cars], "the kinds still filter the nearest; the words relaxed the kind, as before")
+        #expect(MemorySearch.shortlist(all, topic: "car page", ask: RecallAsk(intent: RecallIntent(named: false, all: false), count: 2), ranked: [hennessey.id]) == [cars, dyson], "a count is by recency, whatever the index says")
+        #expect(MemorySearch.shortlist(all, topic: nil, ask: pages, ranked: [hennessey.id]) == [dyson, hennessey], "nothing named: newest, whatever the index says")
+        #expect(hennessey.indexText == "Hennessey Performance | Official Website\nwww.hennesseyperformance.com")
+        #expect(MemoryRecord(date: now, kind: .narrative, query: "what is a venom f5", text: "A car.").indexText == "what is a venom f5\nA car.", "the title is the query, so it is not repeated")
+        #expect(MemorySearch.interleave([cars, dyson], [dyson, hennessey], limit: 5) == [cars, dyson, hennessey])
+        #expect(MemorySearch.interleave([cars], [dyson, hennessey], limit: 2) == [cars, dyson])
+    }
+
     @Test func theKindWordIsAPreferenceNotAWall() {
         let now = Date(timeIntervalSince1970: 1_792_600_000)
         let answer = MemoryRecord(date: now.addingTimeInterval(-7200), kind: .narrative, query: "how is gingivitis healed", text: "Remove the plaque.")

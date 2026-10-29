@@ -36,7 +36,7 @@ struct ForgetInstinct: InstinctRunner {
         let candidates = await session.facts.shortlist(about: about)
         guard session.isCurrent(token) else { return .nothing }
         guard !candidates.isEmpty else {
-            return InstinctOutcome(fact: FactSummary(action: "none", candidates: 0), text: "nothing to forget")
+            return InstinctOutcome(fact: FactSummary(action: "none", candidates: 0), text: "nothing to forget", failed: "I have no fact the words point at")
         }
         var offered = candidates
         var judged: Int?

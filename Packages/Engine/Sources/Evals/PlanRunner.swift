@@ -43,8 +43,10 @@ public struct PlanRunner: Sendable {
             query: planCase.query, exchanges: planCase.exchanges ?? [], facts: planCase.facts ?? [], memories: memories,
             tools: Planner.tools(for: InstinctSpec.all), context: context, persona: .example
         )
-        let things = ThingTable(exchanges: planCase.exchanges ?? [], memories: memories)
-        let transcript: [InteractionStep] = [.userText(Planner.input(query: planCase.query, things: things, now: context.now))]
+        let notes = (planCase.notes ?? []).map { $0.note(now: context.now) }
+        let things = ThingTable(exchanges: planCase.exchanges ?? [], memories: memories, notes: notes)
+        let lead = planCase.failure.map(Planner.failureLead) ?? planCase.picked.map(Planner.pickedLead)
+        let transcript: [InteractionStep] = [.userText(Planner.input(query: planCase.query, things: things, now: context.now, lead: lead))]
         return Planner.request(bundle: bundle, transcript: transcript, model: model)
     }
 
@@ -96,7 +98,11 @@ public struct PlanRunner: Sendable {
         }
         let calls = interaction.functionCalls.map { call in
             PlanResult.Call(name: call.name, arguments: (call.arguments.objectValue ?? [:]).reduce(into: [:]) { out, pair in
-                out[pair.key] = pair.value.stringValue ?? String(decoding: (try? pair.value.data()) ?? Data(), as: UTF8.self)
+                if let strings = pair.value.arrayValue?.compactMap(\.stringValue), strings.count == pair.value.arrayValue?.count {
+                    out[pair.key] = strings.joined(separator: ", ")   // a list of handles reads as "n1, n2"
+                } else {
+                    out[pair.key] = pair.value.stringValue ?? String(decoding: (try? pair.value.data()) ?? Data(), as: UTF8.self)
+                }
             })
         }
         return result(calls: calls, cached: cached, latencyMs: latency)

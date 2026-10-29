@@ -154,6 +154,18 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         }
     }
 
+    /// What the meaning index keeps for the memory: the title, the query,
+    /// the page's host, and the first words of an answer's text, each on a
+    /// line, nothing twice.
+    public var indexText: String {
+        var lines: [String] = []
+        for line in [title, query, url?.host(), text.map { String($0.prefix(300)) }].compactMap({ $0 }) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, !lines.contains(trimmed) { lines.append(trimmed) }
+        }
+        return lines.joined(separator: "\n")
+    }
+
     /// Every answer part as a turn, first to last.
     public var exchanges: [AnswerTurn] {
         parts.compactMap { part in
@@ -464,7 +476,46 @@ public enum MemorySearch {
     /// as the count or the limit. Without an intent (no key, an error) the
     /// topic alone decides: the kind is no bar, and with no span, no count
     /// and no topic there is nothing to go on.
-    public static func shortlist(_ records: [MemoryRecord], topic: String?, ask: RecallAsk = RecallAsk(), limit: Int = limit) -> [MemoryRecord] {
+    ///
+    /// `ranked` is the meaning index's order: the ids of the records nearest
+    /// the topic in meaning, nearest first. When the request names a thing
+    /// (terms, and no count), those of the allowed set come first, taking
+    /// turns with the word matches, so "that car page" reaches a page whose
+    /// title shares no word with it. A count or nothing named is by recency,
+    /// as before, whatever the index says.
+    public static func shortlist(_ records: [MemoryRecord], topic: String?, ask: RecallAsk = RecallAsk(), limit: Int = limit, ranked: [UUID] = []) -> [MemoryRecord] {
+        let words = byWords(records, topic: topic, ask: ask, limit: limit)
+        let terms = terms(of: topic)
+        let named = ask.named ?? !terms.isEmpty
+        guard !ranked.isEmpty, named, !terms.isEmpty, ask.count == nil else { return words }
+        var filters = ask
+        if filters.collection { filters.kinds = nil }
+        let allowed = Set((filters.isEmpty ? records : records.filter(filters.allows)).map(\.id))
+        let byID = Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let near = ranked.filter { allowed.contains($0) }.compactMap { byID[$0] }
+        return interleave(near, words, limit: limit)
+    }
+
+    /// Two orders made one: the first of each in turn, nothing twice, at
+    /// most `limit`.
+    public static func interleave<T: Identifiable>(_ first: [T], _ second: [T], limit: Int) -> [T] {
+        var seen = Set<T.ID>()
+        var out: [T] = []
+        var i = 0, j = 0
+        while out.count < limit, i < first.count || j < second.count {
+            if i < first.count {
+                if seen.insert(first[i].id).inserted { out.append(first[i]) }
+                i += 1
+            }
+            if out.count < limit, j < second.count {
+                if seen.insert(second[j].id).inserted { out.append(second[j]) }
+                j += 1
+            }
+        }
+        return out
+    }
+
+    static func byWords(_ records: [MemoryRecord], topic: String?, ask: RecallAsk, limit: Int) -> [MemoryRecord] {
         var filters = ask
         let terms = terms(of: topic)
         let named = filters.named ?? !terms.isEmpty

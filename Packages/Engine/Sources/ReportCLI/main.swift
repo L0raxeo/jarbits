@@ -34,6 +34,9 @@ import Sites
 //     (the reading the engine makes beside Jev: the request with its substance isolated and what it is
 //      about; with the key and no --dry-run, one small metered call, printing both, the latency, the
 //      tokens and the cost)
+//   GEMINI_API_KEY=… swift run --package-path Packages/Engine report nearest "that car page" "Hennessey Performance | Official Website" "Dyson PencilVac | Dyson" ...
+//     (the meaning index's ranking: the request embedded as a query and each text as a kept thing, one
+//      small metered call each, printing the texts nearest first with their closeness)
 //   [BRAVE_API_KEY=…] swift run --package-path Packages/Engine report sites "go to hacker news"
 //     (what the seeded book says of a name, and with the key Brave's candidates)
 //   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Engine report eval [--out results.jsonl]
@@ -378,6 +381,23 @@ case "read":
     case let .failed(reason):
         print("failed (\(summary.latencyMs) ms): \(reason)")
     }
+case "nearest":
+    guard arguments.count >= 3 else { fail("usage: report nearest <request> <text>...") }
+    guard let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else { fail("GEMINI_API_KEY is needed: the ranking is Gemini's embedding") }
+    let request = arguments[1]
+    let texts = Array(arguments.dropFirst(2))
+    let folder = FileManager.default.temporaryDirectory.appending(path: "report-nearest-\(UUID().uuidString)", directoryHint: .isDirectory)
+    let index = MeaningIndex(fileURL: folder.appending(path: "nearest.index"), embedder: GeminiEmbedder(apiKey: key))
+    let ids = texts.map { _ in UUID() }
+    await index.backfill(Array(zip(ids, texts)).map { (id: $0.0, text: $0.1) })
+    let found = await index.nearest(to: request, limit: texts.count)
+    guard !found.isEmpty else { fail("nothing embedded: the request or every text came back unread") }
+    print("\"\(request)\" nearest first:")
+    for entry in found {
+        let text = texts[ids.firstIndex(of: entry.id)!].replacingOccurrences(of: "\n", with: " / ")
+        print(String(format: "  %.3f  %@", entry.closeness, text))
+    }
+    try? FileManager.default.removeItem(at: folder)
 case "sites":
     guard arguments.count == 2 else { fail("usage: report sites <name>") }
     let name = arguments[1]

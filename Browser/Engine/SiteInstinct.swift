@@ -27,19 +27,18 @@ struct SiteInstinct: InstinctRunner {
             return .nothing
         }
         guard session.isCurrent(token) else { return .nothing }
-        await findSites(for: name, context: context, in: session, token: token)
-        return .nothing
+        return await findSites(for: name, context: context, in: session, token: token)
     }
 
     /// The sites `name` might mean, from the search: the choices card.
     /// Without a client, with nothing found, or on any failure the Google
     /// results page for the name stands in, and the first site tapped off
     /// it is learned instead.
-    private func findSites(for name: String, context: InstinctContext, in session: BrowserSession, token: UUID) async {
+    private func findSites(for name: String, context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
         let outcome = context.decision.rejectsSite ? "rejected" : "choices"
         guard let siteSearch = session.siteSearch else {
             fellBackToResults(for: name, context: context, in: session, outcome: outcome, reason: "no key")
-            return
+            return .nothing
         }
         session.stage = .loading
         let clock = ContinuousClock()
@@ -47,13 +46,20 @@ struct SiteInstinct: InstinctRunner {
         do {
             let found = try await siteSearch.find(name)
             let latency = Int((clock.now - start) / .milliseconds(1))
-            guard session.isCurrent(token) else { return }
+            guard session.isCurrent(token) else { return .nothing }
+            if found.isEmpty {
+                // Nothing found is a failure for the planner, not a results page.
+                session.record(context, site: SiteSummary(name: name, outcome: outcome, candidates: 0, latencyMs: latency))
+                return .failed("no site found for \(name)")
+            }
             session.showCard(.siteChoices(name: name, found), context: context, recording: false)
             session.record(context, site: SiteSummary(name: name, outcome: outcome, candidates: found.count, latencyMs: latency))
+            return .nothing
         } catch {
             let latency = Int((clock.now - start) / .milliseconds(1))
-            guard session.isCurrent(token) else { return }
+            guard session.isCurrent(token) else { return .nothing }
             fellBackToResults(for: name, context: context, in: session, outcome: outcome, reason: Self.describe(error), latencyMs: latency)
+            return .nothing
         }
     }
 

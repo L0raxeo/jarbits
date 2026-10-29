@@ -55,7 +55,7 @@ import Testing
         #expect(questions["x0"] == nil)
         #expect(questions["continues"] == nil, "the chain replaced the continues question")
         #expect((questions["instinct"] as? [String: Any])?["instructions"] as? String == EngineRequest.instructions)
-        #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["remember", "reasoning"])
+        #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["remember", "notebook.action?", "notebook.action", "notebook.all?", "notebook.all", "reasoning"])
     }
 
     @Test func exchangesAddStateReadTheQueryInContextAndAskRelevancePerExchange() throws {
@@ -87,7 +87,7 @@ import Testing
             #expect(Set(criteria.keys) == ["true", "false"])
             #expect(criteria["true"]?.contains("wait no I meant brazil") == true)
         }
-        #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["remember", "x0", "x1", "reasoning"], "the format choice stays first, the score last")
+        #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["remember", "notebook.action?", "notebook.action", "notebook.all?", "notebook.all", "x0", "x1", "reasoning"], "the format choice stays first, the score last")
     }
 
     @Test func aPageExchangeCarriesItsTitleHostAndAddress() throws {
@@ -184,7 +184,7 @@ import Testing
         let otherPick = try decide(jevResponse(choice: "web_results", confidence: 0.9, probabilities: ["web_results": 0.9], nouls: ["stock.mode?": 0.9, "stock.fan?": 0.8, "stock.fan": 0.95], choices: ["stock.mode": (choice: "cool", confidence: 0.8)]))
         #expect(otherPick.arguments == nil, "read for the pick only")
         #expect(try JSONDecoder().decode(Pick.self, from: JSONEncoder().encode(stated)).arguments == ["mode": "cool", "fan": "true"])
-        #expect(EngineRequest.request(for: "x", locale: locale).questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["remember", "reasoning"], "no instinct declares a closed-set field today")
+        #expect(EngineRequest.request(for: "x", locale: locale).questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["remember", "notebook.action?", "notebook.action", "notebook.all?", "notebook.all", "reasoning"], "no instinct declares a closed-set field today")
     }
 
     @Test func scoreAnswerDecodes() throws {
@@ -294,7 +294,7 @@ import Testing
         #expect(criteria["false"]?.contains("open youtube") == true)
         #expect(questions["x0"] == nil, "no exchanges, no relevance questions")
         #expect((questions["instinct"] as? [String: Any])?["instructions"] as? String == EngineRequest.instructions, "the format question reads the query as typed")
-        #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["rejects", "remember", "reasoning"], "the format choice stays first")
+        #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["rejects", "remember", "notebook.action?", "notebook.action", "notebook.all?", "notebook.all", "reasoning"], "the format choice stays first")
     }
 
     @Test func anOpenedSiteAndExchangesCoexist() throws {
@@ -303,7 +303,7 @@ import Testing
         let json = try #require(JSONSerialization.jsonObject(with: try request.jsonData()) as? [String: Any])
         let state = try #require(json["state"] as? [String: Any])
         #expect(Set(state.keys) == ["query", "locale", "exchanges", "opened_site_name", "opened_site_host"])
-        #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["rejects", "remember", "x0", "reasoning"])
+        #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["rejects", "remember", "notebook.action?", "notebook.action", "notebook.all?", "notebook.all", "x0", "reasoning"])
     }
 
     @Test func withoutAnOpenedSiteNothingIsAdded() throws {
@@ -311,9 +311,9 @@ import Testing
         let json = try #require(JSONSerialization.jsonObject(with: try request.jsonData()) as? [String: Any])
         let state = try #require(json["state"] as? [String: Any])
         #expect(Set(state.keys) == ["query", "locale"])
-        #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["remember", "reasoning"])
+        #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["remember", "notebook.action?", "notebook.action", "notebook.all?", "notebook.all", "reasoning"])
         let criteria = try #require(((json["questions"] as? [String: Any])?["instinct"] as? [String: Any])?["criteria"] as? [String: Any])
         #expect(criteria["site"] != nil, "site is one of the options")
-        #expect(Array(Instinct.allCases.map(\.rawValue)).suffix(5) == ["site", "video", "remember", "forget", "time"], "appended in order, so the other options keep theirs")
+        #expect(Array(Instinct.allCases.map(\.rawValue)).suffix(6) == ["site", "video", "remember", "forget", "time", "notebook"], "appended in order, so the other options keep theirs")
     }
 }

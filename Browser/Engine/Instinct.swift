@@ -42,8 +42,13 @@ struct InstinctOutcome {
     var text: String
     /// What a recall in a plan found, for the plan to point at by handle.
     var found: [MemoryRecord] = []
+    /// The instinct could not do the thing: why, in Jarvits's words. It
+    /// showed nothing and recorded nothing; the session hands the query to
+    /// the planner, and a plan step reads it as its result.
+    var failed: String? = nil
 
     static let nothing = InstinctOutcome(fact: nil, text: "")
+    static func failed(_ reason: String) -> InstinctOutcome { InstinctOutcome(fact: nil, text: reason, failed: reason) }
 }
 
 /// One instinct as the app runs it: its spec from the registry, and what it
@@ -73,6 +78,7 @@ enum InstinctRegistry {
             RememberInstinct(),
             ForgetInstinct(),
             TimeInstinct(),
+            NotebookInstinct(),
         ]
         assert(instincts.map(\.spec.id) == InstinctSpec.all.map(\.id), "every spec in the registry has its conformer, in order")
         return instincts

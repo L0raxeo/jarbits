@@ -65,11 +65,11 @@ public struct Planner: Sendable {
     /// search, or shows the saved answer. The model never carries the address.
     public static let openTool = ToolDeclaration(
         name: "open",
-        description: "Show one thing from the listing or from a step's result, by its handle: a page loads, a search loads its results, an answer is shown as it was saved. Puts its result on screen.",
+        description: "Show things from the listing or from a step's result, by handle. One thing: a page loads, a search loads its results, an answer or a note is shown as it is. Several of the same kind (notes, or memories) are shown together in a grid, which is how the user sees more than one at once; a tap opens one. Puts its result on screen.",
         parameters: [
             "type": "object",
-            "properties": ["thing": ["type": "string", "description": "the handle of the thing to show, such as p1 or m2"]],
-            "required": ["thing"],
+            "properties": ["things": ["type": "array", "items": ["type": "string"], "description": "the handles of the things to show, such as [\"m2\"] or [\"n1\", \"n2\", \"n3\"]"]],
+            "required": ["things"],
             "additionalProperties": false,
         ]
     )
@@ -99,6 +99,8 @@ public struct Planner: Sendable {
         if spec.instinct == .recall {
             // In a plan the recall finds; the plan decides what to do with what it found.
             text += " In a plan it shows nothing: its result names what it found, by handle, for open, say, or an answer's about."
+        } else if spec.instinct == .notebook {
+            text += " Every note of my notebook is in the listing: the one the request means goes in note, by handle, whatever words it used for it (\"my watchlist\" means a note titled Watch List); a page or answer to keep goes in item, by handle, and its title and link go in. A topic with no note handle makes a new note by that name (add, new) or fails (open, delete). Shows the note afterwards."
         } else {
             text += spec.showsLayer ? " Puts its result on screen." : " Shows nothing; a mark says what was done."
         }
@@ -119,8 +121,8 @@ public struct Planner: Sendable {
             "- To tell \(persona.user) something you already know in full (from the facts below, the memories shown to you, or earlier steps' results), call say with it. To tell them something you would have to work out or look up, call narrative or one_line with a complete, self-contained question in its query, with whatever you learned from earlier steps folded in; the device answers it. Never write an answer into a question.",
             "- To confirm something, to choose, or to get a value the request leaves out, call ask; the answer comes back as the result.",
             "- A tool that costs money or cannot be undone is confirmed with \(persona.user) by the device before it runs, not by you.",
-            "- Show at most one thing, as the last step: \(InstinctSpec.all.filter { $0.showsLayer && $0.instinct != .recall }.map(\.id).joined(separator: ", ")), say and open each put a result on screen, and a second one would replace the first.",
-            "- The listing tags each earlier thing of this session (p1, p2) and each memory (m1, m2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. recall's result names what it found by handle; open shows one; say, or an answer with about, tells \(persona.user) about one.",
+            "- \(InstinctSpec.all.filter { $0.showsLayer && $0.instinct != .recall }.map(\.id).joined(separator: ", ")), say and open each put a result on screen, and a later one replaces the earlier: end on what \(persona.user) should see.",
+            "- The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2) and each note of my notebook (n1, n2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. recall's result names what it found by handle; open shows one; say, or an answer with about, tells \(persona.user) about one.",
             "- When an answer on the sheet is something lasting about \(persona.user) or their life, call remember with it next.",
             "- remember and forget show \(persona.user) a mark saying what was kept or dropped: never also say it.",
             "- A request about \(persona.users) own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about \(persona.user).",
@@ -141,8 +143,15 @@ public struct Planner: Sendable {
         input(query: query, things: ThingTable(exchanges: exchanges, memories: memories), now: now, calendar: calendar)
     }
 
-    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current) -> String {
+    /// `lead` is the one line before the request that says why the planner
+    /// has it: what an instinct tried and could not do (`failureLead`), or
+    /// that the classifier picked an instinct that is reasoned (`pickedLead`).
+    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil) -> String {
         var lines = ["Request: \(query)"]
+        if let lead, !lead.isEmpty {
+            lines.append("")
+            lines.append(lead)
+        }
         let exchanges = things.exchangeEntries
         if !exchanges.isEmpty {
             lines.append("")
@@ -152,10 +161,27 @@ public struct Planner: Sendable {
         let memories = things.memoryEntries
         if !memories.isEmpty {
             lines.append("")
-            lines.append("Seen in this app before, that the request may mean (newest first):")
+            lines.append("Seen in this app before, the newest (recall finds the rest):")
             lines += memories.map { "- " + ThingTable.line($0, now: now, calendar: calendar) }
         }
+        let notes = things.noteEntries
+        if !notes.isEmpty {
+            lines.append("")
+            lines.append("In my notebook, every note (newest first):")
+            lines += notes.map { "- " + ThingTable.line($0, now: now, calendar: calendar) }
+        }
         return lines.joined(separator: "\n")
+    }
+
+    /// The lead line for an instinct that tried first and could not.
+    public static func failureLead(_ reason: String) -> String {
+        "Tried first, and could not: \(reason). Do what the request needs another way, or say so."
+    }
+
+    /// The lead line for an instinct the classifier picked with confidence
+    /// but that is reasoned: the planner runs it with everything in view.
+    public static func pickedLead(_ instinct: Instinct) -> String {
+        "The classifier picked \(instinct.rawValue) with confidence; you run it, because it acts on things: fill its values from the request and the listing, and call it."
     }
 
     /// What a recall found, as a step's result: the handles minted for the

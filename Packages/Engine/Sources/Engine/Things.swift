@@ -8,12 +8,13 @@ import Foundation
 public enum Thing: Sendable, Equatable {
     case exchange(Exchange)
     case memory(MemoryRecord)
+    case note(Note)
 }
 
 /// What a thing is, exactly, for an instinct to act on.
 public struct Reference: Sendable, Equatable {
     public enum Kind: String, Sendable {
-        case page, search, answer, picture, recall, site, action
+        case page, search, answer, picture, recall, site, action, note
     }
 
     public var kind: Kind
@@ -22,14 +23,16 @@ public struct Reference: Sendable, Equatable {
     public var term: String?
     public var text: String?
     public var memoryID: UUID?
+    public var noteID: UUID?
 
-    public init(kind: Kind, title: String, address: URL? = nil, term: String? = nil, text: String? = nil, memoryID: UUID? = nil) {
+    public init(kind: Kind, title: String, address: URL? = nil, term: String? = nil, text: String? = nil, memoryID: UUID? = nil, noteID: UUID? = nil) {
         self.kind = kind
         self.title = title
         self.address = address
         self.term = term
         self.text = text
         self.memoryID = memoryID
+        self.noteID = noteID
     }
 
     public init(_ thing: Thing) {
@@ -46,6 +49,8 @@ public struct Reference: Sendable, Equatable {
                 self.init(kind: .recall, title: exchange.title ?? exchange.query, text: exchange.text)
             case .site:
                 self.init(kind: .site, title: exchange.title ?? exchange.query, text: exchange.text)
+            case .note:
+                self.init(kind: .note, title: exchange.title ?? exchange.query, text: exchange.text)
             }
         case let .memory(record):
             let kind: Kind = switch record.kind {
@@ -56,6 +61,8 @@ public struct Reference: Sendable, Equatable {
             case .action: .action
             }
             self.init(kind: kind, title: record.title, address: record.url, term: record.kind == .search ? record.query : nil, text: record.text, memoryID: record.id)
+        case let .note(note):
+            self.init(kind: .note, title: note.title, text: note.excerpt, noteID: note.id)
         }
     }
 
@@ -70,6 +77,7 @@ public struct Reference: Sendable, Equatable {
         case .picture: return Exchange(query: query, kind: .search, text: title)
         case .recall: return .recall(query: query, title: title, titles: [])
         case .site: return .site(query: query, name: title, hosts: [])
+        case .note: return .note(query: query, title: title, excerpt: text ?? "")
         }
     }
 }
@@ -88,6 +96,7 @@ extension Exchange {
         case .site:
             if let text { "Chose among sites for \"\(title ?? query)\": \(text)" }
             else { "Chose among sites for \"\(title ?? query)\"" }
+        case .note: "Opened my note \"\(title ?? query)\""
         }
     }
 }
@@ -105,13 +114,29 @@ public struct ThingTable: Sendable, Equatable {
     public private(set) var entries: [Entry] = []
     private var exchangesMinted = 0
     private var memoriesMinted = 0
+    private var notesMinted = 0
 
-    public init(exchanges: [Exchange] = [], memories: [MemoryRecord] = []) {
+    public init(exchanges: [Exchange] = [], memories: [MemoryRecord] = [], notes: [Note] = []) {
         for exchange in exchanges {
             exchangesMinted += 1
             entries.append(Entry(handle: "p\(exchangesMinted)", thing: .exchange(exchange)))
         }
         _ = mint(memories)
+        _ = mint(notes: notes)
+    }
+
+    /// Handles for notes the words may mean; a note already listed keeps its handle.
+    @discardableResult
+    public mutating func mint(notes: [Note]) -> [String] {
+        notes.map { note in
+            if let existing = entries.first(where: { if case let .note(known) = $0.thing { known.id == note.id } else { false } }) {
+                return existing.handle
+            }
+            notesMinted += 1
+            let handle = "n\(notesMinted)"
+            entries.append(Entry(handle: handle, thing: .note(note)))
+            return handle
+        }
     }
 
     /// Handles for records a step found; a record already in the table
@@ -136,6 +161,7 @@ public struct ThingTable: Sendable, Equatable {
     public var handles: [String] { entries.map(\.handle) }
     public var exchangeEntries: [Entry] { entries.filter { if case .exchange = $0.thing { true } else { false } } }
     public var memoryEntries: [Entry] { entries.filter { if case .memory = $0.thing { true } else { false } } }
+    public var noteEntries: [Entry] { entries.filter { if case .note = $0.thing { true } else { false } } }
 
     /// One thing as the planner's listing gives it: its handle and what it is.
     public static func line(_ entry: Entry, now: Date, calendar: Calendar = .current) -> String {
@@ -148,6 +174,11 @@ public struct ThingTable: Sendable, Equatable {
             var line = "\(entry.handle): \(article) \(label) from \(RecallRouting.when(record.date, now: now, calendar: calendar))"
             if let host = record.url?.host() { line += " (\(host))" }
             line += ": \"\(record.title)\""
+            return line
+        case let .note(note):
+            var line = "\(entry.handle): My note \"\(note.title)\", edited \(RecallRouting.when(note.edited, now: now, calendar: calendar))"
+            let excerpt = note.excerpt
+            if !excerpt.isEmpty { line += ": \"\(String(excerpt.prefix(80)))\"" }
             return line
         }
     }

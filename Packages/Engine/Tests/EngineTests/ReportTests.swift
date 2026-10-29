@@ -20,7 +20,7 @@ import Testing
                 #expect(markdown.contains(instructions.replacingOccurrences(of: "\n", with: " ")))
                 for option in options {
                     #expect(markdown.contains("| `\(option.name)` |"), "missing option \(option.name)")
-                    #expect(markdown.contains(option.criterion.examples[0]))
+                    if let example = option.criterion.examples.first { #expect(markdown.contains(example)) }
                 }
             case let .noul(instructions, criteria):
                 #expect(markdown.contains("### `\(id)` — type `noul`"))

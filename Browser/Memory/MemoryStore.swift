@@ -1,4 +1,5 @@
 import Foundation
+import Answers
 import Engine
 
 /// The memories file: every result the user saw, so a `recall` query can
@@ -11,12 +12,24 @@ import Engine
 /// `pictureCapacity` pages (kept memories exempt) and deleted with the
 /// record. Lines in the flat shape from before parts read through the
 /// record's own decoder and are rewritten in the current shape as records
-/// are refreshed. Nothing in it leaves the phone.
+/// are refreshed. Beside the file, `memories.index` keeps the meaning of
+/// each record (`MeaningIndex`, Gemini's embedding of its title, query,
+/// host and first words), so a request finds a memory by what it is about
+/// and not only by the words they share; the index is filled as records
+/// are kept, caught up on first use for anything missed, and never the
+/// truth: the file is. Nothing in the file leaves the phone; a record's
+/// text goes to Gemini once, to be embedded.
 actor MemoryStore {
-    static let shared = MemoryStore()
+    /// With Gemini's embedder when a key is configured; the session's default.
+    @MainActor static let shared = MemoryStore(embedder: Secrets.geminiAPIKey.map { GeminiEmbedder(apiKey: $0) })
 
     nonisolated let fileURL: URL
     nonisolated let picturesURL: URL
+    nonisolated let indexURL: URL
+    /// The meaning beside the file; nil without an embedder (no Gemini key).
+    private let index: MeaningIndex?
+    /// The first catch-up of the index after a load; awaited before a look.
+    private var backfill: Task<Void, Never>?
     /// Records kept; at a few hundred bytes each (a few KB for a narrative)
     /// the file stays well under a hundred megabytes.
     static let capacity = 5_000
@@ -31,7 +44,7 @@ actor MemoryStore {
     private var loaded: [MemoryRecord]?
     private var lastFlush: Date?
 
-    init(fileURL: URL? = nil) {
+    init(fileURL: URL? = nil, embedder: (any Embedder)? = nil) {
         if let fileURL {
             self.fileURL = fileURL
         } else {
@@ -39,13 +52,16 @@ actor MemoryStore {
             self.fileURL = support.appending(path: "memories.jsonl")
         }
         picturesURL = self.fileURL.deletingLastPathComponent().appending(path: "memories", directoryHint: .isDirectory)
+        let indexURL = self.fileURL.deletingLastPathComponent().appending(path: "memories.index")
+        self.indexURL = indexURL
+        index = embedder.map { MeaningIndex(fileURL: indexURL, embedder: $0) }
     }
 
     /// Keeps the record and returns the id kept: the existing record's on a
     /// repeat, so a picture taken afterwards lands on it.
     @discardableResult
-    func remember(_ record: MemoryRecord) -> UUID {
-        flushIfDue(now: record.date)
+    func remember(_ record: MemoryRecord) async -> UUID {
+        await flushIfDue(now: record.date)
         var all = records()
         if let i = all.lastIndex(where: { $0.sameThing(as: record) && abs(record.date.timeIntervalSince($0.date)) < Self.repeatWindow }) {
             // The same thing again: the date and the title move on, and the
@@ -57,11 +73,14 @@ actor MemoryStore {
             if record.parts.count >= all[i].parts.count { all[i].parts = record.parts }
             loaded = all
             rewrite(all)
-            return all[i].id
+            let merged = all[i]
+            await index?.index(merged.id, text: merged.indexText)
+            return merged.id
         }
         all.append(record)
+        var dropped: [MemoryRecord] = []
         if all.count > Self.capacity {
-            let dropped = all.prefix(all.count - Self.capacity)
+            dropped = Array(all.prefix(all.count - Self.capacity))
             all.removeFirst(dropped.count)
             loaded = all
             rewrite(all)
@@ -71,6 +90,10 @@ actor MemoryStore {
             append(record)
         }
         prunePictures(all)
+        // The meaning last, once the file holds the record; a failed embed
+        // (offline) is caught up on at the next look.
+        if !dropped.isEmpty { await index?.remove(dropped.map(\.id)) }
+        await index?.index(record.id, text: record.indexText)
         return record.id
     }
 
@@ -100,7 +123,7 @@ actor MemoryStore {
     /// Short-term memories untouched for a week go, with their pictures.
     /// Run on first load and then at most once a day, from `remember`.
     @discardableResult
-    func flush(now: Date = .now) -> Int {
+    func flush(now: Date = .now) async -> Int {
         lastFlush = now
         let all = records()
         let gone = all.filter { $0.expires(by: now) }
@@ -109,12 +132,13 @@ actor MemoryStore {
         loaded = keptRecords
         rewrite(keptRecords)
         for old in gone { try? FileManager.default.removeItem(at: pictureURL(for: old.id)) }
+        await index?.remove(gone.map(\.id))
         return gone.count
     }
 
-    private func flushIfDue(now: Date) {
+    private func flushIfDue(now: Date) async {
         if let lastFlush, now.timeIntervalSince(lastFlush) < Self.flushInterval { return }
-        flush(now: now)
+        await flush(now: now)
     }
 
     /// Long-term from now on: never flushed, its picture never pruned.
@@ -126,32 +150,71 @@ actor MemoryStore {
         rewrite(all)
     }
 
-    /// Gone, with its picture.
-    func forget(_ id: UUID) {
+    /// Gone, with its picture and its meaning.
+    func forget(_ id: UUID) async {
         var all = records()
         guard let i = all.firstIndex(where: { $0.id == id }) else { return }
         all.remove(at: i)
         loaded = all
         rewrite(all)
         try? FileManager.default.removeItem(at: pictureURL(for: id))
+        await index?.remove(id)
     }
 
     func search(topic: String) -> [MemoryRecord] {
         MemorySearch.matches(records(), topic: topic)
     }
 
-    /// The candidates for a recall: the records the ask allows, ranked by
-    /// words then recency; see `MemorySearch.shortlist`.
-    func shortlist(topic: String?, ask: RecallAsk = RecallAsk()) -> [MemoryRecord] {
-        MemorySearch.shortlist(records(), topic: topic, ask: ask)
+    /// The candidates for a recall: the records the ask allows, the
+    /// nearest the topic in meaning first when the index can say, taking
+    /// turns with the word matches, then recency; see `MemorySearch.shortlist`.
+    func shortlist(topic: String?, ask: RecallAsk = RecallAsk()) async -> [MemoryRecord] {
+        let all = records()
+        var ranked: [UUID] = []
+        if let index, let topic, !MemorySearch.terms(of: topic).isEmpty, ask.count == nil {
+            await caughtUp()
+            ranked = await index.nearest(to: topic, limit: MemorySearch.limit).map(\.id)
+        }
+        return MemorySearch.shortlist(all, topic: topic, ask: ask, ranked: ranked)
     }
 
-    /// Everything goes: the file and every picture. Debug builds offer this
-    /// from the idle screen; there is no user-facing control yet.
-    func clear() {
+    /// The records nearest a request in meaning, nearest first, topped up
+    /// with the newest to `limit`; the newest alone without an index or
+    /// when the request cannot be embedded (offline).
+    func nearest(to text: String, limit: Int) async -> [MemoryRecord] {
+        let all = records()
+        let newest = all.sorted { $0.date > $1.date }
+        var out: [MemoryRecord] = []
+        if let index {
+            await caughtUp()
+            let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            out = await index.nearest(to: text, limit: limit).compactMap { byID[$0.id] }
+        }
+        let have = Set(out.map(\.id))
+        for record in newest where out.count < limit && !have.contains(record.id) { out.append(record) }
+        return out
+    }
+
+    /// The index holds every record once this returns: the first look after
+    /// a load embeds whatever was kept before the index existed, or while
+    /// offline, in batches.
+    private func caughtUp() async {
+        guard let index else { return }
+        if backfill == nil {
+            let items = records().map { (id: $0.id, text: $0.indexText) }
+            backfill = Task { await index.backfill(items) }
+        }
+        await backfill?.value
+        backfill = nil   // the next look checks again, cheaply, for anything missed since
+    }
+
+    /// Everything goes: the file, every picture and the index. Debug builds
+    /// offer this from the idle screen; there is no user-facing control yet.
+    func clear() async {
         loaded = []
         try? FileManager.default.removeItem(at: fileURL)
         try? FileManager.default.removeItem(at: picturesURL)
+        await index?.removeAll()
     }
 
     func all() -> [MemoryRecord] {
@@ -174,7 +237,20 @@ actor MemoryStore {
             }
         }
         loaded = read
-        if lastFlush == nil { flush() }
+        if lastFlush == nil {
+            // The first flush: expired records go now; their meanings go
+            // with the next catch-up, which only ever adds, so a stale entry
+            // in the index is harmless and is dropped at the next remove.
+            lastFlush = .now
+            let gone = read.filter { $0.expires(by: .now) }
+            if !gone.isEmpty {
+                let kept = read.filter { !$0.expires(by: .now) }
+                loaded = kept
+                rewrite(kept)
+                for old in gone { try? FileManager.default.removeItem(at: pictureURL(for: old.id)) }
+                if let index { Task { await index.remove(gone.map(\.id)) } }
+            }
+        }
         return loaded ?? read
     }
 

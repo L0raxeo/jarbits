@@ -45,7 +45,7 @@ public enum AnswerPrompt {
         switch format {
         case .narrative: narrative(persona)
         case .oneLine: oneLine(persona)
-        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time:
+        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time, .notebook:
             preconditionFailure("\(format) is not answered by a model")
         }
     }
@@ -61,7 +61,7 @@ public enum AnswerPrompt {
         switch format {
         case .narrative: 800
         case .oneLine: 160
-        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time:
+        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time, .notebook:
             preconditionFailure("\(format) is not answered by a model")
         }
     }
@@ -100,7 +100,7 @@ public enum AnswerPrompt {
     /// One exchange as a line of the input block.
     static func describe(_ exchange: Exchange) -> String {
         switch exchange.kind {
-        case .answer, .page, .search, .recall, .site: exchange.described
+        case .answer, .page, .search, .recall, .site, .note: exchange.described
         }
     }
 

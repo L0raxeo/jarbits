@@ -31,6 +31,25 @@ public struct PlanCase: Codable, Equatable, Sendable {
         }
     }
 
+    /// A note of the notebook shown to the planner.
+    public struct NoteCase: Codable, Equatable, Sendable {
+        public var title: String
+        public var body: String?
+        public var daysAgo: Double?
+
+        public init(title: String, body: String? = nil, daysAgo: Double? = nil) {
+            self.title = title
+            self.body = body
+            self.daysAgo = daysAgo
+        }
+
+        public func note(now: Date) -> Note {
+            let id = UUID(uuidString: "00000000-0000-4000-8000-" + String(format: "%012x", abs(title.hashValue) % 0xFFFF_FFFF_FFFF)) ?? UUID()
+            let date = now.addingTimeInterval(-(daysAgo ?? 0) * 86_400)
+            return Note(id: id, title: title, body: body ?? "", created: date, edited: date)
+        }
+    }
+
     /// A call the first round should make: by name (`site|ask` when either
     /// is right), with any argument values that matter (a handle, say).
     /// Other arguments are not checked.
@@ -50,15 +69,26 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var exchanges: [Exchange]?
     public var facts: [String]?
     public var memories: [Memory]?
+    public var notes: [NoteCase]?
     public var calls: [ExpectedCall]
+    /// The expected calls are the first ones; whatever follows in the same round is fine.
+    public var prefix: Bool?
+    /// What an instinct tried and could not do before the plan, as the planner is told.
+    public var failure: String?
+    /// The instinct the classifier picked with confidence that is reasoned, so the planner runs it.
+    public var picked: Instinct?
     public var note: String?
 
-    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, memories: [Memory]? = nil, calls: [ExpectedCall], note: String? = nil) {
+    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, memories: [Memory]? = nil, notes: [NoteCase]? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
         self.memories = memories
+        self.notes = notes
         self.calls = calls
+        self.prefix = prefix
+        self.failure = failure
+        self.picked = picked
         self.note = note
     }
 
@@ -67,7 +97,10 @@ public struct PlanCase: Codable, Equatable, Sendable {
         var name = query
         if let facts, !facts.isEmpty { name += " knowing \(facts.count)" }
         if let memories, !memories.isEmpty { name += " with \(memories.count) memories" }
+        if let notes, !notes.isEmpty { name += " with \(notes.count) notes" }
         if let last = exchanges?.last { name += " after \"\(last.query)\"" }
+        if failure != nil { name += " after a failure" }
+        if let picked { name += " picked \(picked.rawValue)" }
         return name
     }
 }
@@ -101,6 +134,7 @@ public enum PlanCheck {
     public static func failures(_ planCase: PlanCase, calls: [(name: String, arguments: [String: String])]) -> [String] {
         var called = calls
         while called.count > planCase.calls.count, called.last?.name == "done" { called.removeLast() }
+        if planCase.prefix == true, called.count > planCase.calls.count { called = Array(called.prefix(planCase.calls.count)) }
         var failures: [String] = []
         let expectedNames = planCase.calls.map(\.name)
         let calledNames = called.map(\.name)

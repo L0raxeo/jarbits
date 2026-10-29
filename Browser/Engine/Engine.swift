@@ -65,10 +65,13 @@ struct Engine {
             decision = .noKey()
         }
         let chained = Array(sent.suffix(decision.chainedCount))
-        // An unsure pick, or a sure one that needs several steps: the
-        // session plans it instead of running the pick.
-        if planner != nil, ReasoningPolicy.entersReasoning(decision) {
-            return EngineResult(query: query, decision: decision, reading: reading, reasoning: true, chained: chained.map(\.exchange))
+        // An unsure pick, a sure one that needs several steps, or an
+        // instinct that has not earned the shortcut: the session plans it
+        // instead of running the pick.
+        let picked = InstinctSpec.spec(for: decision.instinct)
+        if planner != nil, ReasoningPolicy.entersReasoning(decision, spec: picked) {
+            let lead = decision.source == .jev && !picked.shortcut ? Planner.pickedLead(decision.instinct) : nil
+            return EngineResult(query: query, decision: decision, reading: reading, reasoning: true, chained: chained.map(\.exchange), lead: lead)
         }
         // The values the pick takes: what Jev read for its closed-set
         // fields, and what the extractor reads out of the words for every
@@ -121,9 +124,18 @@ struct Engine {
         // chain's newest page, search or answer, else the layer on screen.
         var things: [String: Reference] = [:]
         if !spec.arguments.things.isEmpty {
-            let leaned = chained.map(\.exchange).last { [.page, .search, .answer].contains($0.kind) } ?? current?.exchanges.last?.exchange
+            // The note on screen is the thing itself; otherwise the chain's
+            // newest page, search or answer, else the layer on screen.
+            let leaned: Reference?
+            if let current, case let .note(note) = current.plan {
+                leaned = Reference(.note(note))
+            } else if let exchange = chained.map(\.exchange).last(where: { [.page, .search, .answer].contains($0.kind) }) ?? current?.exchanges.last?.exchange {
+                leaned = Reference(.exchange(exchange))
+            } else {
+                leaned = nil
+            }
             if let leaned {
-                for field in spec.arguments.things { things[field.name] = Reference(.exchange(leaned)) }
+                for field in spec.arguments.things { things[field.name] = leaned }
             }
         }
         var context = InstinctContext(
@@ -163,6 +175,8 @@ struct EngineResult {
     /// The query goes to advanced reasoning, with these exchanges as what it depends on.
     var reasoning = false
     var chained: [Exchange] = []
+    /// Why the planner has it, when the pick itself is reasoned.
+    var lead: String? = nil
 }
 
 extension BrowserSession {

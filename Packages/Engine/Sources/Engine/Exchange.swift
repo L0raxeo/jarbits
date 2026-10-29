@@ -18,6 +18,8 @@ public struct Exchange: Codable, Sendable, Hashable {
         case recall
         /// The choices card for a site name; `title` is the name, `text` the hosts offered.
         case site
+        /// A note of the notebook opened or changed; `title` is its title, `text` its first lines.
+        case note
     }
 
     public var query: String
@@ -56,6 +58,10 @@ public struct Exchange: Codable, Sendable, Hashable {
         Exchange(query: query, kind: .site, title: name, text: hosts.isEmpty ? nil : hosts.joined(separator: ", "))
     }
 
+    public static func note(query: String, title: String, excerpt: String) -> Exchange {
+        Exchange(query: query, kind: .note, title: title, text: excerpt.isEmpty ? nil : excerpt)
+    }
+
     /// A conversation's turns as exchanges, oldest first.
     public static func fromTurns(_ turns: [AnswerTurn]) -> [Exchange] {
         turns.map { answer(query: $0.query, answer: $0.answer) }
@@ -74,6 +80,7 @@ public struct Exchange: Codable, Sendable, Hashable {
         case .search: text.map { "web results for \"\($0)\"" } ?? "web results"
         case .recall: "a grid of earlier memories"
         case .site: title.map { "a choice of sites for \"\($0)\"" } ?? "a choice of sites"
+        case .note: title.map { "my note \"\($0)\"" } ?? "a note of my notebook"
         }
     }
 }

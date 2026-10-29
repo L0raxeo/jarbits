@@ -112,6 +112,10 @@ struct ResultView: View {
             RecallGridView(records: records, title: title, topInset: topInset, barCompact: $barCompact)
         case let .siteChoices(name, candidates):
             SiteChoicesView(name: name, candidates: candidates, clayY: clayY)
+        case let .note(note):
+            NoteView(note: note, topInset: topInset, barCompact: $barCompact)
+        case let .notes(notes, title):
+            NotesGridView(notes: notes, title: title, topInset: topInset, barCompact: $barCompact)
         }
     }
 

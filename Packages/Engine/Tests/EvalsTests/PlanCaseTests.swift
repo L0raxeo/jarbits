@@ -23,6 +23,9 @@ import Testing
     @Test func theFirstRoundsCallsAreCheckedByNameThenByPinnedArguments() {
         let planCase = PlanCase(query: "open the dyson page", calls: [.init(name: "open", arguments: ["thing": "m1"])])
         #expect(PlanCheck.failures(planCase, calls: [("open", ["thing": "M1 "])]).isEmpty, "a handle compares loosely")
+        let several = PlanCase(query: "show both", calls: [.init(name: "open", arguments: ["things": "n1, n2"])], failure: "x")
+        #expect(PlanCheck.failures(several, calls: [("open", ["things": "n1, n2"])]).isEmpty, "a list of handles reads joined")
+        #expect(several.name == "show both after a failure")
         #expect(PlanCheck.failures(planCase, calls: [("open", ["thing": "m1"]), ("done", [:])]).isEmpty, "a trailing done is fine")
         #expect(PlanCheck.failures(planCase, calls: [("open", ["thing": "m2"])]) == ["open.thing: expected \"m1\", got \"m2\""])
         #expect(PlanCheck.failures(planCase, calls: [("web_results", ["query": "dyson"])]) == ["calls: expected open, got web_results"])

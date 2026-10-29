@@ -14,7 +14,9 @@ import Testing
         let recall = try #require(tools.first { $0.name == "recall" })
         #expect(recall.description.contains("In a plan it shows nothing: its result names what it found, by handle"))
         let open = try #require(tools.first { $0.name == "open" })
-        #expect(open.parameters["required"]?.arrayValue?.first?.stringValue == "thing")
+        #expect(open.parameters["required"]?.arrayValue?.first?.stringValue == "things")
+        #expect(open.parameters["properties"]?["things"]?["type"]?.stringValue == "array")
+        #expect(open.description.contains("shown together in a grid"))
         for tool in tools.dropLast(4) {
             let requiredNames = tool.parameters["required"]?.arrayValue?.compactMap { $0.stringValue }
             let required = try #require(requiredNames)
@@ -50,8 +52,9 @@ import Testing
         #expect(system.contains("call say with it"))
         #expect(system.contains("Never write an answer into a question"))
         #expect(system.contains("What Jarvits knows about Lorcan"))
-        #expect(system.contains("Show at most one thing, as the last step: web_results, narrative, map, stock, one_line, image, site, video, time, say and open each put a result on screen"))
-        #expect(system.contains("The listing tags each earlier thing of this session (p1, p2) and each memory (m1, m2)"))
+        #expect(system.contains("web_results, narrative, map, stock, one_line, image, site, video, time, notebook, say and open each put a result on screen, and a later one replaces the earlier: end on what Lorcan should see"))
+        #expect(!system.contains("Show at most one thing"))
+        #expect(system.contains("The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2) and each note of my notebook (n1, n2)"))
         #expect(system.contains("never one you made up"))
         #expect(system.contains("call remember with it next"))
         #expect(system.contains("never call it again with the same arguments"))
@@ -59,6 +62,13 @@ import Testing
         #expect(system.contains("- Lorcan is vegetarian\n- Lorcan lives in Austin"))
         #expect(system.contains("Locale: en_US"))
         #expect(Planner.system(facts: [], context: .example).contains("- nothing yet"))
+    }
+
+    @Test func aFailureIsTheFirstThingThePlannerReads() {
+        let input = Planner.input(query: "open my packing list", things: ThingTable(), now: AnswerContext.example.now, lead: Planner.failureLead("I have no note the words mean in my notebook"))
+        #expect(input.hasPrefix("Request: open my packing list\n\nTried first, and could not: I have no note the words mean in my notebook. Do what the request needs another way, or say so."))
+        #expect(Planner.pickedLead(.notebook).hasPrefix("The classifier picked notebook with confidence; you run it, because it acts on things"))
+        #expect(!Planner.input(query: "q", things: ThingTable(), now: AnswerContext.example.now).contains("Tried first"))
     }
 
     @Test func theFirstTurnHasTheRequestTheExchangesAndTheMemories() {
@@ -74,7 +84,7 @@ import Testing
         )
         #expect(input.hasPrefix("Request: find a dealer near me for it\n\nEarlier in this session (oldest first):\n- p1: "))
         #expect(input.contains("hennessey venom"))
-        #expect(input.contains("Seen in this app before, that the request may mean (newest first):\n- m1: A page from yesterday (www.hennesseyperformance.com): \"Hennessey Performance\"\n- m2: An answer from today: \"what is a venom f5\""))
+        #expect(input.contains("Seen in this app before, the newest (recall finds the rest):\n- m1: A page from yesterday (www.hennesseyperformance.com): \"Hennessey Performance\"\n- m2: An answer from today: \"what is a venom f5\""))
         let bare = Planner.input(query: "x", exchanges: [], memories: [], now: now)
         #expect(bare == "Request: x")
     }

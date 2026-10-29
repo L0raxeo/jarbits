@@ -71,8 +71,7 @@ struct TimeInstinct: InstinctRunner {
     func run(_ context: InstinctContext, in session: BrowserSession, token: UUID) async -> InstinctOutcome {
         let place = context.arguments["place"]?.stringValue
         guard let text = LocalTimeAnswer.text(place: place, now: .now, locale: .current, homeZone: .current) else {
-            session.openPage(QueryParser.searchURL(for: context.query), context: context)
-            return .nothing
+            return .failed(place.map { "I don't know where \($0) is" } ?? "I don't know which place is meant")
         }
         session.showCard(.time(query: context.query, text: text), context: context)
         return .nothing

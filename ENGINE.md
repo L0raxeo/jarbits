@@ -44,9 +44,10 @@ Options, in the order Jev sees them (it leans toward the first when unsure):
 | 7 | `image` | A single picture of one specific, named thing with a definitive look: a flag, a logo or emblem, a landmark or monument, a painting, a person, a product, a species, a chemical structure. The bare name of such a thing, with no other words, means the user wants to see it, not read about it. | Browsing many pictures of a category, mood or idea, which wants web results; and questions about why something looks the way it does, which want an explanation. | "dominican flag", "eiffel tower", "starry night painting", "nvidia logo", "what does a capybara look like", "mona lisa", "aston martin db5" |
 | 8 | `site` | Open a website or app by its name. The query is a go-to, open, pull-up or take-me-to verb and a site's name, or the bare name of a well-known site with nothing else; the user wants the site itself, not results about it. Over a site this app opened by name, a complaint that it is the wrong one is a request for the same name again. | A search for something on a site ("zillow homes in austin"), a question about a site, and a page the user saw in this app before ("that youtube page from earlier", which is recall). | "go to youtube", "pull up zillow", "open insta", "take me to airbnb", "launch netflix", "reddit" |
 | 9 | `video` | A page of videos to watch. The query asks for videos, clips, highlights, a trailer, a music video, a performance, a tutorial to watch, or to watch or play something: the user wants to press play, not read. | A video the user saw in this app before ("the video I was watching"), which is recall; a website or app by its name ("open youtube"), which is site; one still picture of a thing, which is image; and a topic that merely has videos about it, with no ask to watch, which is web results. | "videos of pele", "pele highlights", "dune part 3 trailer", "watch the super bowl halftime show", "show me cat videos", "how to tie a tie video", "lofi music video" |
-| 10 | `remember` | The user asks the app to keep something in mind about them for later, or tells it something lasting about themselves with nothing else asked: a preference, an allergy, a name, where they live. The words are a remember, a keep-in-mind, a don't-forget, a note-that, or a plain statement about the user; nothing is wanted back but the keeping. | Bringing back something seen in this app before ("remember that convo on the dyson pencilvac", "remember that page"), which is recall; a question that mentions a fact on the way to asking something ("I'm allergic to peanuts, what can I snack on" wants the snacks); a fact about the world. | "remember that I'm allergic to peanuts", "keep in mind I'm vegetarian", "don't forget my wife's name is Ana", "note that I don't eat pork", "I live in austin now" |
+| 10 | `remember` | The user asks the app to keep something in mind about them for later, or tells it something lasting about themselves with nothing else asked: a preference, an allergy, a name, where they live. The words are a remember, a keep-in-mind, a don't-forget, a note-that, or a plain statement about the user; nothing is wanted back but the keeping. | Bringing back something seen in this app before ("remember that convo on the dyson pencilvac", "remember that page"), which is recall; writing the user wants kept as a note or a list ("make a note that…", "add milk to my shopping list"), which is notebook; a question that mentions a fact on the way to asking something ("I'm allergic to peanuts, what can I snack on" wants the snacks); a fact about the world. | "remember that I'm allergic to peanuts", "keep in mind I'm vegetarian", "don't forget my wife's name is Ana", "note that I don't eat pork", "I live in austin now" |
 | 11 | `forget` | The user asks the app to forget, drop or stop remembering something it knows about them: the fact just noted, or one named by its subject. | Forgetting a page, a search or an answer, which is nothing the app keeps as a fact; a new question; "never mind" about a query just typed. | "forget that", "forget that I'm vegetarian", "stop remembering my peanut allergy", "drop what I told you about my wife", "you can forget where I live" |
 | 12 | `time` | The time or date right now, here or in a named place: what time it is, the time in Tokyo, today's date, what day it is. The device clock answers it. | Time zones as a topic, how long something takes, a date in history, the weather, and when an event starts, which are answers; and a place to find, which is map. | "what time is it in tokyo", "what's the time in costa rica", "What time is it in Mexico?", "what's the time", "what day is it today" |
+| 13 | `notebook` | Jarvits's notebook: writing the user wants kept as a note or a list, added to, changed, opened, read back or deleted. A note to make, something to put in a list, a page to keep in the notes, a note to open or read out, a note to delete. The notes are the user's own writing, kept as files, not facts about the user. | A lasting fact about the user with nothing to write down ("remember that I'm allergic to peanuts"), which is remember; dropping such a fact, which is forget; bringing back a page, an answer or a search seen in this app before, which is recall. | "make a note that the plumber comes tuesday", "add milk to my shopping list", "open my packing list", "what's in my notes about the trip", "put this page in my notes", "delete that note", "start a new note called ideas" |
 
 Answer: `choice` (one option name), `probabilities` (one per option), `confidence` (0–1).
 
@@ -167,6 +168,63 @@ A yes/no question answered with the probability of yes. Instructions sent with t
 
 Answer: `noul`, the probability of yes (0–1). No confidence field.
 
+### `notebook.action?` — type `noul`
+
+A yes/no question answered with the probability of yes. Instructions sent with the question:
+
+> Read the query as a notebook request. Does the query say anything about its action (what to do in the notebook: new makes a note, add puts text into a note, replace rewrites a note's text, open shows or reads a note, delete removes one)?
+
+| Means | Description |
+|---|---|
+| yes | The words give a value for it, outright or by a plain synonym. |
+| no | The words leave it unsaid, for the default to fill. |
+
+Answer: `noul`, the probability of yes (0–1). No confidence field.
+
+### `notebook.action` — type `choice`
+
+Pick one option from the list. Instructions sent with the question:
+
+> Read the query as a notebook request. Which action (what to do in the notebook: new makes a note, add puts text into a note, replace rewrites a note's text, open shows or reads a note, delete removes one) does the query ask for? If it says nothing about it, pick the first.
+
+Options, in the order Jev sees them (it leans toward the first when unsure):
+
+| # | Option | What it is for | Not for | Queries meant to trigger it |
+|---|---|---|---|---|
+| 1 | `new` | new |  |  |
+| 2 | `add` | add |  |  |
+| 3 | `replace` | replace |  |  |
+| 4 | `open` | open |  |  |
+| 5 | `delete` | delete |  |  |
+
+Answer: `choice` (one option name), `probabilities` (one per option), `confidence` (0–1).
+
+### `notebook.all?` — type `noul`
+
+A yes/no question answered with the probability of yes. Instructions sent with the question:
+
+> Read the query as a notebook request. Does the query say anything about its all (the whole notebook or every note is asked for, rather than one note)?
+
+| Means | Description |
+|---|---|
+| yes | The words give a value for it, outright or by a plain synonym. |
+| no | The words leave it unsaid, for the default to fill. |
+
+Answer: `noul`, the probability of yes (0–1). No confidence field.
+
+### `notebook.all` — type `noul`
+
+A yes/no question answered with the probability of yes. Instructions sent with the question:
+
+> Read the query as a notebook request. Is its all (the whole notebook or every note is asked for, rather than one note) on, true or wanted?
+
+| Means | Description |
+|---|---|
+| yes | The words turn it on, ask for it, or say yes to it. |
+| no | The words turn it off, decline it, or say nothing about it. |
+
+Answer: `noul`, the probability of yes (0–1). No confidence field.
+
 ### `reasoning` — type `score`
 
 A position on an ordered scale. Instructions sent with the question:
@@ -187,7 +245,7 @@ Answer: `score` (the levels weighted by their probabilities, so 0 to 2, possibly
 
 From the second query of a session on, the state carries the earlier exchanges and the `instinct` question's instructions become:
 
-> Which response format best answers this web search query? The state carries the earlier exchanges of this session under `exchanges`, oldest first: each query and what it got (an answer's text, a page's title and address, a search's term). Judge the query as the exchanges it depends on make it, not as typed on its own; a query that stands on its own is judged as typed. A reply, a reaction or a question that leans on an earlier answer, however short, wants narrative; or one_line when the reply is itself a single short fact, a number, a name, a date, a yes/no, as "and chile?" after a capital is. A correction or narrowing of an earlier search ("wait no I meant brazil") wants web_results, read with the correction applied. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, video, remember, forget, time, each described below; or web_results for a page to browse.
+> Which response format best answers this web search query? The state carries the earlier exchanges of this session under `exchanges`, oldest first: each query and what it got (an answer's text, a page's title and address, a search's term). Judge the query as the exchanges it depends on make it, not as typed on its own; a query that stands on its own is judged as typed. A reply, a reaction or a question that leans on an earlier answer, however short, wants narrative; or one_line when the reply is itself a single short fact, a number, a name, a date, a yes/no, as "and chile?" after a capital is. A correction or narrowing of an earlier search ("wait no I meant brazil") wants web_results, read with the correction applied. Pick another format only when the query asks for the kind of thing that format shows: map, stock, recall, image, site, video, remember, forget, time, notebook, each described below; or web_results for a page to browse.
 
 and one question is asked per exchange, `x0` for the oldest sent, `x1` for the next, and so on. For the first of two exchanges:
 
@@ -514,8 +572,8 @@ Rules:
 - To tell Lorcan something you already know in full (from the facts below, the memories shown to you, or earlier steps' results), call say with it. To tell them something you would have to work out or look up, call narrative or one_line with a complete, self-contained question in its query, with whatever you learned from earlier steps folded in; the device answers it. Never write an answer into a question.
 - To confirm something, to choose, or to get a value the request leaves out, call ask; the answer comes back as the result.
 - A tool that costs money or cannot be undone is confirmed with Lorcan by the device before it runs, not by you.
-- Show at most one thing, as the last step: web_results, narrative, map, stock, one_line, image, site, video, time, say and open each put a result on screen, and a second one would replace the first.
-- The listing tags each earlier thing of this session (p1, p2) and each memory (m1, m2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. recall's result names what it found by handle; open shows one; say, or an answer with about, tells Lorcan about one.
+- web_results, narrative, map, stock, one_line, image, site, video, time, notebook, say and open each put a result on screen, and a later one replaces the earlier: end on what Lorcan should see.
+- The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2) and each note of my notebook (n1, n2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. recall's result names what it found by handle; open shows one; say, or an answer with about, tells Lorcan about one.
 - When an answer on the sheet is something lasting about Lorcan or their life, call remember with it next.
 - remember and forget show Lorcan a mark saying what was kept or dropped: never also say it.
 - A request about Lorcan's own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about Lorcan.
@@ -536,7 +594,7 @@ Request: <query>
 Earlier in this session (oldest first):
 - p1: Searched "<term searched>"
 
-Seen in this app before, that the request may mean (newest first):
+Seen in this app before, the newest (recall finds the rest):
 - m1: A page from yesterday (example.com): "<page title>"
 ```
 
@@ -553,12 +611,13 @@ Tools (`tools` on the request), one per instinct, then `ask`, `say`, `open` and 
 | `image` | A single picture of one specific, named thing with a definitive look: a flag, a logo or emblem, a landmark or monument, a painting, a person, a product, a species, a chemical structure. The bare name of such a thing, with no other words, means the user wants to see it, not read about it. Not for: Browsing many pictures of a category, mood or idea, which wants web results; and questions about why something looks the way it does, which want an explanation. Puts its result on screen. | query |
 | `site` | Open a website or app by its name. The query is a go-to, open, pull-up or take-me-to verb and a site's name, or the bare name of a well-known site with nothing else; the user wants the site itself, not results about it. Over a site this app opened by name, a complaint that it is the wrong one is a request for the same name again. Not for: A search for something on a site ("zillow homes in austin"), a question about a site, and a page the user saw in this app before ("that youtube page from earlier", which is recall). Puts its result on screen. | name, query |
 | `video` | A page of videos to watch. The query asks for videos, clips, highlights, a trailer, a music video, a performance, a tutorial to watch, or to watch or play something: the user wants to press play, not read. Not for: A video the user saw in this app before ("the video I was watching"), which is recall; a website or app by its name ("open youtube"), which is site; one still picture of a thing, which is image; and a topic that merely has videos about it, with no ask to watch, which is web results. Puts its result on screen. | query |
-| `remember` | The user asks the app to keep something in mind about them for later, or tells it something lasting about themselves with nothing else asked: a preference, an allergy, a name, where they live. The words are a remember, a keep-in-mind, a don't-forget, a note-that, or a plain statement about the user; nothing is wanted back but the keeping. Not for: Bringing back something seen in this app before ("remember that convo on the dyson pencilvac", "remember that page"), which is recall; a question that mentions a fact on the way to asking something ("I'm allergic to peanuts, what can I snack on" wants the snacks); a fact about the world. Shows nothing; a mark says what was done. | fact, query |
+| `remember` | The user asks the app to keep something in mind about them for later, or tells it something lasting about themselves with nothing else asked: a preference, an allergy, a name, where they live. The words are a remember, a keep-in-mind, a don't-forget, a note-that, or a plain statement about the user; nothing is wanted back but the keeping. Not for: Bringing back something seen in this app before ("remember that convo on the dyson pencilvac", "remember that page"), which is recall; writing the user wants kept as a note or a list ("make a note that…", "add milk to my shopping list"), which is notebook; a question that mentions a fact on the way to asking something ("I'm allergic to peanuts, what can I snack on" wants the snacks); a fact about the world. Shows nothing; a mark says what was done. | fact, query |
 | `forget` | The user asks the app to forget, drop or stop remembering something it knows about them: the fact just noted, or one named by its subject. Not for: Forgetting a page, a search or an answer, which is nothing the app keeps as a fact; a new question; "never mind" about a query just typed. Shows nothing; a mark says what was done. Asks the user itself before acting. | about, query |
 | `time` | The time or date right now, here or in a named place: what time it is, the time in Tokyo, today's date, what day it is. The device clock answers it. Not for: Time zones as a topic, how long something takes, a date in history, the weather, and when an event starts, which are answers; and a place to find, which is map. Puts its result on screen. | place, query |
+| `notebook` | Jarvits's notebook: writing the user wants kept as a note or a list, added to, changed, opened, read back or deleted. A note to make, something to put in a list, a page to keep in the notes, a note to open or read out, a note to delete. The notes are the user's own writing, kept as files, not facts about the user. Not for: A lasting fact about the user with nothing to write down ("remember that I'm allergic to peanuts"), which is remember; dropping such a fact, which is forget; bringing back a page, an answer or a search seen in this app before, which is recall. Every note of my notebook is in the listing: the one the request means goes in note, by handle, whatever words it used for it ("my watchlist" means a note titled Watch List); a page or answer to keep goes in item, by handle, and its title and link go in. A topic with no note handle makes a new note by that name (add, new) or fails (open, delete). Shows the note afterwards. | action, all, item, note, query, text, title, topic |
 | `ask` | Put one short question to the user on a small sheet and get the answer back: to confirm, to choose, or to get a value the request leaves out. Give one to three options with the expected one first, or none for a line of text. | options, question |
 | `say` | Show the user something you already know in full, as the complete answer, on a card: from the facts you were given, the memories shown to you, or earlier steps' results, including "I don't know that yet" when the facts hold nothing on a question about their life. In your own voice to them: you for them, I for yourself. Never for anything that needs knowledge beyond that, which narrative and one_line are for: a page or a thing you have only seen listed by its title is not something you know, so a comparison, a summary or a judgement of it goes through narrative with about, never say. | text |
-| `open` | Show one thing from the listing or from a step's result, by its handle: a page loads, a search loads its results, an answer is shown as it was saved. Puts its result on screen. | thing |
+| `open` | Show things from the listing or from a step's result, by handle. One thing: a page loads, a search loads its results, an answer or a note is shown as it is. Several of the same kind (notes, or memories) are shown together in a grid, which is how the user sees more than one at once; a tap opens one. Puts its result on screen. | things |
 | `done` | Call once the request has been handled, or once nothing you can do would help. |  |
 
 | Outcome | Then | Logged as |

@@ -187,6 +187,13 @@ public struct InstinctSpec: Sendable, Identifiable {
     public var isAnswered: Bool { instinct.isAnswered }
     /// Running it puts a layer on screen; false for one that only acts.
     public let showsLayer: Bool
+    /// Its whole input is in the words, so a near-certain pick may run it
+    /// straight: a search, a question, a picture, a site name, a place, a
+    /// fact to keep or drop, something to recall. Everything else is
+    /// reasoned: the planner runs it with the screen, the stores and every
+    /// tool in view, and fills its values. A new instinct is reasoned
+    /// unless it earns the shortcut here.
+    public let shortcut: Bool
     public let sideEffects: SideEffects
     /// It puts its own question to the user before acting, so a plan
     /// need not confirm it first.
@@ -207,14 +214,18 @@ public struct InstinctSpec: Sendable, Identifiable {
         var sideEffects = SideEffects.none
         var asksItself = false
         var arguments = ArgumentSchema.none
+        var shortcut = false
         switch instinct {
         case .narrative:
+            shortcut = true
             questions = { _ in [(EngineRequest.recencyQuestionID, .noul(instructions: EngineRequest.recencyInstructions, criteria: EngineRequest.recencyCriteria))] }
             arguments = ArgumentSchema(fields: [Self.aboutField])
         case .oneLine:
+            shortcut = true
             questions = { _ in [(EngineRequest.recencyQuestionID, .noul(instructions: EngineRequest.recencyInstructions, criteria: EngineRequest.recencyCriteria))] }
             arguments = ArgumentSchema(fields: [Self.aboutField])
         case .recall:
+            shortcut = true
             questions = { _ in EngineRequest.recallQuestions }
             // The kinds, the name and the set are Jev's questions; the thing
             // to bring back, a count and a day are values the words state,
@@ -226,6 +237,7 @@ public struct InstinctSpec: Sendable, Identifiable {
                 .init(name: "to", kind: .text, description: "the end of that span, as an ISO 8601 date-time; null when none is named", required: false),
             ])
         case .site:
+            shortcut = true
             // Over a site this app opened by name: is the query saying it was the wrong one?
             questions = { context in
                 guard context.opened != nil else { return [] }
@@ -233,34 +245,58 @@ public struct InstinctSpec: Sendable, Identifiable {
             }
             arguments = ArgumentSchema(fields: [.init(name: "name", kind: .text, description: "the site's name or address, as the words give it", required: false)])
         case .webResults:
+            shortcut = true
             // The read words, standing on their own, are the search.
             questions = { _ in [] }
         case .remember:
+            shortcut = true
             // Asked in every request: a yes on another pick is a fact noted quietly.
             questions = { _ in [(EngineRequest.rememberQuestionID, .noul(instructions: EngineRequest.rememberInstructions, criteria: EngineRequest.rememberCriteria))] }
             showsLayer = false
             arguments = ArgumentSchema(fields: [.init(name: "fact", kind: .text, description: "the lasting personal fact to keep, as one whole sentence as Jarvits notes it, naming the user and whoever or whatever else the words relate to them; read by the fact reader (`ValueExtractor.distill`), not the value reader")])
         case .forget:
+            shortcut = true
             questions = { _ in [] }
             showsLayer = false
             sideEffects = .destructive
             asksItself = true
             arguments = ArgumentSchema(fields: [.init(name: "about", kind: .text, description: "what the fact to forget is about, when the words say", required: false)])
         case .image:
+            shortcut = true
             questions = { _ in [] }
         case .video:
+            shortcut = true
             // The read words, standing on their own, are the search.
             questions = { _ in [] }
         case .time:
+            shortcut = true
             questions = { _ in [] }
             arguments = ArgumentSchema(fields: [.init(name: "place", kind: .text, description: "the place whose time is asked, as named; null for the time here", required: false)])
         case .map, .stock:
             questions = { _ in [] }
+        case .notebook:
+            // What to do is a choice Jev reads in the request; the note to act
+            // on and the thing to put in it are two things, by handle, chosen
+            // by the planner from its listing, where every note stands; the
+            // title and the text are read out of the words. A delete asks on
+            // the sheet itself.
+            questions = { _ in [] }
+            asksItself = true
+            arguments = ArgumentSchema(fields: [
+                .init(name: "action", kind: .choice(["new", "add", "replace", "open", "delete"]), description: "what to do in the notebook: new makes a note, add puts text into a note, replace rewrites a note's text, open shows or reads a note, delete removes one"),
+                .init(name: "all", kind: .boolean, description: "the whole notebook or every note is asked for, rather than one note", required: false),
+                .init(name: "note", kind: .thing, description: "the note to act on, by handle, when the listing or the screen has it: the one the request means, however it names it (\"my watchlist\" means a note titled Watch List); null when no listed note is it", required: false),
+                .init(name: "item", kind: .thing, description: "the page or answer to put into the note, by handle, when the request adds something on screen or listed (\"add this\"): its title and link go in; null when the request dictates words instead", required: false),
+                .init(name: "topic", kind: .text, description: "the note the words name, as they name it, when no listed note is it: add and new then make a note by that name; null when a note handle is given or they name none", required: false),
+                .init(name: "title", kind: .text, description: "the title for a new note, when the words give one; null otherwise", required: false),
+                .init(name: "text", kind: .text, description: "the words to write into the note, when the request dictates them (\"add milk\" writes milk); null when the thing to add is an item by handle, or when nothing is dictated", required: false),
+            ])
         }
         self.showsLayer = showsLayer
         self.sideEffects = sideEffects
         self.asksItself = asksItself
         self.arguments = arguments
+        self.shortcut = shortcut
     }
 
     /// A spec set by hand: for an instinct whose values or side effects the
@@ -271,6 +307,7 @@ public struct InstinctSpec: Sendable, Identifiable {
         sideEffects: SideEffects = .none,
         asksItself: Bool = false,
         arguments: ArgumentSchema = .none,
+        shortcut: Bool = false,
         questions: @escaping @Sendable (RequestContext) -> [(id: String, question: Question)] = { _ in [] }
     ) {
         self.instinct = instinct
@@ -278,6 +315,7 @@ public struct InstinctSpec: Sendable, Identifiable {
         self.sideEffects = sideEffects
         self.asksItself = asksItself
         self.arguments = arguments
+        self.shortcut = shortcut
         self.questions = questions
     }
 

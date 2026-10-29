@@ -23,6 +23,11 @@ struct RecallInstinct: InstinctRunner {
         // In a plan the recall finds and hands back; the plan shows.
         func deliver(_ found: [MemoryRecord], shortlisted: Int?, source: String, latencyMs: Int? = nil) -> InstinctOutcome {
             if context.lookup { return InstinctOutcome(fact: nil, text: "", found: found) }
+            // Nothing matched: not a card, a failure for the planner to reason over.
+            if found.isEmpty, !source.hasPrefix("error") {
+                session.record(context, recall: RecallSummary(matches: 0, collection: ask.collection, count: ask.count, shortlisted: shortlisted, source: source, latencyMs: latencyMs))
+                return .failed(topic.map { "nothing in my memories matches \($0)" } ?? "nothing in my memories matches that")
+            }
             Self.recalled(found, shortlisted: shortlisted, source: source, latencyMs: latencyMs, ask: ask, context: context, in: session)
             return .nothing
         }

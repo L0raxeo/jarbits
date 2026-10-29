@@ -68,6 +68,8 @@ final class BrowserSession {
     private var replayingQuery: String?
     /// What each site name the user asks for means; the site instinct's own.
     let sites: SiteStore
+    /// Jarvits's notebook: the notes, as files.
+    let notebook: Notebook
     /// Brave's web search for the sites an unknown name might mean; nil
     /// shows the Google results page for the name instead.
     let siteSearch: SiteSearch?
@@ -155,11 +157,11 @@ final class BrowserSession {
     /// that shows nothing hands back to.
     private var stageBefore: Stage = .idle
     /// Runs a plan when the engine says a query needs one; nil without a Gemini key.
-    @ObservationIgnored private lazy var executor: Executor? = engine.planner.map { Executor(planner: $0, session: self, instincts: engine.instincts, recall: recall) }
+    @ObservationIgnored private lazy var executor: Executor? = engine.planner.map { Executor(planner: $0, session: self, instincts: engine.instincts) }
     /// A Gemini key is configured, so an answer can be shown.
     var canAnswer: Bool { answerClient != nil }
 
-    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared) {
+    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared) {
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
@@ -167,6 +169,7 @@ final class BrowserSession {
         self.recall = recall
         self.siteSearch = siteSearch
         self.sites = sites
+        self.notebook = notebook
         self.facts = facts
         self.factResolver = factResolver
         self.engine = engine
@@ -335,18 +338,19 @@ final class BrowserSession {
     /// Runs a plan step's showing instinct as the ordinary path would, and
     /// waits until its result is on screen: true then, false when it never
     /// came within `performWait` or the query was overtaken.
-    func perform(_ instinct: any InstinctRunner, context: InstinctContext, token: UUID) async -> Bool {
-        guard token == requestToken else { return false }
-        lastQuery = context.query
-        _ = await instinct.run(context, in: self, token: token)
+    func perform(_ instinct: any InstinctRunner, context: InstinctContext, token: UUID) async -> (shown: Bool, failed: String?) {
+        guard token == requestToken else { return (false, nil) }
+        // The capsule keeps the user's words; a step's query is the planner's.
+        let outcome = await instinct.run(context, in: self, token: token)
+        if let reason = outcome.failed { return (false, reason) }
         let clock = ContinuousClock()
         let start = clock.now
         while clock.now - start < Self.performWait {
-            if stage == .ready { return true }
-            guard token == requestToken else { return false }
+            if stage == .ready { return (true, nil) }
+            guard token == requestToken else { return (false, nil) }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return stage == .ready
+        return (stage == .ready, nil)
     }
 
     /// How long a plan step may take to reach the screen.
@@ -584,6 +588,12 @@ final class BrowserSession {
             openPage(reference.address!, context: context)
         case .search:
             openPage(QueryParser.searchURL(for: reference.term ?? reference.title), context: context)
+        case .note:
+            if let id = reference.noteID, let note = await notebook.note(id: id) {
+                showNote(note, context: context)
+            } else {
+                showCard(.said(query: context.query, text: "I no longer have that note in my notebook."), context: context)
+            }
         case .answer, .action, .picture, .page, .recall, .site:
             var saved: MemoryRecord?
             if let id = reference.memoryID { saved = await memory.record(id: id) }
@@ -599,6 +609,55 @@ final class BrowserSession {
                 openPage(QueryParser.searchURL(for: reference.term ?? reference.title), context: context)
             }
         }
+    }
+
+    /// One of Jarvits's notes, open for typing. A layer already showing
+    /// this note takes the new text instead of a new layer, so an edit by
+    /// Jarvits to the note on screen shows at once.
+    func showNote(_ note: Note, context: InstinctContext) {
+        lastQuery = context.query
+        if let shown = current, case let .note(old) = shown.plan, old.id == note.id {
+            shown.plan = .note(note)
+            shown.query = context.query
+            shown.decision = context.decision
+            shown.lastShown = .now
+            stage = .ready
+            record(context)
+            return
+        }
+        showCard(.note(note), context: context)
+    }
+
+    /// Several of his notes, in the grid.
+    func showNotes(_ notes: [Note], title: String?, context: InstinctContext) {
+        lastQuery = context.query
+        showCard(.notes(notes, title: title), context: context)
+    }
+
+    /// Typed into the note on screen: the file follows, after a pause and on leaving.
+    func saveNote(_ note: Note, body: String, title: String) {
+        Task {
+            guard let changed = await notebook.replace(note.id, body: body, title: title) else { return }
+            for layer in layers {
+                if case let .note(old) = layer.plan, old.id == changed.id { layer.plan = .note(changed) }
+            }
+        }
+    }
+
+    /// Opens a page kept in a note, by a tap on its link, in a new layer.
+    func openLink(_ url: URL, title: String) {
+        lastQuery = title
+        requestToken = UUID()
+        openPage(url, query: title, decision: current?.decision)
+    }
+
+    /// Opens a note by a tap in the grid, in a new layer.
+    func openNote(_ note: Note) {
+        lastQuery = note.title
+        requestToken = UUID()
+        let layer = Layer(plan: .note(note), query: note.title, decision: current?.decision)
+        open(layer)
+        stage = .ready
     }
 
     /// What the planner said, on a card as it is, and kept as a narrative
@@ -828,29 +887,7 @@ final class BrowserSession {
             Task { await learn(inferred) }
         }
         if result.reasoning {
-            // Several steps: the plan runs under the wave line, each step
-            // through the ordinary paths, until it shows something.
-            guard let executor else {
-                openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
-                record(decision, query: query, reading: result.reading)
-                return
-            }
-            Task {
-                let summary = await executor.run(query: query, decision: decision, exchanges: result.chained, token: token)
-                guard token == requestToken else { return }
-                #if DEBUG
-                print("plan \(summary.outcome) after \(summary.rounds) rounds, \(summary.steps.count) steps, \(summary.latencyMs) ms")
-                #endif
-                if !summary.shownSomething {
-                    if summary.didSomething || summary.outcome == .declined {
-                        // Done without a screen of its own: back to where the screen stood.
-                        stage = stageBefore
-                    } else {
-                        openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
-                    }
-                }
-                record(decision, query: query, engine: summary, reading: result.reading)
-            }
+            plan(query: query, decision: decision, exchanges: result.chained, reading: result.reading, lead: result.lead, token: token)
             return
         }
         guard let instinct = result.instinct, var context = result.context else { return }
@@ -865,13 +902,57 @@ final class BrowserSession {
         // stage itself.
         let shows = instinct.spec.showsLayer
         if !shows { stage = stageBefore }
+        let chained = result.chained
         Task {
             let outcome = await instinct.run(context, in: self, token: token)
-            guard token == requestToken, !shows else { return }
+            guard token == requestToken else { return }
+            // The instinct could not do the thing: the planner takes the
+            // query, told what was tried, under the wave line.
+            if let reason = outcome.failed {
+                #if DEBUG
+                print("\(instinct.spec.id) could not: \(reason)")
+                #endif
+                stage = .routing
+                plan(query: query, decision: decision, exchanges: chained, reading: context.reading, lead: Planner.failureLead(reason), token: token)
+                return
+            }
+            guard !shows else { return }
             #if DEBUG
             print("act \(instinct.spec.id): \(outcome.text)")
             #endif
             record(decision, query: query, extraction: context.extraction, fact: outcome.fact ?? factSummary, reading: context.reading)
+        }
+    }
+
+    /// Several steps, an unsure pick, a reasoned instinct, or one that
+    /// could not do the thing: the plan runs under the wave line, each step
+    /// through the ordinary paths, until it shows something. `lead` is the
+    /// line that tells the planner why it has the query. The layer on
+    /// screen is always in what the planner sees, so "this" is a thing it
+    /// can point at. Without a planner, web results.
+    private func plan(query: String, decision: Pick, exchanges: [Exchange], reading: ReadingSummary?, lead: String?, token: UUID) {
+        guard let executor else {
+            openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
+            record(decision, query: query, reading: reading)
+            return
+        }
+        var listed = exchanges
+        if let onScreen = current?.exchanges.last?.exchange, !listed.contains(onScreen) { listed.append(onScreen) }
+        Task {
+            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, token: token)
+            guard token == requestToken else { return }
+            #if DEBUG
+            print("plan \(summary.outcome) after \(summary.rounds) rounds, \(summary.steps.count) steps, \(summary.latencyMs) ms")
+            #endif
+            if !summary.shownSomething {
+                if summary.didSomething || summary.outcome == .declined {
+                    // Done without a screen of its own: back to where the screen stood.
+                    stage = stageBefore
+                } else {
+                    openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
+                }
+            }
+            record(decision, query: query, engine: summary, reading: reading)
         }
     }
 
