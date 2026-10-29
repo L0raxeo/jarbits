@@ -74,6 +74,8 @@ public struct PlanCase: Codable, Equatable, Sendable {
         public var rest: String?
         public var selection: String?
         public var items: [Item]?
+        /// The page's own data, as `key: value` lines.
+        public var data: String?
 
         public struct Item: Codable, Sendable, Equatable {
             public var title: String
@@ -84,7 +86,8 @@ public struct PlanCase: Codable, Equatable, Sendable {
             Screen(
                 kind: kind ?? .page, title: title, address: address.flatMap(URL.init(string:)),
                 visible: visible ?? "", rest: rest ?? "", selection: selection,
-                items: (items ?? []).compactMap { item in URL(string: item.url).map { ScreenItem(title: item.title, address: $0) } }
+                items: (items ?? []).compactMap { item in URL(string: item.url).map { ScreenItem(title: item.title, address: $0) } },
+                data: data ?? ""
             )
         }
     }

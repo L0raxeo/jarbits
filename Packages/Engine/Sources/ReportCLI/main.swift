@@ -283,7 +283,7 @@ case "extract":
         print("failed (\(summary.latencyMs) ms against a \(budget.formatted()) s budget): \(summary.outcome)")
     }
 case "plan":
-    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--page <earlier query> <title> <url>]... [--fact <text>]... [--memory <page|search|narrative> <title> <url or ->]... [--screen <title> <url> <visible text>] [--link <text> <url>]... [--picture <jpeg path>] [--timeout <seconds>] [--dry-run]"
+    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--page <earlier query> <title> <url>]... [--fact <text>]... [--memory <page|search|narrative> <title> <url or ->]... [--screen <title> <url> <visible text>] [--link <text> <url>]... [--screen-data <lines>] [--picture <jpeg path>] [--timeout <seconds>] [--dry-run]"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
@@ -295,6 +295,7 @@ case "plan":
     var screenTitle: String?
     var screenURL: URL?
     var screenVisible = ""
+    var screenData = ""
     var links: [ScreenItem] = []
     var picture: Data?
     while let flag = rest.first {
@@ -313,6 +314,10 @@ case "plan":
             guard rest.count >= 3, let url = URL(string: rest[2]) else { fail(usage) }
             links.append(ScreenItem(title: rest[1], address: url))
             rest.removeFirst(3)
+        case "--screen-data":
+            guard rest.count >= 2 else { fail(usage) }
+            screenData = rest[1]
+            rest.removeFirst(2)
         case "--picture":
             guard rest.count >= 2, let data = try? Data(contentsOf: URL(fileURLWithPath: rest[1])) else { fail(usage) }
             picture = data
@@ -340,7 +345,7 @@ case "plan":
         default: fail(usage)
         }
     }
-    let screen: Screen? = screenTitle.map { Screen(kind: .page, title: $0, address: screenURL, visible: screenVisible, items: links, picture: picture) }
+    let screen: Screen? = screenTitle.map { Screen(kind: .page, title: $0, address: screenURL, visible: screenVisible, items: links, data: screenData, picture: picture) }
     let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, memories: memories, tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), persona: .example, screen: screen)
     let things = ThingTable(exchanges: exchanges, memories: memories, items: links)
     let transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: .now, screen: screen), picture: picture)]

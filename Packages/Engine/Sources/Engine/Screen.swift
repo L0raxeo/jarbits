@@ -19,10 +19,17 @@ public struct Screen: Sendable, Equatable {
     public var visible: String
     /// The page's text beyond the viewport, up to `restLimit`.
     public var rest: String
+    /// The page had more text than `rest` holds: the block says so, so a
+    /// plan knows a look reads on rather than guessing from the "…".
+    public var restCut: Bool
     /// Text the user has selected, if any.
     public var selection: String?
     /// The links in view, in document order.
     public var items: [ScreenItem]
+    /// The page's own data: what it publishes for search engines and link
+    /// previews (canonical address, preview tags, structured blocks), as
+    /// `key: value` lines in its own words, up to `dataLimit`. Web pages only.
+    public var data: String
     /// A JPEG of the viewport, web pages only; nil when none could be taken.
     public var picture: Data?
 
@@ -32,16 +39,20 @@ public struct Screen: Sendable, Equatable {
     public static let restLimit = 8_000
     /// The most links listed as items.
     public static let itemLimit = 40
+    /// The page's own data is kept up to this many characters.
+    public static let dataLimit = 1_500
 
-    public init(kind: Kind, title: String, address: URL? = nil, visible: String = "", rest: String = "", selection: String? = nil, items: [ScreenItem] = [], picture: Data? = nil) {
+    public init(kind: Kind, title: String, address: URL? = nil, visible: String = "", rest: String = "", selection: String? = nil, items: [ScreenItem] = [], data: String = "", picture: Data? = nil) {
         self.kind = kind
         self.title = title
         self.address = address
         self.visible = Self.trimmed(visible, to: Self.visibleLimit)
         self.rest = Self.trimmed(rest, to: Self.restLimit)
+        self.restCut = rest.count > Self.restLimit
         let selected = selection?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         self.selection = selected.isEmpty ? nil : String(selected.prefix(Self.visibleLimit))
         self.items = Array(items.prefix(Self.itemLimit))
+        self.data = Self.trimmed(data, to: Self.dataLimit)
         self.picture = picture
     }
 
@@ -53,7 +64,7 @@ public struct Screen: Sendable, Equatable {
     public static let pictureRule = "A picture of the screen comes with the request when there is one: what it shows that the text does not (a colour, a position, a chart, a layout) you read from the picture; anything on screen that the text or the listing names, you name by its handle."
 
     /// Whether anything beyond the title is known.
-    public var isEmpty: Bool { visible.isEmpty && rest.isEmpty && selection == nil && items.isEmpty }
+    public var isEmpty: Bool { visible.isEmpty && rest.isEmpty && selection == nil && items.isEmpty && data.isEmpty }
 
     /// One line naming what is on screen.
     public var described: String {
@@ -70,8 +81,8 @@ public struct Screen: Sendable, Equatable {
     }
 
     /// The text block a model reads. The reader gets the selection and the
-    /// visible text (`whole` false); the planner and an answer get the rest
-    /// and the items too, each item by its handle when `handles` are given
+    /// visible text (`whole` false); the planner and an answer get the
+    /// page's own data, the rest and the items too, each item by its handle when `handles` are given
     /// (the planner's), else by number.
     public func block(whole: Bool, handles: [String] = []) -> String {
         var lines = [described]
@@ -81,8 +92,12 @@ public struct Screen: Sendable, Equatable {
             lines.append(visible)
         }
         guard whole else { return lines.joined(separator: "\n") }
+        if !data.isEmpty {
+            lines.append("The page's own data (what it publishes, not what it shows):")
+            lines.append(data)
+        }
         if !rest.isEmpty {
-            lines.append("Further down the page:")
+            lines.append(restCut ? "Further down the page (cut at \(Self.restLimit) characters; the page has more, which a look reads):" : "Further down the page:")
             lines.append(rest)
         }
         if !items.isEmpty {

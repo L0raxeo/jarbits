@@ -467,10 +467,60 @@
     const style = window.getComputedStyle(el);
     return style.display === 'none' || style.visibility === 'hidden' || el.closest('script, style, noscript, template, [aria-hidden="true"]') !== null;
   }
+  // The page's own data: what it publishes for search engines and link
+  // previews rather than draws. The canonical address, the preview tags,
+  // and every JSON-LD block flattened to "dotted.key: value" lines, strings
+  // and numbers only, in the page's own words. Capped at `limit` characters.
+  function pageData(limit) {
+    const lines = [];
+    let count = 0;
+    let cut = false;
+    function add(key, value) {
+      if (cut) return;
+      const text = String(value).replace(/\s+/g, ' ').trim();
+      if (!text) return;
+      const line = key + ': ' + text.slice(0, 300);
+      if (count + line.length > limit) { cut = true; return; }
+      lines.push(line);
+      count += line.length + 1;
+    }
+    const canonical = document.querySelector('link[rel="canonical"]');
+    if (canonical && canonical.href) add('canonical', canonical.href);
+    const wanted = ['og:title', 'og:description', 'og:type', 'og:site_name', 'description', 'author', 'article:published_time', 'article:author', 'video:duration', 'product:price:amount', 'product:price:currency', 'twitter:title', 'twitter:description'];
+    const seen = new Set();
+    for (const meta of document.querySelectorAll('meta[property], meta[name]')) {
+      const key = meta.getAttribute('property') || meta.getAttribute('name');
+      if (!wanted.includes(key) || seen.has(key)) continue;
+      const content = meta.getAttribute('content');
+      if (!content) continue;
+      seen.add(key);
+      add(key, content);
+    }
+    function flatten(prefix, value, depth) {
+      if (cut || depth > 6) return;
+      if (value === null || value === undefined) return;
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        if (prefix) add(prefix, value);
+      } else if (Array.isArray(value)) {
+        value.slice(0, 12).forEach((item, index) => flatten(prefix ? prefix + '.' + index : String(index), item, depth + 1));
+      } else if (typeof value === 'object') {
+        for (const key of Object.keys(value)) {
+          if (key === '@context') continue;
+          flatten(prefix ? prefix + '.' + key : key, value[key], depth + 1);
+        }
+      }
+    }
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try { flatten('', JSON.parse(script.textContent), 0); } catch (e) { }
+    }
+    if (cut) lines.push('\u2026 more');
+    return lines.join('\n');
+  }
   function screen(limits) {
     const visibleLimit = (limits && limits.visible) || 4000;
     const restLimit = (limits && limits.rest) || 8000;
     const itemLimit = (limits && limits.items) || 40;
+    const dataLimit = (limits && limits.data) || 1500;
     const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
     const visible = [];
     const rest = [];

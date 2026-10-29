@@ -328,7 +328,7 @@ final class PageHost {
     /// nothing on screen; a probe that fails gives the title alone.
     func screen(title: String) async -> Screen? {
         guard let address = page.url else { return nil }
-        let limits: [String: Any] = ["visible": Screen.visibleLimit, "rest": Screen.restLimit, "items": Screen.itemLimit]
+        let limits: [String: Any] = ["visible": Screen.visibleLimit, "rest": Screen.restLimit, "items": Screen.itemLimit, "data": Screen.dataLimit]
         // The probe's reply is read into a plain value inside the task, so
         // only that crosses to the group that bounds it.
         let probe = Task { [page] () -> Probed? in
