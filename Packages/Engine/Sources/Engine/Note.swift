@@ -54,6 +54,44 @@ public struct Note: Codable, Sendable, Hashable, Identifiable {
         return plain.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.prefix(3).joined(separator: " ").prefix(160).description
     }
 
+    /// The first lines as written, marks and all, links as their titles:
+    /// what the planner's listing shows, so it sees a list as a list and
+    /// adds to it in kind.
+    public var preview: String {
+        Self.linksAsTitles(body)
+            .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.prefix(3).joined(separator: " / ").prefix(160).description
+    }
+
+    /// The most lines, and the most characters, of a note the planner's
+    /// listing shows; a longer note is cut with a line saying how much more.
+    public static let linesListed = 60
+    public static let charactersListed = 3000
+
+    /// The whole body as the planner's listing shows it: every line as
+    /// written, marks and all, numbered from 1 so a write can name the line
+    /// it goes after; links as their titles; empty lines kept, since they
+    /// are places too. Capped by `linesListed` and `charactersListed`.
+    public var numberedLines: [String] {
+        let lines = Self.linksAsTitles(body.trimmingCharacters(in: .newlines)).split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard !lines.isEmpty, lines != [""] else { return [] }
+        var out: [String] = []
+        var characters = 0
+        for (index, line) in lines.enumerated() {
+            if out.count >= Self.linesListed || characters + line.count > Self.charactersListed {
+                out.append("\u{2026} \(lines.count - index) more lines")
+                break
+            }
+            out.append("\(index + 1)| \(line)")
+            characters += line.count
+        }
+        return out
+    }
+
+    /// Links as their titles: the model reads what a line is, not its address.
+    static func linksAsTitles(_ markdown: String) -> String {
+        markdown.replacingOccurrences(of: "\\[([^\\]]*)\\]\\([^)]*\\)", with: "$1", options: .regularExpression)
+    }
+
     /// What the meaning index keeps for the note: the title, then the
     /// body's first words, plain.
     public var indexText: String {

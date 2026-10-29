@@ -33,6 +33,8 @@ struct InstinctContext {
     var reading: ReadingSummary? = nil
     /// A lasting fact the words stated on the way, kept beside the pick; for the log.
     var fact: FactSummary? = nil
+    /// What was on screen as the query began: an answer about it reads it.
+    var screen: Screen? = nil
 }
 
 /// What an instinct that shows nothing came to: how it touched the facts,

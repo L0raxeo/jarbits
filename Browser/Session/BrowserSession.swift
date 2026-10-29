@@ -209,13 +209,16 @@ final class BrowserSession {
         let exchanges = exchanges   // the session so far, before anything moves
         let opened = openedSite   // and the site opened by name, if one is on screen
         let shown = current
+        // What is on screen, read as the query begins: the models that
+        // interpret see it; Jev does not wait for it.
+        let screenRead: Task<Screen?, Never>? = shown.map { layer in Task { await layer.screen() } }
         lastQuery = trimmed
         if stage == .idle || stage == .ready { stageBefore = stage }
         stage = .routing
         let token = UUID()
         requestToken = token
         Task {
-            let result = await engine.route(trimmed, exchanges: exchanges, current: shown, opened: opened, persona: persona)
+            let result = await engine.route(trimmed, exchanges: exchanges, current: shown, opened: opened, persona: persona, screen: screenRead)
             guard token == requestToken else { return }   // a newer query won, or cancelled
             lastQuery = result.query   // the words that ran: the label, the exchange, the layer and the record carry them
             #if DEBUG
@@ -230,6 +233,9 @@ final class BrowserSession {
             let relevance = decision.relevance.map { "[" + $0.map { String(format: "%.2f", $0) }.joined(separator: ", ") + "]" } ?? "none"
             let reasoning = decision.reasoning.map { String(format: "%.2f", $0) } ?? "none"
             print("engine \"\(result.query)\": \(decision.instinct.rawValue) (\(decision.source)) chain \(decision.chainedCount)/\(decision.relevance?.count ?? 0) relevance \(relevance) reasoning \(reasoning)")
+            if let screen = result.screen {
+                print("screen \(screen.kind.rawValue) \"\(screen.title)\": \(screen.visible.count) visible, \(screen.rest.count) further, \(screen.items.count) links, \(screen.selection == nil ? "no selection" : "a selection"), picture \(screen.picture?.count ?? 0) bytes")
+            }
             #endif
             apply(result, token: token)
         }
@@ -689,7 +695,7 @@ final class BrowserSession {
         layer.reading = context.reading
         if layer.answer == nil { layer.answer = makeAnswer(for: layer) }
         stage = .loading
-        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: factTexts, persona: persona)
+        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: factTexts, persona: persona, screen: context.screen)
     }
 
     /// A site the book knew opens, in a new layer, as opened by name.
@@ -887,7 +893,7 @@ final class BrowserSession {
             Task { await learn(inferred) }
         }
         if result.reasoning {
-            plan(query: query, decision: decision, exchanges: result.chained, reading: result.reading, lead: result.lead, token: token)
+            plan(query: query, decision: decision, exchanges: result.chained, reading: result.reading, lead: result.lead, screen: result.screen, token: token)
             return
         }
         guard let instinct = result.instinct, var context = result.context else { return }
@@ -913,7 +919,7 @@ final class BrowserSession {
                 print("\(instinct.spec.id) could not: \(reason)")
                 #endif
                 stage = .routing
-                plan(query: query, decision: decision, exchanges: chained, reading: context.reading, lead: Planner.failureLead(reason), token: token)
+                plan(query: query, decision: decision, exchanges: chained, reading: context.reading, lead: Planner.failureLead(reason), screen: context.screen, token: token)
                 return
             }
             guard !shows else { return }
@@ -930,7 +936,7 @@ final class BrowserSession {
     /// line that tells the planner why it has the query. The layer on
     /// screen is always in what the planner sees, so "this" is a thing it
     /// can point at. Without a planner, web results.
-    private func plan(query: String, decision: Pick, exchanges: [Exchange], reading: ReadingSummary?, lead: String?, token: UUID) {
+    private func plan(query: String, decision: Pick, exchanges: [Exchange], reading: ReadingSummary?, lead: String?, screen: Screen? = nil, token: UUID) {
         guard let executor else {
             openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
             record(decision, query: query, reading: reading)
@@ -939,7 +945,7 @@ final class BrowserSession {
         var listed = exchanges
         if let onScreen = current?.exchanges.last?.exchange, !listed.contains(onScreen) { listed.append(onScreen) }
         Task {
-            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, token: token)
+            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, token: token)
             guard token == requestToken else { return }
             #if DEBUG
             print("plan \(summary.outcome) after \(summary.rounds) rounds, \(summary.steps.count) steps, \(summary.latencyMs) ms")

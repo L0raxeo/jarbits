@@ -39,14 +39,15 @@ public struct PlanRunner: Sendable {
     public static func request(for planCase: PlanCase, model: String = Planner.model) -> InteractionRequest {
         let context = AnswerContext.example
         let memories = (planCase.memories ?? []).map { $0.record(now: context.now) }
+        let screen = planCase.screen?.screen
         let bundle = PlanBundle(
             query: planCase.query, exchanges: planCase.exchanges ?? [], facts: planCase.facts ?? [], memories: memories,
-            tools: Planner.tools(for: InstinctSpec.all), context: context, persona: .example
+            tools: Planner.tools(for: InstinctSpec.all), context: context, persona: .example, screen: screen
         )
         let notes = (planCase.notes ?? []).map { $0.note(now: context.now) }
-        let things = ThingTable(exchanges: planCase.exchanges ?? [], memories: memories, notes: notes)
+        let things = ThingTable(exchanges: planCase.exchanges ?? [], memories: memories, notes: notes, items: screen?.items ?? [])
         let lead = planCase.failure.map(Planner.failureLead) ?? planCase.picked.map(Planner.pickedLead)
-        let transcript: [InteractionStep] = [.userText(Planner.input(query: planCase.query, things: things, now: context.now, lead: lead))]
+        let transcript: [InteractionStep] = [.userText(Planner.input(query: planCase.query, things: things, now: context.now, lead: lead, screen: screen))]
         return Planner.request(bundle: bundle, transcript: transcript, model: model)
     }
 

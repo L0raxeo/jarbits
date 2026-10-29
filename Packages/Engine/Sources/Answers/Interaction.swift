@@ -84,14 +84,14 @@ public struct InteractionRequest: Sendable, Equatable {
     }
 
     static func step(_ type: String, text: String) throws -> Data {
+        try step(type, parts: [.text(text)])
+    }
+
+    /// A step of several content parts: text, and a picture beside it.
+    static func step(_ type: String, parts: [ContentPart]) throws -> Data {
         try OrderedJSON.object([
             ("type", OrderedJSON.encode(type)),
-            ("content", OrderedJSON.array([
-                try OrderedJSON.object([
-                    ("type", OrderedJSON.encode("text")),
-                    ("text", OrderedJSON.encode(text)),
-                ]),
-            ])),
+            ("content", OrderedJSON.array(try parts.map { try $0.jsonData() })),
         ])
     }
 
@@ -201,8 +201,34 @@ public struct FunctionResult: Sendable, Equatable {
 }
 
 /// One step of a transcript, as `input` carries it.
+/// One part of a user turn's content: words, or a picture as Google's
+/// Interactions API takes it (`{"type": "image", "data": <base64>,
+/// "mime_type": …}`, checked against the API reference 2026-10-29).
+public enum ContentPart: Sendable, Equatable {
+    case text(String)
+    case image(Data, mimeType: String)
+
+    func jsonData() throws -> Data {
+        switch self {
+        case let .text(text):
+            try OrderedJSON.object([
+                ("type", OrderedJSON.encode("text")),
+                ("text", OrderedJSON.encode(text)),
+            ])
+        case let .image(data, mimeType):
+            try OrderedJSON.object([
+                ("type", OrderedJSON.encode("image")),
+                ("data", OrderedJSON.encode(data.base64EncodedString())),
+                ("mime_type", OrderedJSON.encode(mimeType)),
+            ])
+        }
+    }
+}
+
 public enum InteractionStep: Sendable, Equatable {
     case userText(String)
+    /// A user turn of several parts: the words and a picture of the screen.
+    case userParts([ContentPart])
     case modelText(String)
     case functionResult(FunctionResult)
     /// A model step replayed exactly as it came back (a function call, a
@@ -212,6 +238,7 @@ public enum InteractionStep: Sendable, Equatable {
     func jsonData() throws -> Data {
         switch self {
         case let .userText(text): try InteractionRequest.step("user_input", text: text)
+        case let .userParts(parts): try InteractionRequest.step("user_input", parts: parts)
         case let .modelText(text): try InteractionRequest.step("model_output", text: text)
         case let .functionResult(result):
             try OrderedJSON.object([

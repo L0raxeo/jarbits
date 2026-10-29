@@ -39,9 +39,15 @@ public struct ValueExtractor: Sendable {
 
     /// "Earlier: …" lines for the chained exchanges, today's date when a
     /// value may be relative to it, then the request.
-    public static func input(query: String, exchanges: [Exchange], now: Date? = nil) -> String {
+    public static func input(query: String, exchanges: [Exchange], now: Date? = nil, screen: Screen? = nil) -> String {
         var lines = exchanges.map { "Earlier: " + AnswerPrompt.describe($0) }
         if let now { lines.append("Today: " + now.formatted(Date.FormatStyle(date: .complete, time: .shortened, locale: Locale(identifier: "en_US")))) }
+        if let screen {
+            // What the user sees as they ask: the selection and the visible text.
+            lines.append("")
+            lines.append(screen.block(whole: false))
+            lines.append("")
+        }
         lines.append("Request: \(query)")
         return lines.joined(separator: "\n")
     }
@@ -71,11 +77,11 @@ public struct ValueExtractor: Sendable {
         """
     }
 
-    public static func request(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, model: String = model, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil) -> InteractionRequest {
+    public static func request(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, model: String = model, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil, screen: Screen? = nil) -> InteractionRequest {
         InteractionRequest(
             model: model,
             systemInstruction: instructions,
-            input: input(query: query, exchanges: exchanges, now: now),
+            input: input(query: query, exchanges: exchanges, now: now, screen: screen),
             maxOutputTokens: maxOutputTokens,
             stream: false,
             outputSchema: schema
@@ -91,13 +97,13 @@ public struct ValueExtractor: Sendable {
 
     /// One call within `timeout`; never throws. `instructions` is the
     /// system instruction, `system` unless a different reading is wanted.
-    public func extract(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil) async -> Verdict {
+    public func extract(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil, screen: Screen? = nil) async -> Verdict {
         let clock = ContinuousClock()
         let start = clock.now
         func summary(_ outcome: ExtractionSummary.Outcome, fields: [String] = [], usage: AnswerUsage? = nil) -> ExtractionSummary {
             ExtractionSummary(model: client.model, latencyMs: Int((clock.now - start) / .milliseconds(1)), usage: usage, fields: fields, outcome: outcome)
         }
-        let request = Self.request(query: query, exchanges: exchanges, schema: schema, instructions: instructions, model: client.model, maxOutputTokens: maxOutputTokens, now: now)
+        let request = Self.request(query: query, exchanges: exchanges, schema: schema, instructions: instructions, model: client.model, maxOutputTokens: maxOutputTokens, now: now, screen: screen)
         let interaction: Interaction
         do {
             interaction = try await client.interact(request, timeout: timeout)

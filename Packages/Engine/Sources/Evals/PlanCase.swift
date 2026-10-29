@@ -65,11 +65,36 @@ public struct PlanCase: Codable, Equatable, Sendable {
         }
     }
 
+    /// What is on screen as the request is made: the planner's block, no picture.
+    public struct ScreenCase: Codable, Sendable, Equatable {
+        public var kind: Screen.Kind?
+        public var title: String
+        public var address: String?
+        public var visible: String?
+        public var rest: String?
+        public var selection: String?
+        public var items: [Item]?
+
+        public struct Item: Codable, Sendable, Equatable {
+            public var title: String
+            public var url: String
+        }
+
+        public var screen: Screen {
+            Screen(
+                kind: kind ?? .page, title: title, address: address.flatMap(URL.init(string:)),
+                visible: visible ?? "", rest: rest ?? "", selection: selection,
+                items: (items ?? []).compactMap { item in URL(string: item.url).map { ScreenItem(title: item.title, address: $0) } }
+            )
+        }
+    }
+
     public var query: String
     public var exchanges: [Exchange]?
     public var facts: [String]?
     public var memories: [Memory]?
     public var notes: [NoteCase]?
+    public var screen: ScreenCase?
     public var calls: [ExpectedCall]
     /// The expected calls are the first ones; whatever follows in the same round is fine.
     public var prefix: Bool?
@@ -79,12 +104,13 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var picked: Instinct?
     public var note: String?
 
-    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, memories: [Memory]? = nil, notes: [NoteCase]? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
+    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, memories: [Memory]? = nil, notes: [NoteCase]? = nil, screen: ScreenCase? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
         self.memories = memories
         self.notes = notes
+        self.screen = screen
         self.calls = calls
         self.prefix = prefix
         self.failure = failure
@@ -99,6 +125,7 @@ public struct PlanCase: Codable, Equatable, Sendable {
         if let memories, !memories.isEmpty { name += " with \(memories.count) memories" }
         if let notes, !notes.isEmpty { name += " with \(notes.count) notes" }
         if let last = exchanges?.last { name += " after \"\(last.query)\"" }
+        if let screen { name += " over \"\(screen.title)\"" }
         if failure != nil { name += " after a failure" }
         if let picked { name += " picked \(picked.rawValue)" }
         return name
@@ -146,7 +173,11 @@ public enum PlanCheck {
         for (expected, call) in zip(planCase.calls, called) {
             for (field, value) in expected.arguments ?? [:] {
                 let got = call.arguments[field]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                if got.lowercased() != value.lowercased() {
+                // A value may name alternatives with "|", as a call's name does;
+                // "<prose>" accepts any text whose first line carries no Markdown mark.
+                let accepted = value.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                let prose = accepted.contains("<prose>") && !got.isEmpty && NoteMarkdown.form(of: got.split(separator: "\n").first.map(String.init) ?? "") == .plain
+                if !prose, !accepted.contains(got.lowercased()) {
                     failures.append("\(expected.name).\(field): expected \"\(value)\", got \(got.isEmpty ? "nothing" : "\"\(got)\"")")
                 }
             }

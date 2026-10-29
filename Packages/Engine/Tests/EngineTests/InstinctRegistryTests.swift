@@ -34,7 +34,7 @@ import Testing
                 #expect(spec.showsLayer && spec.sideEffects == .none && spec.asksItself, "only a delete asks, and the instinct asks for itself")
                 #expect(spec.arguments.closedSet.map(\.name) == ["action", "all"], "what to do, and whether every note, are Jev's questions")
                 #expect(spec.arguments.things.map(\.name) == ["note", "item"], "the note to act on and the thing to put in it, both by handle")
-                #expect(spec.arguments.freeForm.map(\.name) == ["topic", "title", "text"], "read by the extractor when the pick needs them")
+                #expect(spec.arguments.freeForm.map(\.name) == ["topic", "title", "text", "after"], "read by the extractor when the pick needs them")
                 if case let .choice(options) = spec.arguments.fields[0].kind { #expect(options == ["new", "add", "replace", "open", "delete"]) } else { Issue.record("action is a choice") }
             case .narrative, .oneLine:
                 #expect(spec.showsLayer && spec.sideEffects == .none)

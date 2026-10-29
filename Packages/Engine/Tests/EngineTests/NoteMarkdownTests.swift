@@ -49,4 +49,34 @@ import Testing
         edited.characters.append(contentsOf: "\ntyped")
         #expect(NoteMarkdown.markdown(from: edited) == "## Trip\n- milk\nplain\ntyped", "a line typed after a plain one is plain")
     }
+
+    @Test func anAddFollowsTheListFormOfTheNote() {
+        #expect(NoteMarkdown.continuing("milk", after: "- eggs\n- bread") == "- milk")
+        #expect(NoteMarkdown.continuing("milk\nbutter", after: "- [ ] eggs\n- [x] bread") == "- [ ] milk\n- [ ] butter")
+        #expect(NoteMarkdown.continuing("call the bank", after: "1. pack\n2. book the cab") == "3. call the bank")
+        #expect(NoteMarkdown.continuing("- [ ] milk", after: "- eggs") == "- [ ] milk", "text with its own mark keeps it")
+        #expect(NoteMarkdown.continuing("milk", after: "Some notes about the trip") == "milk", "not a list: as it is")
+        #expect(NoteMarkdown.continuing("[Dyson](https://dyson.com)", after: "- [Hennessey](https://h.com)") == "- [Dyson](https://dyson.com)", "a kept page joins the list")
+        #expect(NoteMarkdown.continuing("milk", after: "") == "milk")
+        let note = Note(title: "Shopping", body: "- [ ] eggs\n- [x] [Bread](https://b.com)\n\n**later**")
+        #expect(note.preview == "- [ ] eggs / - [x] Bread / **later**", "the listing shows the form as written")
+        #expect(note.numberedLines == ["1| - [ ] eggs", "2| - [x] Bread", "3| ", "4| **later**"], "the whole note, numbered, links as titles, empty lines kept")
+        #expect(Note(title: "Empty").numberedLines.isEmpty)
+        let long = Note(title: "Long", body: (1...70).map { "- item \($0)" }.joined(separator: "\n"))
+        let listed = long.numberedLines
+        #expect(listed.count == 61 && listed.last == "\u{2026} 10 more lines", "cut at the cap with the remainder counted")
+    }
+
+    @Test func linesGoInAfterTheNamedLine() {
+        let body = "## Groceries\n- milk\n- bread\n\n## Packing\n- [ ] passport"
+        #expect(NoteMarkdown.insert("- eggs", into: body, after: 3) == "## Groceries\n- milk\n- bread\n- eggs\n\n## Packing\n- [ ] passport")
+        #expect(NoteMarkdown.insert("- [ ] charger", into: body, after: nil) == body + "\n- [ ] charger", "nil: the end")
+        #expect(NoteMarkdown.insert("- [ ] charger", into: body, after: 99) == body + "\n- [ ] charger", "past the last line: the end")
+        #expect(NoteMarkdown.insert("A trip note", into: body, after: 0) == "A trip note\n" + body, "0: the top")
+        #expect(NoteMarkdown.insert("eggs", into: body, after: 3) == "## Groceries\n- milk\n- bread\n- eggs\n\n## Packing\n- [ ] passport", "bare words after a list item continue it")
+        #expect(NoteMarkdown.insert("eggs", into: body, after: 4) == "## Groceries\n- milk\n- bread\n\neggs\n## Packing\n- [ ] passport", "after a blank line: as written")
+        #expect(NoteMarkdown.insert("- milk", into: "", after: nil) == "- milk", "an empty note starts with the lines")
+        #expect(NoteMarkdown.insert("2. book the cab", into: "1. pack\n2. fly", after: 1) == "1. pack\n2. book the cab\n3. fly", "a numbered run is counted again")
+        #expect(NoteMarkdown.renumbered("1. a\n5. b\n\ntext\n7. c\n8) d") == "1. a\n2. b\n\ntext\n1. c\n2) d")
+    }
 }

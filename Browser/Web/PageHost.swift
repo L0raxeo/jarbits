@@ -312,6 +312,80 @@ final class PageHost {
         return PageNotes(address: address, standing)
     }
 
+    // MARK: The screen
+
+    /// The probe's limit: a page whose script hangs never holds a query.
+    static let screenTimeout: Duration = .milliseconds(1500)
+    /// The picture's limit and width; JPEG at `pictureQuality`.
+    static let pictureTimeout: Duration = .seconds(2)
+    static let pictureWidth: CGFloat = 1024
+    static let pictureQuality: CGFloat = 0.7
+
+    /// What the user sees on this page as a query starts, for the models:
+    /// the text in view, the rest, the selection, the links in view, and a
+    /// picture of the viewport, each bounded in time. `title` is the
+    /// layer's, as the page last reported it. With no address there is
+    /// nothing on screen; a probe that fails gives the title alone.
+    func screen(title: String) async -> Screen? {
+        guard let address = page.url else { return nil }
+        let limits: [String: Any] = ["visible": Screen.visibleLimit, "rest": Screen.restLimit, "items": Screen.itemLimit]
+        // The probe's reply is read into a plain value inside the task, so
+        // only that crosses to the group that bounds it.
+        let probe = Task { [page] () -> Probed? in
+            let reply = try? await page.callJavaScript(PageChrome.screenProbe, arguments: ["limits": limits], contentWorld: PageChrome.world)
+            return Probed(reply)
+        }
+        let viewport = CGRect(origin: .zero, size: window == .zero ? CGSize(width: 390, height: 844) : window)
+        async let picture: Data? = Self.jpeg(await WebPageExport.image(of: page, region: .rect(viewport), width: Self.pictureWidth, timeout: Self.pictureTimeout))
+        let found = await Self.bounded(Self.screenTimeout, probe)
+        return Screen(
+            kind: .page, title: title, address: address,
+            visible: found?.visible ?? "", rest: found?.rest ?? "",
+            selection: found?.selection, items: found?.items ?? [], picture: await picture
+        )
+    }
+
+    /// The probe's reply, as a value: `{visible, rest, selection, items}`.
+    private struct Probed: Sendable {
+        var visible: String
+        var rest: String
+        var selection: String?
+        var items: [ScreenItem]
+
+        init?(_ reply: Any?) {
+            guard let found = reply as? [String: Any] else { return nil }
+            visible = found["visible"] as? String ?? ""
+            rest = found["rest"] as? String ?? ""
+            selection = found["selection"] as? String
+            items = ((found["items"] as? [[String: Any]]) ?? []).compactMap { item in
+                guard let title = item["title"] as? String, let href = item["href"] as? String, let url = URL(string: href) else { return nil }
+                return ScreenItem(title: title, address: url)
+            }
+        }
+    }
+
+    /// A task's value, or nil once `limit` has passed; the task is then
+    /// cancelled, and the group captures only its handle.
+    private static func bounded<T: Sendable>(_ limit: Duration, _ task: Task<T?, Never>) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await task.value }
+            group.addTask {
+                try? await Task.sleep(for: limit)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            task.cancel()
+            return first
+        }
+    }
+
+    /// The exported image, which comes as PNG, as a JPEG of `pictureQuality`.
+    private static func jpeg(_ data: Data?) -> Data? {
+        guard let data, let image = UIImage(data: data) else { return nil }
+        return image.jpegData(compressionQuality: pictureQuality)
+    }
+
     /// Whatever plays in the page stops, as in a Safari tab left behind.
     func pause() async {
         await page.pauseAllMediaPlayback()

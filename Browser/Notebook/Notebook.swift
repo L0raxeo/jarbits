@@ -61,13 +61,15 @@ actor Notebook {
         return note
     }
 
-    /// Text added at the end, on its own line; the text before is kept as a version.
+    /// Lines put into the note after line `line` as the planner's listing
+    /// numbers them (nil: at the end), as the planner wrote them, with a
+    /// list continued and a numbered run counted again by
+    /// `NoteMarkdown.insert`; the text before is kept as a version.
     @discardableResult
-    func append(_ text: String, to id: UUID) -> Note? {
+    func insert(_ text: String, into id: UUID, after line: Int? = nil) -> Note? {
         guard var note = note(id: id) else { return nil }
         keepVersion(of: note)
-        let body = note.body.trimmingCharacters(in: .newlines)
-        note.body = body.isEmpty ? text : body + "\n" + text
+        note.body = NoteMarkdown.insert(text, into: note.body, after: line)
         note.edited = .now
         write(note)
         replaceLoaded(note)

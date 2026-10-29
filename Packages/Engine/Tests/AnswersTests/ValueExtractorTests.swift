@@ -29,4 +29,16 @@ import Testing
         #expect(ValueExtractor.timeout == .seconds(2))
         #expect(ValueExtractor(client: GeminiClient(apiKey: "k")).timeout == ValueExtractor.timeout)
     }
+
+    @Test func theReaderSeesTheScreensSelectionAndVisibleTextBeforeTheRequest() {
+        let screen = Screen(kind: .page, title: "Dyson PencilVac | Dyson", address: URL(string: "https://www.dyson.com/pencilvac"), visible: "Dyson PencilVac\n$449.99", rest: "Specifications", items: [ScreenItem(title: "Basket", address: URL(string: "https://www.dyson.com/basket")!)])
+        let input = ValueExtractor.input(query: "how much is this", exchanges: [], screen: screen)
+        #expect(input == "\nOn screen: the page \"Dyson PencilVac | Dyson\" at https://www.dyson.com/pencilvac\nVisible:\nDyson PencilVac\n$449.99\n\nRequest: how much is this")
+        #expect(!input.contains("Specifications") && !input.contains("Basket"), "the reader gets what is in view, not the rest or the links")
+        #expect(QueryReader.system.contains(Screen.rule))
+        #expect(QueryReader.request(query: "q", screen: screen).input.contains("On screen"))
+        let answer = AnswerPrompt.input(query: "how much is this", context: .example, persona: .example, screen: screen)
+        #expect(answer.contains("What Lorcan sees on screen as they ask (\(Screen.rule)):\nOn screen: the page \"Dyson PencilVac | Dyson\" at https://www.dyson.com/pencilvac\nVisible now:\nDyson PencilVac\n$449.99\nFurther down the page:\nSpecifications\nLinks in view, in order:\n- 1: \"Basket\""), "an answer gets the whole screen, the links numbered")
+        #expect(!AnswerPrompt.input(query: "q", context: .example, screen: Screen(kind: .page, title: "t")).contains("sees on screen"), "a screen with nothing but a title adds nothing")
+    }
 }

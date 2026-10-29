@@ -9,6 +9,8 @@ public enum Thing: Sendable, Equatable {
     case exchange(Exchange)
     case memory(MemoryRecord)
     case note(Note)
+    /// A link in view on the page on screen.
+    case item(ScreenItem)
 }
 
 /// What a thing is, exactly, for an instinct to act on.
@@ -63,6 +65,8 @@ public struct Reference: Sendable, Equatable {
             self.init(kind: kind, title: record.title, address: record.url, term: record.kind == .search ? record.query : nil, text: record.text, memoryID: record.id)
         case let .note(note):
             self.init(kind: .note, title: note.title, text: note.excerpt, noteID: note.id)
+        case let .item(item):
+            self.init(kind: .page, title: item.title, address: item.address)
         }
     }
 
@@ -102,7 +106,8 @@ extension Exchange {
 }
 
 /// The handles of one plan: `p1, p2…` for the exchanges the query depends
-/// on (oldest first), `m1, m2…` for the memories shown, and more memories
+/// on (oldest first), `m1, m2…` for the memories shown, `n1, n2…` for the
+/// notes, `s1, s2…` for the links in view on the screen, and more memories
 /// minted by a step's result. Nothing is renumbered, and a table never
 /// outlives its plan.
 public struct ThingTable: Sendable, Equatable {
@@ -115,14 +120,27 @@ public struct ThingTable: Sendable, Equatable {
     private var exchangesMinted = 0
     private var memoriesMinted = 0
     private var notesMinted = 0
+    private var itemsMinted = 0
 
-    public init(exchanges: [Exchange] = [], memories: [MemoryRecord] = [], notes: [Note] = []) {
+    public init(exchanges: [Exchange] = [], memories: [MemoryRecord] = [], notes: [Note] = [], items: [ScreenItem] = []) {
         for exchange in exchanges {
             exchangesMinted += 1
             entries.append(Entry(handle: "p\(exchangesMinted)", thing: .exchange(exchange)))
         }
         _ = mint(memories)
         _ = mint(notes: notes)
+        _ = mint(items: items)
+    }
+
+    /// Handles for the links in view, in their order on the screen.
+    @discardableResult
+    public mutating func mint(items: [ScreenItem]) -> [String] {
+        items.map { item in
+            itemsMinted += 1
+            let handle = "s\(itemsMinted)"
+            entries.append(Entry(handle: handle, thing: .item(item)))
+            return handle
+        }
     }
 
     /// Handles for notes the words may mean; a note already listed keeps its handle.
@@ -162,6 +180,9 @@ public struct ThingTable: Sendable, Equatable {
     public var exchangeEntries: [Entry] { entries.filter { if case .exchange = $0.thing { true } else { false } } }
     public var memoryEntries: [Entry] { entries.filter { if case .memory = $0.thing { true } else { false } } }
     public var noteEntries: [Entry] { entries.filter { if case .note = $0.thing { true } else { false } } }
+    public var itemEntries: [Entry] { entries.filter { if case .item = $0.thing { true } else { false } } }
+    /// The items' handles, in screen order, for the screen block.
+    public var itemHandles: [String] { itemEntries.map(\.handle) }
 
     /// One thing as the planner's listing gives it: its handle and what it is.
     public static func line(_ entry: Entry, now: Date, calendar: Calendar = .current) -> String {
@@ -176,10 +197,14 @@ public struct ThingTable: Sendable, Equatable {
             line += ": \"\(record.title)\""
             return line
         case let .note(note):
-            var line = "\(entry.handle): My note \"\(note.title)\", edited \(RecallRouting.when(note.edited, now: now, calendar: calendar))"
-            let excerpt = note.excerpt
-            if !excerpt.isEmpty { line += ": \"\(String(excerpt.prefix(80)))\"" }
-            return line
+            // The note whole, its lines numbered, under its heading line: the
+            // planner writes into it by line, so it sees every line.
+            let heading = "\(entry.handle): My note \"\(note.title)\", edited \(RecallRouting.when(note.edited, now: now, calendar: calendar))"
+            let lines = note.numberedLines
+            guard !lines.isEmpty else { return heading + " (empty)" }
+            return ([heading + ":"] + lines.map { "    " + $0 }).joined(separator: "\n")
+        case let .item(item):
+            return "\(entry.handle): \(item.described)"
         }
     }
 }

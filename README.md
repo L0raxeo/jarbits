@@ -311,7 +311,8 @@ results on the literal words under version 1; the same request without
 the grunt opened YouTube. So every query that is not an address goes to
 `gemini-3.1-flash-lite` at minimal thinking (`QueryReader` in the Answers
 library) at the same moment it goes to Jev, with the newest three
-exchanges and today's date, and a one-field schema: `query`, the request
+exchanges, today's date and what is on the screen (the selection and the
+visible text; see "Screen awareness"), and a one-field schema: `query`, the request
 standing on its own (dictation noise, interjections, fillers and false
 starts dropped, every word that carries meaning kept, in the person's own
 wording and language, and anything the words point back at folded in:
@@ -604,8 +605,9 @@ a page or answer to put into it, whose title and link go in as a link
 line. "Add this to my watchlist" on a video is `notebook(add, note: n1,
 item: p1)`; "add milk to my shopping list" is `notebook(add, note: n1,
 text: milk)`. Which note a request means is the planner's reading of the
-listing, where every note stands as a line (title, when it was edited,
-its first words), whatever words the request uses for it: "my watchlist"
+listing, where every note stands whole (title, when it was edited, then
+every line as written, marks and all, numbered from 1, links as their
+titles, cut after 60 lines or 3,000 characters), whatever words the request uses for it: "my watchlist"
 reaches a note titled Watch List because the planner reads that they
 mean the same, and nothing on the device re-judges its choice. (A Jev
 yes/no judge once stood between the two and scored "Watch List" 0.32
@@ -615,7 +617,21 @@ against that request, under the 0.5 it acted on, so a second note named
 by that name; `open` and `delete` fail ("no note of mine is "x"; the
 notes I have are listed"), and the planner takes the next step, with the
 listing still in view. `new` with nothing to write makes an empty titled
-note and opens it for typing. Several notes shown at once go to the grid
+note and opens it for typing. The planner writes what goes in, the way
+a person would after reading the note: `text` is the exact lines as they
+will stand, in the marks of the lines around their place ("- milk" after
+a bulleted list, "- [ ] passport" in a checklist, the next number in a
+numbered list, plain words after prose; a new list in a note of prose is
+a blank line, a heading and its first item; an empty note starts the way
+its purpose reads), with `{item}` on its own line where a kept page or
+answer goes ("- {item}" in a list), and `after` is the number of the
+listed line the lines follow (0 the top, none the end), so a note with
+a groceries list and a packing list gets eggs under the groceries. The
+device places the lines and fills the item's title and link
+(`NoteMarkdown.insert`), and decides no form; it completes two things
+only: bare words directly after a list item continue that list, as a
+return at the end of a list does in Notes (`NoteMarkdown.continuing`),
+and a numbered run the lines land in is counted again from 1. Several notes shown at once go to the grid
 (`NotesGridView`, the recall grid's layout, headed in his voice: "My
 notes · 3"), by `open` with several handles or the notebook's `all`. A delete asks on the sheet ("Delete
 my note 'Packing list'?") and moves the file to `.trash/`, never gone.
@@ -623,17 +639,24 @@ Every append or replace first copies the text as it was to
 `.versions/<id>/`, so any edit by Jarvits can be undone. Every change
 shows the note afterwards.
 
-The note card (`NoteView`) is the title as the first line and the body in
-a rich editor over an attributed string, with a bar above the keyboard
-for the six forms. Typing saves after a pause and on leaving; the file is
-the truth, and a note Jarvits changes while it is on screen is reloaded.
+The note card (`NoteView`) is laid out like the iOS Notes app: one page
+you write on, the first line the title (large and bold, whatever is typed
+there; an empty first line titles the note from its first words), the
+rest the body, in one rich editor over an attributed string, scrolling as
+one, the query capsule floating over it with no bar of its own below. A
+bar above the keyboard offers the six forms while the note has the
+keyboard, and not while the capsule does. A page kept in the note is its
+title in link colour in the text, and a tap opens the page; there is no
+separate list of links. Typing saves after a pause and on leaving; the
+file is the truth, and a note Jarvits changes while it is on screen is
+reloaded.
 `NoteMarkdown` in the Engine library turns the file's Markdown into the
 editor's text and back, exactly the six forms, a paragraph attribute
 carrying each line's form; the editor shows bullets, numbers and
 checkboxes as marker characters at the line's start (`NoteDisplay`), and
 the file never holds a marker. A page kept in a note is a link, the
-seventh form: the file holds `[title](url)`, the editor shows the title,
-and a row under the body opens the page. Anything else is kept as plain
+seventh form: the file holds `[title](url)` and the editor shows the
+title, tappable. Anything else is kept as plain
 text. Opening or changing a note is an exchange (`note`), so "what
 does it say" works and the planner sees it; notes are never memories and
 recall never searches them. The planner's listing holds every note as
@@ -741,6 +764,76 @@ engine hands such a query to the executor
 (`Browser/Engine/Executor.swift`) rather than to the pick. Without a
 Gemini key the pick runs as it would, and an unsure one is web results.
 
+## Screen awareness
+
+Users point at the screen: "fetch the link of the video", "open the
+second one", "how much is this", "add the third result to my watchlist",
+"what's the blue button for". Siri answers these by reading an app's
+accessibility tree; this app owns its web view, so it reads the screen
+exactly, once, as a query starts (`Layer.screen()`, `Screen` in the
+Engine library). A web page gives, through one call into the page's own
+script (`PageChrome.js` `screen()`, bounded at 1.5 s), the text in the
+viewport in full (up to 4,000 characters), the rest of the page's text
+(up to 8,000), the selection, and the links in view with their text and
+address (up to 40, one per address); and, through WebKit's image export
+(bounded at 2 s, in parallel), a JPEG of the viewport at 1024 points
+wide. A note gives its text, an answer its text, a grid its tiles. Jev
+never waits for any of it: it is asked the moment the query starts, and
+only the reader and the planner wait. A read that fails leaves the query
+exactly as before: the title and the address, no block, no picture.
+
+Every model that interprets then sees the screen, under one rule, the
+same words for the reader and the planner (`Screen.rule`): the screen is
+what the user sees now; fold it in only where the words point at it
+("this", "that one", "the second", "here", "the one shown", "the price on
+the page"); a request that stands on its own, or leans on an earlier
+exchange, is left as it is. The reading gets the selection and the
+visible text before the request, so "how much is this" reads as the
+thing it is. The planner's first turn ends on the whole screen (the
+visible text, the rest, the links in view) and carries the picture as a
+second content part (`{"type": "image", "data": <base64>, "mime_type":
+"image/jpeg"}`, Google's Interactions API shape), with one more rule:
+what the picture shows that the text does not (a colour, a position, a
+chart) is read from the picture; anything the text or the listing names
+is named by its handle. Each link in view is a thing, `s1, s2…`, beside
+`p`, `m` and `n`: "open the second video" is `open` with `s2`; "add the
+third one to my watchlist" is `notebook(add, note: n1, item: s3)`; "fetch
+the link of the video" is `say` with the page's own address, which the
+screen's line gives in full, since the device filled it. No kind is
+guessed from an address: the planner reads what an item is from its text
+and host. An answer on the straight path gets the whole screen in its
+context when Jev chained the layer on screen or the thing it is about is
+that layer; an answer a plan asks for gets it always, since the planner
+wrote the question with it in view. Jev stays blind, but its reasoning
+question's top level (the one that reaches the planner) names "the words
+point at something on the screen that must be looked at before any
+format can act", so a sure pick like `video`, `site` or `one_line` does
+not run on words alone for "open the second one" or "how much is this";
+the middle level (a value to read out of the words) never reaches the
+planner by itself, and no extractor can read the screen, so the clause
+belongs at the top (measured 2026-10-29: in the middle level "how much
+is this" scored 0.98 and went to web results for its price). The log
+line and the plan record carry the screen's sizes (`screenChars`,
+`screenItems`, `pictureBytes`).
+
+Nothing on the device decides from the page's text; it only puts it in
+front of the model. The eval sets keep the rule honest with pairs: each
+screen case ("how much is this" over a product page, "open the second
+video" over a results page) has a sibling of the same shape that leans
+on the chain or on nothing ("how old is he" after an answer with a
+product page open, "google chocolate milk" over any page, "what is a
+venom f5" over the Hennessey page), and the pair must come out apart.
+`report plan "<query>" --screen <title> <url> <visible text> --link
+<text> <url>... --picture <jpeg>` prints the first turn as the app sends
+it (the picture shown as `<picture>`) and, with the key, runs one round.
+
+**What leaves the phone with a query.** The visible text, the selection,
+the links in view and the rest of the page (capped as above) go to Gemini
+with the query, for the reading and, when the query is planned or an
+answer is about the page, for those; a planned query also sends a picture
+of the viewport. Jev gets the query and the exchanges' titles, never the
+page's text or the picture. Nothing is kept by Google (`store: false`).
+
 The planner (`Planner` in the Answers library) asks `gemini-3.1-flash-lite`,
 the extractor's model, at high thinking (accuracy over speed and cost,
 Lorcan 2026-10-29; `store: false`; prices in `GeminiPricing`), with every instinct as a tool,
@@ -762,7 +855,9 @@ The first turn carries the request, the exchanges it depends on (the
 chain) with the layer on screen always among them, so "this" is a thing
 the planner can point at, the five memories nearest the request in
 meaning (the newest, without the index; recall is its tool for anything
-beyond them), and every note of the notebook, a line each; nothing in
+beyond them), every note of the notebook, a line each, and last the
+screen as the user sees it, its links in view as `s` handles, with its
+picture as a second content part (see "Screen awareness"); nothing in
 the listing is judged or thinned by a second model, since reading what a
 request means is the planner's work. Every fact
 goes in the system instruction, as it does for an answer. A later showing step replaces what the step before
@@ -788,8 +883,9 @@ that only did something hands the screen back to where it stood, as
 `remember` does.
 
 **Things and handles.** The first turn tags each earlier exchange of the
-session (`p1`, `p2`, oldest first), each memory shown (`m1`, `m2`) and
-each note (`n1`, `n2`): a handle (`ThingTable` in the Engine library). The planner points at a
+session (`p1`, `p2`, oldest first), each memory shown (`m1`, `m2`), each
+note (`n1`, `n2`) and each link in view on the screen (`s1`, `s2`): a
+handle (`ThingTable` in the Engine library). The planner points at a
 thing by its handle and never sees or writes an address; the device knows
 each thing exactly (a page's address, a search's term, an answer's text, a
 memory's record) and swaps the handle for it before a step runs. A tool
@@ -914,7 +1010,7 @@ coming from it. Nothing of this outlives the app.
 
 | Path | Role |
 |---|---|
-| `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
+| `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the screen as the models see it (`Screen`, `ScreenItem`: the text, the links as things, the one rule), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
 | `Browser/Engine/Engine.swift` | The cognitive engine's first stage: an address as typed, else one Jev request over the registry carrying the session's exchanges with the reading beside it, the extractor for every value the pick declares, and the instinct to run with what it needs; or the hand-off to the executor when the reasoning score says the query needs several steps. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Browser/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat or a second thing to show, and sending every result back to the planner until `done` or the bounds. |
 | `Browser/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the memories and Jev's judge. |

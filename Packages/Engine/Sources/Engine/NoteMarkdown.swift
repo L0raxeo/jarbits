@@ -74,6 +74,66 @@ public enum NoteMarkdown {
 
     // MARK: Lines
 
+    /// Text to add to a body, in the body's own form: when the body's last
+    /// line is a bullet, a checkbox or a numbered item and the text's lines
+    /// carry no marker of their own, each takes that marker (the next
+    /// numbers for a numbered list), as a return at the end of a list does
+    /// in Notes. Text that brings its own marks, or a body that is not a
+    /// list, is added as it is.
+    public static func continuing(_ text: String, after body: String) -> String {
+        let last = body.split(separator: "\n").map(String.init).last { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard let last else { return text }
+        let (form, _) = split(last)
+        guard [.bullet, .checkbox, .checked, .numbered].contains(form) else { return text }
+        var number = form == .numbered ? (Int(last.trimmingCharacters(in: .whitespaces).prefix { $0.isNumber }) ?? 0) : 0
+        return text.split(separator: "\n", omittingEmptySubsequences: false).map { line in
+            let line = String(line)
+            guard !line.trimmingCharacters(in: .whitespaces).isEmpty, split(line).0 == .plain else { return line }
+            switch form {
+            case .numbered:
+                number += 1
+                return "\(number). " + line
+            case .checkbox, .checked: return "- [ ] " + line
+            default: return "- " + line
+            }
+        }.joined(separator: "\n")
+    }
+
+    /// `text` put into `body` after its line number `line` (as
+    /// `Note.numberedLines` counts them): 0 puts it at the top, nil or a
+    /// number past the last line puts it at the end. The model wrote the
+    /// lines in the marks they should have; the device completes two things
+    /// it may have left: bare words directly after a list item continue that
+    /// list (`continuing`), and a numbered run the lines land in is counted
+    /// again from 1 (`renumbered`).
+    public static func insert(_ text: String, into body: String, after line: Int?) -> String {
+        let body = body.trimmingCharacters(in: .newlines)
+        var lines = body.isEmpty ? [] : body.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let at = min(max(line ?? lines.count, 0), lines.count)
+        let before = Array(lines.prefix(at))
+        // The line directly before decides: after a blank line nothing is continued.
+        let previous = before.last?.trimmingCharacters(in: .whitespaces).isEmpty == false ? before.joined(separator: "\n") : ""
+        let text = continuing(text.trimmingCharacters(in: .newlines), after: previous)
+        let added = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        lines.insert(contentsOf: added, at: at)
+        return renumbered(lines.joined(separator: "\n"))
+    }
+
+    /// Every contiguous run of numbered lines counted from 1 in order;
+    /// nothing else is touched.
+    public static func renumbered(_ body: String) -> String {
+        var number = 0
+        return body.split(separator: "\n", omittingEmptySubsequences: false).map { line in
+            let line = String(line)
+            guard let match = line.firstMatch(of: /^(\s*)(\d+)([.)] .*)$/) else { number = 0; return line }
+            number += 1
+            return "\(match.1)\(number)\(match.3)"
+        }.joined(separator: "\n")
+    }
+
+    /// A line's form from its marker alone.
+    public static func form(of line: String) -> NoteParagraph { split(line).0 }
+
     /// A line's form from its marker, and the text after it.
     static func split(_ line: String) -> (NoteParagraph, String) {
         let trimmed = line.trimmingCharacters(in: .whitespaces)

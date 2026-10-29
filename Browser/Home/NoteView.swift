@@ -1,21 +1,24 @@
 import SwiftUI
 import Engine
 
-/// One of Jarvits's notes, open for typing: the title as the first line,
-/// the body in a rich editor over an attributed string, and a small bar
-/// above the keyboard for the six forms. The file is the truth: typing
-/// saves after a pause and on leaving, and a note changed by Jarvits while
-/// on screen is reloaded. Bullets, numbers and checkboxes show as marker
-/// characters at the start of their lines; `NoteMarkdown` keeps the form
-/// on each paragraph and `NoteDisplay` turns the markers into Markdown on
-/// the way out, so the file never holds a marker character.
+/// One of Jarvits's notes, open for typing, laid out like the iOS Notes
+/// app: one page you write on, the first line the title (large and bold,
+/// whatever is typed there), the rest the body in a rich editor over an
+/// attributed string, scrolling as one, the query capsule floating over
+/// it. A small bar above the keyboard offers the six forms while the note
+/// itself has the keyboard, and not while the capsule does. A page kept in
+/// the note is its title in link colour; a tap opens it. The file is the
+/// truth: typing saves after a pause and on leaving, and a note changed by
+/// Jarvits while on screen is reloaded. Bullets, numbers and checkboxes
+/// show as marker characters at the start of their lines; `NoteMarkdown`
+/// keeps the form on each paragraph and `NoteDisplay` turns the markers
+/// into Markdown on the way out, so the file never holds a marker.
 struct NoteView: View {
     @Environment(BrowserSession.self) private var session
     let note: Note
     let topInset: CGFloat
     @Binding var barCompact: Bool
 
-    @State private var title = ""
     @State private var text = AttributedString()
     @State private var selection = AttributedTextSelection()
     @State private var loadedID: UUID?
@@ -23,19 +26,44 @@ struct NoteView: View {
     @State private var saveTask: Task<Void, Never>?
     @FocusState private var editing: Bool
 
+    /// The title line's look; the body is `.body`, a heading `.title3`.
+    static let titleFont = Font.title.weight(.bold)
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TextField("Title", text: $title)
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(Palette.ink)
-                .onChange(of: title) { _, _ in scheduleSave() }
-            TextEditor(text: $text, selection: $selection)
-                .font(.body)
-                .foregroundStyle(Palette.ink)
-                .scrollContentBackground(.hidden)
-                .focused($editing)
-                .onChange(of: text) { _, _ in scheduleSave() }
-                .toolbar {
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    // The date line, as Notes has it, above the title, scrolling with the page.
+                    Text("Edited \(note.edited.formatted(.relative(presentation: .named)))")
+                        .font(.footnote)
+                        .foregroundStyle(Palette.quiet)
+                        .frame(maxWidth: .infinity)
+                    TextEditor(text: $text, selection: $selection)
+                        .font(.body)
+                        .foregroundStyle(Palette.ink)
+                        .scrollContentBackground(.hidden)
+                        .scrollDisabled(true)   // the page scrolls, not the editor
+                        .frame(minHeight: proxy.size.height - topInset - 160, alignment: .top)
+                        .focused($editing)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, topInset + 12)
+                .padding(.bottom, 120)   // the capsule floats over the page
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .ignoresSafeArea(.container, edges: [.top, .bottom])
+            .environment(\.openURL, OpenURLAction { url in
+                // A link in the text: the page it names, in this app.
+                let title = NoteMarkdown.links(in: text).first { $0.url == url }?.title ?? url.host() ?? url.absoluteString
+                session.openLink(url, title: title)
+                return .handled
+            })
+            .onChange(of: text) { _, _ in
+                restyle()
+                scheduleSave()
+            }
+            .toolbar {
+                if editing {
                     ToolbarItemGroup(placement: .keyboard) {
                         formButton("bold", "Bold") { toggleInline(.stronglyEmphasized) }
                         formButton("italic", "Italic") { toggleInline(.emphasized) }
@@ -48,39 +76,15 @@ struct NoteView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                 }
-            let links = NoteMarkdown.links(in: text)
-            if !links.isEmpty {
-                // A page kept in the note: its title in the text, the page a tap away.
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(links.enumerated()), id: \.offset) { _, link in
-                        Button {
-                            session.openLink(link.url, title: link.title)
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "link")
-                                Text(link.title).lineLimit(1)
-                            }
-                            .font(.subheadline)
-                            .foregroundStyle(Palette.highlight)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
             }
-            Text("Edited \(note.edited.formatted(.relative(presentation: .named)))")
-                .font(.footnote)
-                .foregroundStyle(Palette.quiet)
+            .onAppear(perform: load)
+            .onChange(of: note.edited) { _, _ in
+                // Jarvits changed the note while it was on screen: the file wins.
+                if note.id != loadedID || note.edited != loadedEdited { load() }
+            }
+            .onChange(of: note.id) { _, _ in load() }
+            .onDisappear { saveNow() }
         }
-        .padding(.horizontal, 24)
-        .padding(.top, topInset + 24)
-        .padding(.bottom, 120)   // room for the query capsule
-        .onAppear(perform: load)
-        .onChange(of: note.edited) { _, _ in
-            // Jarvits changed the note while it was on screen: the file wins.
-            if note.id != loadedID || note.edited != loadedEdited { load() }
-        }
-        .onChange(of: note.id) { _, _ in load() }
-        .onDisappear { saveNow() }
     }
 
     private func formButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
@@ -88,13 +92,40 @@ struct NoteView: View {
             .accessibilityLabel(label)
     }
 
-    // MARK: The file
+    // MARK: The page and the file
 
+    /// The title line and the body, as the editor shows them.
     private func load() {
-        title = note.title
-        text = NoteDisplay.display(from: NoteMarkdown.attributed(from: note.body))
+        var title = AttributedString(note.title)
+        title.font = Self.titleFont
+        let body = NoteDisplay.display(from: NoteMarkdown.attributed(from: note.body))
+        text = body.characters.isEmpty ? title : title + AttributedString("\n") + body
         loadedID = note.id
         loadedEdited = note.edited
+    }
+
+    /// The first line's range and the rest, split at the first line break.
+    private static func split(_ text: AttributedString) -> (title: Range<AttributedString.Index>, body: AttributedString) {
+        let characters = text.characters
+        guard let newline = characters.firstIndex(of: "\n") else { return (text.startIndex ..< text.endIndex, AttributedString()) }
+        return (text.startIndex ..< newline, AttributedString(text[characters.index(after: newline)...]))
+    }
+
+    /// The first line keeps the title's look and no form or marker; the
+    /// lines after it keep theirs, so a return at the end of the title
+    /// starts a plain body line rather than a second title.
+    private func restyle() {
+        let (titleRange, _) = Self.split(text)
+        var styled = text
+        styled[titleRange].font = Self.titleFont
+        styled[titleRange][NoteParagraphAttribute.self] = nil
+        if titleRange.upperBound < text.endIndex {
+            let rest = titleRange.upperBound ..< text.endIndex
+            for run in text[rest].runs where run.font == Self.titleFont {
+                styled[run.range].font = run[NoteParagraphAttribute.self] == .heading ? Font.title3.weight(.semibold) : nil
+            }
+        }
+        if styled != text { text = styled }
     }
 
     private func scheduleSave() {
@@ -108,11 +139,13 @@ struct NoteView: View {
 
     private func saveNow() {
         saveTask?.cancel()
-        let body = NoteMarkdown.markdown(from: NoteDisplay.attributed(fromDisplay: text))
-        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard body != note.body || (!name.isEmpty && name != note.title) else { return }
+        let (titleRange, rest) = Self.split(text)
+        let body = NoteMarkdown.markdown(from: NoteDisplay.attributed(fromDisplay: rest))
+        let name = String(text[titleRange].characters).trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = name.isEmpty ? Note.title(from: body) : name
+        guard body != note.body || title != note.title else { return }
         loadedEdited = nil   // the next edited date is ours, not a reload
-        session.saveNote(note, body: body, title: name.isEmpty ? note.title : name)
+        session.saveNote(note, body: body, title: title)
     }
 
     // MARK: Forms
@@ -125,7 +158,8 @@ struct NoteView: View {
         }
     }
 
-    /// The form of the paragraph the cursor is in: set, or cleared when it already is that.
+    /// The form of the paragraph the cursor is in: set, or cleared when it
+    /// already is that. The title line takes no form.
     private func toggleParagraph(_ form: NoteParagraph) {
         let position: AttributedString.Index
         switch selection.indices(in: text) {
@@ -133,6 +167,7 @@ struct NoteView: View {
         case let .ranges(ranges): position = ranges.ranges.first?.lowerBound ?? text.startIndex
         }
         let range = NoteDisplay.paragraphRange(containing: position, in: text)
+        guard range.lowerBound > text.startIndex else { return }
         let current = NoteDisplay.form(of: AttributedString(text[range]))
         let wanted: NoteParagraph = current == form ? .plain : form
         text = NoteDisplay.setForm(wanted, in: range, of: text)

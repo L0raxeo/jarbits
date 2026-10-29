@@ -38,8 +38,8 @@ public struct QueryReader: Sendable {
     public static func system(_ persona: Persona) -> String {
         persona.readerLine + "\n" + """
         You read a request \(persona.user) made to you, usually dictated. Reply with JSON matching the schema and nothing else.
-        query: the request, standing on its own, whole. The only words to drop are ones that carry nothing: dictation noise, fillers, false starts and repeated words. Everything else stays, in the person's own wording and language: names, numbers, addresses, and above all how they asked for it to be done. "google", "look up", "search", "ask AI", "pull up", "show me pictures of", "remember", "bring back" name what they want done and are the most important words in the request; a request that asks for a search comes back still asking for a search, never turned into the bare question. Polite framing around such a word ("can you google X" → "google X") is the frame, not the word. A request that leans on the earlier exchanges comes back complete, with what they make clear folded in, so it can be read with nothing else in view. Never answer, never add anything the request and the exchanges do not say. A request with nothing to drop and nothing to fold in comes back exactly as it is.
-        Earlier exchanges of the session may come before the request, oldest first, and today's date.
+        query: the request, standing on its own, whole. The only words to drop are ones that carry nothing: dictation noise, fillers, false starts and repeated words. Everything else stays, in the person's own wording and language: names, numbers, addresses, and above all how they asked for it to be done. "google", "look up", "search", "ask AI", "pull up", "show me pictures of", "remember", "bring back" name what they want done and are the most important words in the request; a request that asks for a search comes back still asking for a search, never turned into the bare question. Polite framing around such a word ("can you google X" → "google X") is the frame, not the word. A request that leans on the earlier exchanges comes back complete, with what they make clear folded in, so it can be read with nothing else in view. \(Screen.rule) "how much is this" over a page showing one thing names that thing; "google chocolate milk" over any page stays as it is. Never answer, never add anything the request, the exchanges and the screen do not say. A request with nothing to drop and nothing to fold in comes back exactly as it is.
+        Earlier exchanges of the session may come before the request, oldest first, then today's date, then what is on the screen.
         """
     }
 
@@ -52,14 +52,15 @@ public struct QueryReader: Sendable {
     public var timeout: Duration { extractor.timeout }
 
     /// The request the app sends, for the report and the CLI.
-    public static func request(query: String, exchanges: [Exchange] = [], now: Date = .now, model: String = model, persona: Persona = Persona()) -> InteractionRequest {
-        ValueExtractor.request(query: query, exchanges: Array(exchanges.suffix(exchangesGiven)), schema: schema, instructions: system(persona), model: model, maxOutputTokens: maxOutputTokens, now: now)
+    public static func request(query: String, exchanges: [Exchange] = [], now: Date = .now, model: String = model, persona: Persona = Persona(), screen: Screen? = nil) -> InteractionRequest {
+        ValueExtractor.request(query: query, exchanges: Array(exchanges.suffix(exchangesGiven)), schema: schema, instructions: system(persona), model: model, maxOutputTokens: maxOutputTokens, now: now, screen: screen)
     }
 
     /// One call within the timeout; never throws. `.rewritten` only when
-    /// the substance differs (`Substance.differs`).
-    public func read(_ query: String, exchanges: [Exchange] = [], now: Date = .now, persona: Persona = Persona()) async -> ReadingSummary {
-        let verdict = await extractor.extract(query: query, exchanges: Array(exchanges.suffix(Self.exchangesGiven)), schema: Self.schema, instructions: Self.system(persona), maxOutputTokens: Self.maxOutputTokens, now: now)
+    /// the substance differs (`Substance.differs`). `screen` is what the
+    /// user sees as they ask: the selection and the visible text go.
+    public func read(_ query: String, exchanges: [Exchange] = [], now: Date = .now, persona: Persona = Persona(), screen: Screen? = nil) async -> ReadingSummary {
+        let verdict = await extractor.extract(query: query, exchanges: Array(exchanges.suffix(Self.exchangesGiven)), schema: Self.schema, instructions: Self.system(persona), maxOutputTokens: Self.maxOutputTokens, now: now, screen: screen)
         switch verdict {
         case let .values(values, summary):
             let text = values["query"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

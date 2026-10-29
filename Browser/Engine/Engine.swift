@@ -42,17 +42,25 @@ struct Engine {
     /// `exchanges` is the session's history up to the layer on screen,
     /// oldest first; `current` that layer; `opened` a site this app opened
     /// by name and still shows.
-    func route(_ typed: String, exchanges: [SessionExchange], current: Layer?, opened: OpenedSite?, persona: Persona = Persona()) async -> EngineResult {
+    /// `screen` is the read of what is on screen, started by the session as
+    /// the query began: Jev never waits for it; the reader does, and the
+    /// planner and an answer get it afterwards.
+    func route(_ typed: String, exchanges: [SessionExchange], current: Layer?, opened: OpenedSite?, persona: Persona = Persona(), screen screenRead: Task<Screen?, Never>? = nil) async -> EngineResult {
         let sent = Array(exchanges.suffix(EngineRequest.maxExchanges))
         var query = typed
         var reading: ReadingSummary?
         let decision: Pick
+        func read() async -> ReadingSummary? {
+            guard let reader else { return nil }
+            let screen = await screenRead?.value
+            return await reader.read(typed, exchanges: sent.map(\.exchange), persona: persona, screen: screen)
+        }
         if QueryParser.directURL(from: typed) != nil {
             decision = .directURL()
         } else if let router {
             // The reading runs beside the Jev request; a reading that only
             // touched case or punctuation never asks Jev twice.
-            async let asked: ReadingSummary? = reader?.read(typed, exchanges: sent.map(\.exchange), persona: persona)
+            async let asked: ReadingSummary? = read()
             let first = await router.decide(typed, exchanges: sent.map(\.exchange), opened: opened)
             reading = await asked
             if let read = reading?.query, reading?.changed == true {
@@ -65,13 +73,14 @@ struct Engine {
             decision = .noKey()
         }
         let chained = Array(sent.suffix(decision.chainedCount))
+        let screen = await screenRead?.value
         // An unsure pick, a sure one that needs several steps, or an
         // instinct that has not earned the shortcut: the session plans it
         // instead of running the pick.
         let picked = InstinctSpec.spec(for: decision.instinct)
         if planner != nil, ReasoningPolicy.entersReasoning(decision, spec: picked) {
             let lead = decision.source == .jev && !picked.shortcut ? Planner.pickedLead(decision.instinct) : nil
-            return EngineResult(query: query, decision: decision, reading: reading, reasoning: true, chained: chained.map(\.exchange), lead: lead)
+            return EngineResult(query: query, decision: decision, reading: reading, reasoning: true, chained: chained.map(\.exchange), lead: lead, screen: screen)
         }
         // The values the pick takes: what Jev read for its closed-set
         // fields, and what the extractor reads out of the words for every
@@ -150,7 +159,8 @@ struct Engine {
             reading: reading
         )
         context.things = things
-        return EngineResult(query: query, decision: decision, extraction: extraction, reading: reading, instinct: instinct(for: format), context: context, inferred: inferred)
+        context.screen = screen
+        return EngineResult(query: query, decision: decision, extraction: extraction, reading: reading, instinct: instinct(for: format), context: context, inferred: inferred, screen: screen)
     }
 
     func instinct(for format: Instinct) -> any InstinctRunner {
@@ -177,6 +187,8 @@ struct EngineResult {
     var chained: [Exchange] = []
     /// Why the planner has it, when the pick itself is reasoned.
     var lead: String? = nil
+    /// What was on screen as the query began, when it could be read.
+    var screen: Screen? = nil
 }
 
 extension BrowserSession {

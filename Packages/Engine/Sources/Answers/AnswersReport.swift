@@ -92,9 +92,11 @@ public enum AnswersReport {
     private static func reasoningSection() -> [String] {
         let tools = Planner.tools(for: InstinctSpec.all)
         let bundle = PlanBundle(query: "<query>", exchanges: [.search(query: "<earlier query>", term: "<term searched>")], facts: ["<fact>"], memories: [], tools: tools, context: .example)
-        let input = Planner.input(query: "<query>", exchanges: bundle.exchanges, memories: [
+        let screen = Screen(kind: .page, title: "<page title>", address: URL(string: "https://example.com/<path>"), visible: "<the text in the viewport>", rest: "<the rest of the page's text>", items: [ScreenItem(title: "<link text>", address: URL(string: "https://example.com/<link>")!)])
+        let things = ThingTable(exchanges: bundle.exchanges, memories: [
             MemoryRecord(date: AnswerContext.example.now.addingTimeInterval(-86_400), kind: .page, query: "<earlier query>", title: "<page title>", url: URL(string: "https://example.com/<path>")),
-        ], now: AnswerContext.example.now)
+        ], items: screen.items)
+        let input = Planner.input(query: "<query>", things: things, now: AnswerContext.example.now, screen: screen)
         var out: [String] = []
         out.append("### Reasoning (function calling)")
         out.append("")
@@ -106,7 +108,7 @@ public enum AnswersReport {
         out.append(Planner.system(facts: bundle.facts, context: bundle.context, persona: .example))
         out.append("```")
         out.append("")
-        out.append("First turn (the request, the exchanges it depends on, the memories the words point at, at most \(ReasoningPolicy.memoriesGiven)):")
+        out.append("First turn (the request, the exchanges it depends on, the memories nearest it, at most \(ReasoningPolicy.memoriesGiven), every note, and the screen: its visible text up to \(Screen.visibleLimit) characters, the rest up to \(Screen.restLimit), the links in view as `s` handles; a JPEG of the viewport rides beside the text as a second content part, `{\"type\": \"image\", \"data\": <base64>, \"mime_type\": \"image/jpeg\"}`):")
         out.append("")
         out.append("```")
         out.append(input)
@@ -184,11 +186,11 @@ public enum AnswersReport {
 
     /// The reading beside the Jev request: the request standing on its own.
     private static func readingSection() -> [String] {
-        let request = QueryReader.request(query: "Which oh can you pull up youtube?", now: Date(timeIntervalSince1970: 1_792_600_000))
+        let request = QueryReader.request(query: "Which oh can you pull up youtube?", now: Date(timeIntervalSince1970: 1_792_600_000), screen: Screen(kind: .page, title: "<page title>", address: URL(string: "https://example.com/<path>"), visible: "<the text in the viewport>"))
         var out: [String] = []
         out.append("### The reading beside Jev")
         out.append("")
-        out.append("Every query that reaches Jev (every one that is not an address) goes to `\(QueryReader.model)` at minimal thinking at the same moment, with this instruction and a one-field schema, within \(QueryReader.timeout.components.seconds) s: `query`, the request standing on its own (dictation noise, fillers and false starts gone, anything the words point back at folded in); the newest \(QueryReader.exchangesGiven) exchanges and today's date come first so \"it\" and \"yesterday\" resolve. When the substance differs from the typed words (`Substance.differs`: case, diacritics, punctuation and spacing aside), Jev is asked again on the read words and that pick wins; the read words are what the instinct, the planner, the exchange and the layer receive. Every free-form value the picked instinct declares (`InstinctSpec.arguments`) is then read out of the read words by the extractor, one more call; web results, images and video declare none and search the read words as they are. The same substance, a miss or a slow reply leaves the first pick standing on the typed words. A query waits for the slower of the two calls. The typed words stay in the log as `reading.original`; the line's `query` is what ran. The eval runner grades Jev on the typed words and does not read.")
+        out.append("Every query that reaches Jev (every one that is not an address) goes to `\(QueryReader.model)` at minimal thinking at the same moment, with this instruction and a one-field schema, within \(QueryReader.timeout.components.seconds) s: `query`, the request standing on its own (dictation noise, fillers and false starts gone, anything the words point back at folded in); the newest \(QueryReader.exchangesGiven) exchanges, today's date and the screen (what is on it, the selection, the visible text) come first so \"it\", \"yesterday\" and \"this\" resolve. When the substance differs from the typed words (`Substance.differs`: case, diacritics, punctuation and spacing aside), Jev is asked again on the read words and that pick wins; the read words are what the instinct, the planner, the exchange and the layer receive. Every free-form value the picked instinct declares (`InstinctSpec.arguments`) is then read out of the read words by the extractor, one more call; web results, images and video declare none and search the read words as they are. The same substance, a miss or a slow reply leaves the first pick standing on the typed words. A query waits for the slower of the two calls. The typed words stay in the log as `reading.original`; the line's `query` is what ran. The eval runner grades Jev on the typed words and does not read.")
         out.append("")
         out.append("System instruction:")
         out.append("")

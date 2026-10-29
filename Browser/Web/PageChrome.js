@@ -452,6 +452,63 @@
     if (event.persisted) { lastKey = null; reportedAudible = null; reportedMedia = null; reportedUse = null; schedule(); reportUse(); }
   });
 
-  window.__pageChrome = { evaluate, notes, restore };
+  // --- The screen ----------------------------------------------------------
+
+  // What the user sees, for the app's models at the moment a query starts:
+  // the text in the viewport (in document order), the rest of the page's
+  // text, the selection, and the links in view with their text and address.
+  // Read on request only; nothing here is posted or decided.
+  function inViewport(rect) {
+    const height = window.innerHeight || document.documentElement.clientHeight;
+    const width = window.innerWidth || document.documentElement.clientWidth;
+    return rect.bottom > 0 && rect.top < height && rect.right > 0 && rect.left < width && rect.width > 0 && rect.height > 0;
+  }
+  function hidden(el) {
+    const style = window.getComputedStyle(el);
+    return style.display === 'none' || style.visibility === 'hidden' || el.closest('script, style, noscript, template, [aria-hidden="true"]') !== null;
+  }
+  function screen(limits) {
+    const visibleLimit = (limits && limits.visible) || 4000;
+    const restLimit = (limits && limits.rest) || 8000;
+    const itemLimit = (limits && limits.items) || 40;
+    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
+    const visible = [];
+    const rest = [];
+    let visibleCount = 0;
+    let restCount = 0;
+    const checked = new Map();
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.textContent.replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      const el = node.parentElement;
+      if (!el) continue;
+      let shown = checked.get(el);
+      if (shown === undefined) {
+        shown = !hidden(el) && inViewport(el.getBoundingClientRect());
+        checked.set(el, shown);
+      }
+      if (shown) {
+        if (visibleCount < visibleLimit) { visible.push(text); visibleCount += text.length + 1; }
+      } else if (restCount < restLimit) {
+        if (el.closest('script, style, noscript, template') === null) { rest.push(text); restCount += text.length + 1; }
+      }
+    }
+    const selection = window.getSelection ? window.getSelection().toString() : '';
+    const items = [];
+    const seen = new Set();
+    for (const a of document.querySelectorAll('a[href]')) {
+      if (items.length >= itemLimit) break;
+      const href = a.href;
+      if (!href || !/^https?:/i.test(href) || seen.has(href)) continue;
+      if (hidden(a) || !inViewport(a.getBoundingClientRect())) continue;
+      const title = (a.innerText || a.textContent || a.getAttribute('aria-label') || a.title || '').replace(/\s+/g, ' ').trim();
+      if (!title) continue;
+      seen.add(href);
+      items.push({ title: title.slice(0, 200), href });
+    }
+    return { visible: visible.join('\n'), rest: rest.join('\n'), selection, items };
+  }
+
+  window.__pageChrome = { evaluate, notes, restore, screen };
   schedule();
 })();

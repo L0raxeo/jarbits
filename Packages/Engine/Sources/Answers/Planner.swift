@@ -100,7 +100,7 @@ public struct Planner: Sendable {
             // In a plan the recall finds; the plan decides what to do with what it found.
             text += " In a plan it shows nothing: its result names what it found, by handle, for open, say, or an answer's about."
         } else if spec.instinct == .notebook {
-            text += " Every note of my notebook is in the listing: the one the request means goes in note, by handle, whatever words it used for it (\"my watchlist\" means a note titled Watch List); a page or answer to keep goes in item, by handle, and its title and link go in. A topic with no note handle makes a new note by that name (add, new) or fails (open, delete). Shows the note afterwards."
+            text += " Every note of my notebook is in the listing: the one the request means goes in note, by handle, whatever words it used for it (\"my watchlist\" means a note titled Watch List); a page or answer to keep goes in item, by handle, and its title and link go in. A topic with no note handle makes a new note by that name (add, new) or fails (open, delete). Every note is listed whole with its lines numbered: text is the exact lines to add, in the marks of the lines around where they go, and after is the number of the line they follow. \"add milk\" to a bulleted shopping list writes \"- milk\" after its last item; \"add eggs to the groceries\" in a note with a groceries list and a packing list writes \"- eggs\" after the last grocery line, not at the end; \"start a packing list here with passport\" in a note of prose writes a blank line, \"## Packing\" and \"- [ ] passport\" at the end; a page kept by handle goes as \"- {item}\" in a list and \"{item}\" alone in prose, and a note that is empty starts the way its purpose reads (a watch list or shopping list as a list, a thought as prose); \"add that the plumber comes tuesday\" to a note of prose, or as a new note, writes the sentence \"The plumber comes Tuesday.\", never a one-item list; a numbered list gets the next number. Shows the note afterwards."
         } else {
             text += spec.showsLayer ? " Puts its result on screen." : " Shows nothing; a mark says what was done."
         }
@@ -122,7 +122,8 @@ public struct Planner: Sendable {
             "- To confirm something, to choose, or to get a value the request leaves out, call ask; the answer comes back as the result.",
             "- A tool that costs money or cannot be undone is confirmed with \(persona.user) by the device before it runs, not by you.",
             "- \(InstinctSpec.all.filter { $0.showsLayer && $0.instinct != .recall }.map(\.id).joined(separator: ", ")), say and open each put a result on screen, and a later one replaces the earlier: end on what \(persona.user) should see.",
-            "- The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2) and each note of my notebook (n1, n2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. recall's result names what it found by handle; open shows one; say, or an answer with about, tells \(persona.user) about one.",
+            "- The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. recall's result names what it found by handle; open shows one; say, or an answer with about, tells \(persona.user) about one.",
+            "- \(Screen.rule) \(Screen.pictureRule) A link in view is opened by its handle (open with s2), kept by its handle (notebook's item), and its address, which the listing gives, may be said when \(persona.user) asks for the link.",
             "- When an answer on the sheet is something lasting about \(persona.user) or their life, call remember with it next.",
             "- remember and forget show \(persona.user) a mark saying what was kept or dropped: never also say it.",
             "- A request about \(persona.users) own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about \(persona.user).",
@@ -146,7 +147,7 @@ public struct Planner: Sendable {
     /// `lead` is the one line before the request that says why the planner
     /// has it: what an instinct tried and could not do (`failureLead`), or
     /// that the classifier picked an instinct that is reasoned (`pickedLead`).
-    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil) -> String {
+    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil) -> String {
         var lines = ["Request: \(query)"]
         if let lead, !lead.isEmpty {
             lines.append("")
@@ -165,12 +166,27 @@ public struct Planner: Sendable {
             lines += memories.map { "- " + ThingTable.line($0, now: now, calendar: calendar) }
         }
         let notes = things.noteEntries
-        if !notes.isEmpty {
-            lines.append("")
+        lines.append("")
+        if notes.isEmpty {
+            // Said outright, so a write makes a note instead of asking which.
+            lines.append("In my notebook: no notes yet.")
+        } else {
             lines.append("In my notebook, every note (newest first):")
             lines += notes.map { "- " + ThingTable.line($0, now: now, calendar: calendar) }
         }
+        if let screen {
+            // The screen as the user sees it, whole: the links by their handles.
+            lines.append("")
+            lines.append(screen.block(whole: true, handles: things.itemHandles))
+        }
         return lines.joined(separator: "\n")
+    }
+
+    /// The plan's first turn: the words, and the screen's picture beside
+    /// them when there is one.
+    public static func firstTurn(_ text: String, picture: Data?) -> InteractionStep {
+        guard let picture, !picture.isEmpty else { return .userText(text) }
+        return .userParts([.text(text), .image(picture, mimeType: "image/jpeg")])
     }
 
     /// The lead line for an instinct that tried first and could not.
@@ -238,8 +254,10 @@ public struct PlanBundle: Sendable {
     public var tools: [ToolDeclaration]
     public var context: AnswerContext
     public var persona: Persona
+    /// What is on screen as the request is made, when it could be read.
+    public var screen: Screen?
 
-    public init(query: String, exchanges: [Exchange], facts: [String], memories: [MemoryRecord], tools: [ToolDeclaration], context: AnswerContext, persona: Persona = Persona()) {
+    public init(query: String, exchanges: [Exchange], facts: [String], memories: [MemoryRecord], tools: [ToolDeclaration], context: AnswerContext, persona: Persona = Persona(), screen: Screen? = nil) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
@@ -247,6 +265,7 @@ public struct PlanBundle: Sendable {
         self.tools = tools
         self.context = context
         self.persona = persona
+        self.screen = screen
     }
 }
 

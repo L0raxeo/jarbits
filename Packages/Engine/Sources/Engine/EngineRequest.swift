@@ -99,7 +99,7 @@ public enum EngineRequest {
     public static let reasoningLevels = [
         "Direct: the format acts on the words alone: a search, a question to answer, a picture, a site by name, videos, something seen before. \"capital of peru\", \"go to youtube\", \"pictures of it\", \"wait no I meant brazil\".",
         "A value must be read out of the words first and passed along: a number, a name, a setting, a place, a time. \"set the thermostat to 68\", \"remind me at 7\", \"translate this to spanish\".",
-        "Several steps, a condition or a schedule: an \"and then\", an \"if\", a \"when\", an \"every\", or a comparison across several things. \"find the cheapest flight and book it\", \"if it rains tomorrow move my run to the evening\".",
+        "Several steps, a condition or a schedule: an \"and then\", an \"if\", a \"when\", an \"every\", or a comparison across several things; or the words point at something on the screen that must be looked at before any format can act: this one, the second video, the blue button, the price shown. \"find the cheapest flight and book it\", \"if it rains tomorrow move my run to the evening\", \"open the second one\", \"how much is this\".",
     ]
 
     // MARK: An instinct's closed-set values, asked alongside

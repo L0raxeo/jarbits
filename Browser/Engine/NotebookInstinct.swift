@@ -27,8 +27,8 @@ struct NotebookInstinct: InstinctRunner {
             if itemReference == nil { itemReference = leaned }
         }
         if let item = itemReference, item.kind == .note, item.noteID == noteReference?.noteID { itemReference = nil }
-        let itemLine = itemReference.map(Self.line(for:))
-        let content = [text, itemLine].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+        let content = Self.content(text: text, item: itemReference.map(Self.line(for:)), handle: context.arguments["item"]?.stringValue)
+        let after = context.arguments["after"]?.intValue
 
         // The whole notebook: every note in the grid, newest first.
         if context.arguments["all"]?.boolValue == true, action == "open" || action == "add" && content.isEmpty {
@@ -68,7 +68,7 @@ struct NotebookInstinct: InstinctRunner {
                 return InstinctOutcome(fact: nil, text: "made my note \"\(note.title)\"")
             }
             let changed = action == "add"
-                ? await session.notebook.append(content, to: note.id)
+                ? await session.notebook.insert(content, into: note.id, after: after)
                 : await session.notebook.replace(note.id, body: content, title: title)
             guard session.isCurrent(token), let changed else { return .nothing }
             session.showNote(changed, context: context)
@@ -94,6 +94,23 @@ struct NotebookInstinct: InstinctRunner {
             session.showNote(note, context: context)
             return InstinctOutcome(fact: nil, text: "opened my note \"\(note.title)\"")
         }
+    }
+
+    /// The lines to write: the planner's text with the item's line where
+    /// `{item}` stands (or the item's own handle in braces, `{p1}`, which
+    /// the model writes now and then); the item's line after the text when
+    /// the text has no place for it; a placeholder with nothing to fill it
+    /// goes with its line.
+    static func content(text: String, item: String?, handle: String? = nil) -> String {
+        let markers = ["{item}"] + (handle.map { ["{\($0.trimmingCharacters(in: .whitespaces).lowercased())}"] } ?? [])
+        let lowered = text.lowercased()
+        guard markers.contains(where: lowered.contains) else {
+            return [text, item ?? ""].filter { !$0.isEmpty }.joined(separator: "\n")
+        }
+        guard let item else {
+            return text.split(separator: "\n", omittingEmptySubsequences: false).filter { line in !markers.contains { line.lowercased().contains($0) } }.joined(separator: "\n").trimmingCharacters(in: .newlines)
+        }
+        return markers.reduce(text) { $0.replacingOccurrences(of: $1, with: item, options: .caseInsensitive) }
     }
 
     /// What goes into a note for a thing: a page, site or search with an

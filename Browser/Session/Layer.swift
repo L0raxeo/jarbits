@@ -71,6 +71,32 @@ final class Layer: Identifiable {
         self.decision = decision
     }
 
+    /// What the user sees in this layer as a query starts, for the models:
+    /// a page through its host (text, links, picture), a note its text, an
+    /// answer its text, a grid its tiles. Nil for an unloaded web layer.
+    func screen() async -> Screen? {
+        switch plan {
+        case .web:
+            let title = pageTitle ?? pageAddress.map { QueryParser.displayText(for: $0) } ?? query
+            return await page?.screen(title: title)
+        case let .note(note):
+            return Screen(kind: .note, title: note.title, visible: note.body)
+        case let .notes(notes, title):
+            return Screen(kind: .grid, title: title ?? "My notes", visible: notes.map { "\($0.title): \($0.excerpt)" }.joined(separator: "\n"))
+        case .answer, .time, .said:
+            let text = answer?.text ?? ""
+            let turns = thread
+            let last = turns.last
+            return Screen(kind: .answer, title: last?.query ?? query, visible: text.isEmpty ? (last?.answer ?? "") : text)
+        case let .memory(record):
+            return Screen(kind: .answer, title: record.title, address: record.url, visible: record.text ?? "")
+        case let .recallPicker(records, title):
+            return Screen(kind: .grid, title: title ?? "Memories", visible: records.map { "\($0.kind.label): \($0.title)" }.joined(separator: "\n"))
+        case let .siteChoices(name, candidates):
+            return Screen(kind: .grid, title: name, visible: candidates.map(\.host).joined(separator: "\n"))
+        }
+    }
+
     var isLive: Bool { page != nil }
     /// Leaving would lose something: the page's video part way through, or
     /// a form typed into.

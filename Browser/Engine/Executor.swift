@@ -23,7 +23,8 @@ final class Executor {
 
     /// `exchanges` are the ones the query depends on, oldest first.
     /// `lead` is the line that tells the planner why it has the query.
-    func run(query: String, decision: Pick, exchanges: [Exchange], lead: String? = nil, token: UUID) async -> EngineSummary {
+    /// `screen` is what was on screen as the query began, when it could be read.
+    func run(query: String, decision: Pick, exchanges: [Exchange], lead: String? = nil, screen: Screen? = nil, token: UUID) async -> EngineSummary {
         let clock = ContinuousClock()
         let start = clock.now
         var steps: [EngineSummary.Step] = []
@@ -34,7 +35,8 @@ final class Executor {
         func finish(_ outcome: EngineSummary.Outcome, memories: Int) -> EngineSummary {
             EngineSummary(
                 model: planner.client.model, rounds: rounds, steps: steps, usage: counted ? usage : nil,
-                latencyMs: Int((clock.now - start) / .milliseconds(1)), factsGiven: facts.count, memoriesGiven: memories, outcome: outcome
+                latencyMs: Int((clock.now - start) / .milliseconds(1)), factsGiven: facts.count, memoriesGiven: memories, outcome: outcome,
+                screenChars: screen.map { $0.visible.count + $0.rest.count }, screenItems: screen?.items.count, pictureBytes: screen?.picture?.count
             )
         }
         func add(_ found: AnswerUsage?) {
@@ -54,7 +56,7 @@ final class Executor {
             query: query, exchanges: exchanges, facts: facts, memories: memories,
             tools: Planner.tools(for: InstinctSpec.all),
             context: AnswerContext(locale: .current, timeZone: .current, now: now),
-            persona: session.persona
+            persona: session.persona, screen: screen
         )
         // The handles: the chain's exchanges, the memories and every note
         // of the notebook, tagged, so the plan points at a thing and the
@@ -62,10 +64,12 @@ final class Executor {
         // line each, newest first: the planner reads which note a request
         // means, whatever words it uses for it, and nothing thins or
         // re-judges its choice.
+        // The links in view on the screen are things too (s1, s2…), and the
+        // screen's text and picture ride with the first turn.
         let notes = await session.notebook.all()
         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
-        var things = ThingTable(exchanges: exchanges, memories: memories, notes: notes)
-        var transcript: [InteractionStep] = [.userText(Planner.input(query: query, things: things, now: now, lead: lead))]
+        var things = ThingTable(exchanges: exchanges, memories: memories, notes: notes, items: screen?.items ?? [])
+        var transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: now, lead: lead, screen: screen), picture: screen?.picture)]
         func noSuchThing(_ handle: String) -> String {
             "no such thing: \(handle); the things are \(things.handles.isEmpty ? "none" : things.handles.joined(separator: ", "))"
         }
@@ -221,6 +225,7 @@ final class Executor {
                             arguments: values.filter { $0.key != Planner.queryField.name }
                         )
                         context.things = resolved
+                        context.screen = screen   // an answer the plan asks for may be about what is on screen
                         if spec.instinct == .recall {
                             // In a plan the recall finds; what it found gets handles for the next step.
                             context.lookup = true

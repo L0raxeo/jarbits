@@ -41,8 +41,13 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     public var factsGiven: Int
     public var memoriesGiven: Int
     public var outcome: Outcome
+    /// The screen the plan was shown: its text's length, its links, and
+    /// the picture's size; nil when none could be read.
+    public var screenChars: Int?
+    public var screenItems: Int?
+    public var pictureBytes: Int?
 
-    public init(model: String, rounds: Int, steps: [Step], usage: AnswerUsage? = nil, latencyMs: Int, factsGiven: Int, memoriesGiven: Int, outcome: Outcome) {
+    public init(model: String, rounds: Int, steps: [Step], usage: AnswerUsage? = nil, latencyMs: Int, factsGiven: Int, memoriesGiven: Int, outcome: Outcome, screenChars: Int? = nil, screenItems: Int? = nil, pictureBytes: Int? = nil) {
         self.model = model
         self.rounds = rounds
         self.steps = steps
@@ -51,6 +56,9 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         self.factsGiven = factsGiven
         self.memoriesGiven = memoriesGiven
         self.outcome = outcome
+        self.screenChars = screenChars
+        self.screenItems = screenItems
+        self.pictureBytes = pictureBytes
     }
 
     /// A step put a result on screen.

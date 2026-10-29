@@ -283,7 +283,7 @@ case "extract":
         print("failed (\(summary.latencyMs) ms against a \(budget.formatted()) s budget): \(summary.outcome)")
     }
 case "plan":
-    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--page <earlier query> <title> <url>]... [--fact <text>]... [--memory <page|search|narrative> <title> <url or ->]... [--timeout <seconds>] [--dry-run]"
+    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--page <earlier query> <title> <url>]... [--fact <text>]... [--memory <page|search|narrative> <title> <url or ->]... [--screen <title> <url> <visible text>] [--link <text> <url>]... [--picture <jpeg path>] [--timeout <seconds>] [--dry-run]"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
@@ -292,12 +292,31 @@ case "plan":
     var memories: [MemoryRecord] = []
     var dryRun = false
     var roundTimeout = ReasoningPolicy.roundTimeout
+    var screenTitle: String?
+    var screenURL: URL?
+    var screenVisible = ""
+    var links: [ScreenItem] = []
+    var picture: Data?
     while let flag = rest.first {
         switch flag {
         case "--after":
             guard rest.count >= 3 else { fail(usage) }
             exchanges.append(.answer(query: rest[1], text: rest[2]))
             rest.removeFirst(3)
+        case "--screen":
+            guard rest.count >= 4, let url = URL(string: rest[2]) else { fail(usage) }
+            screenTitle = rest[1]
+            screenURL = url
+            screenVisible = rest[3]
+            rest.removeFirst(4)
+        case "--link":
+            guard rest.count >= 3, let url = URL(string: rest[2]) else { fail(usage) }
+            links.append(ScreenItem(title: rest[1], address: url))
+            rest.removeFirst(3)
+        case "--picture":
+            guard rest.count >= 2, let data = try? Data(contentsOf: URL(fileURLWithPath: rest[1])) else { fail(usage) }
+            picture = data
+            rest.removeFirst(2)
         case "--fact":
             guard rest.count >= 2 else { fail(usage) }
             facts.append(rest[1])
@@ -321,13 +340,15 @@ case "plan":
         default: fail(usage)
         }
     }
-    let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, memories: memories, tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), persona: .example)
-    let things = ThingTable(exchanges: exchanges, memories: memories)
-    let transcript: [InteractionStep] = [.userText(Planner.input(query: query, things: things, now: .now))]
+    let screen: Screen? = screenTitle.map { Screen(kind: .page, title: $0, address: screenURL, visible: screenVisible, items: links, picture: picture) }
+    let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, memories: memories, tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), persona: .example, screen: screen)
+    let things = ThingTable(exchanges: exchanges, memories: memories, items: links)
+    let transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: .now, screen: screen), picture: picture)]
     let request = Planner.request(bundle: bundle, transcript: transcript)
     if !things.handles.isEmpty { print("things: " + things.entries.map { ThingTable.line($0, now: .now) }.joined(separator: " | ")) }
-    print("first round's request body (\(Planner.model), \(bundle.tools.count) tools, \(roundTimeout.components.seconds) s to answer):")
-    print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
+    print("first round's request body (\(Planner.model), \(bundle.tools.count) tools, \(roundTimeout.components.seconds) s to answer\(picture.map { ", a picture of \($0.count) bytes, shown here as <picture>" } ?? "")):")
+    let body = (try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>"
+    print(picture.map { body.replacingOccurrences(of: $0.base64EncodedString(), with: "<picture>") } ?? body)
     guard !dryRun, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
         print(dryRun ? "dry run: no call made" : "set GEMINI_API_KEY to make the call (one metered round of a plan, well under a tenth of a cent)")
         exit(0)

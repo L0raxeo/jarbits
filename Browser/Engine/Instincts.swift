@@ -36,6 +36,15 @@ struct AnswerInstinct: InstinctRunner {
             let exchange = about.asExchange(query: context.query)
             if !context.earlier.contains(exchange) { context.earlier.append(exchange) }
         }
+        // The screen goes with the answer when the query leans on what is
+        // on it: Jev chained the layer on screen, the thing the answer is
+        // about is it, or a plan wrote the question with it in view.
+        if let screen = context.screen, context.decision.source != .plan {
+            let onScreen = session.current?.exchanges.last?.exchange
+            let leans = onScreen.map { context.earlier.contains($0) } ?? false
+            let about = context.things["about"].map { $0.address != nil && $0.address == screen.address || $0.title == screen.title } ?? false
+            if !leans, !about { context.screen = nil }
+        }
         session.showAnswer(format: format, context: context)
         return .nothing
     }

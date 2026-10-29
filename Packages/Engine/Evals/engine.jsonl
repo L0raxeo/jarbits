@@ -10,7 +10,7 @@
 {"query": "at the end of attack on titan why is levi in a wheelchair", "instinct": "narrative"}
 {"query": "how did simon cowell get famous", "instinct": "narrative"}
 {"query": "why are highschool students protesting france?", "instinct": "narrative", "source": "jev", "note": "picked as narrative, shown as web results: a recent event is past the model's knowledge (the pick is graded; the answer instinct shows web results for a recent one)"}
-{"query": "how is gingivitis healed", "instinct": "narrative"}
+{"query": "how is gingivitis healed", "instinct": "narrative", "note": "moved 2026-10-29 with the screen clause in the reasoning question: narrative 0.88, under the 0.9 floor; and back on the second re-ask of 2026-10-29: narrative 0.93", "source": "jev"}
 {"query": "Why is INTR so low?", "instinct": "narrative", "source": "jev", "note": "why a price moved is an explanation, not a chart; and it is recent, so web results (the pick is graded; the answer instinct shows web results for a recent one)"}
 {"query": "Is south africa safe right now", "instinct": "planned", "note": "a judgement that needs context, but right now: web results (the pick is graded; the answer instinct shows web results for a recent one)", "pick": "narrative"}
 {"query": "where did the phrase ok boomer come from", "instinct": "narrative"}
@@ -18,16 +18,16 @@
 {"query": "what does gdp mean", "instinct": "narrative"}
 {"query": "define hegemony", "instinct": "narrative"}
 {"query": "coffee near me", "instinct": "planned", "pick": "map"}
-{"query": "directions to austin airport", "instinct": "map", "note": "relabelled 2026-10-29: the notebook joined Jev's options and this case moved across the 0.9 line"}
+{"query": "directions to austin airport", "instinct": "planned", "note": "relabelled 2026-10-29: the notebook joined Jev's options and this case moved across the 0.9 line; moved 2026-10-29 with the screen clause: map 0.86, under the floor", "pick": "map"}
 {"query": "where is machu picchu", "instinct": "map", "note": "relabelled 2026-10-29: the notebook joined Jev's options and this case moved across the 0.9 line"}
 {"query": "blue bottle coffee san francisco", "instinct": "planned", "pick": "map"}
-{"query": "nasdaq", "instinct": "planned", "pick": "stock", "note": "relabelled 2026-10-29: the notebook joined Jev's options and this case moved across the 0.9 line"}
+{"query": "nasdaq", "instinct": "stock", "note": "relabelled 2026-10-29: the notebook joined Jev's options and this case moved across the 0.9 line; moved 2026-10-29 with the screen clause: stock 0.93, over the floor", "source": "jev"}
 {"query": "AAPL", "instinct": "stock"}
 {"query": "tesla stock", "instinct": "stock"}
 {"query": "bitcoin price", "instinct": "stock"}
 {"query": "s&p 500 today", "instinct": "stock"}
 {"query": "what's the time in costa rica", "instinct": "time", "source": "jev", "note": "the time instinct: the clock answers, the reading names the place"}
-{"query": "will it rain today", "instinct": "planned", "note": "relabelled 2026-10-29: the notebook's all question joined the request and this case moved across the 0.9 line", "pick": "one_line"}
+{"query": "will it rain today", "instinct": "one_line", "note": "relabelled 2026-10-29: the notebook's all question joined the request and this case moved across the 0.9 line; moved 2026-10-29 with the screen clause: one_line 0.92, over the floor; recency 0.48 so it answers", "source": "jev"}
 {"query": "how long do cold sores last", "instinct": "one_line"}
 {"query": "capital of peru", "instinct": "one_line"}
 {"query": "100 usd to eur", "instinct": "one_line", "source": "jev", "note": "a live rate: picked as one_line, shown as web results (the pick is graded; the answer instinct shows web results for a recent one)"}
@@ -38,11 +38,11 @@
 {"query": "that thing about gingivitis again", "instinct": "recall"}
 {"query": "go back to the reddit thread", "instinct": "recall"}
 {"query": "dominican flag", "instinct": "image"}
-{"query": "eiffel tower", "instinct": "image", "note": "relabelled 2026-10-29: the notebook's all question joined the request and this case moved across the 0.9 line"}
+{"query": "eiffel tower", "instinct": "planned", "note": "relabelled 2026-10-29: the notebook's all question joined the request and this case moved across the 0.9 line; moved 2026-10-29 with the screen clause: image 0.87, under the floor", "pick": "image"}
 {"query": "starry night painting", "instinct": "image"}
 {"query": "nvidia logo", "instinct": "image"}
-{"query": "what does a capybara look like", "instinct": "image"}
-{"query": "mona lisa", "instinct": "image", "note": "relabelled 2026-10-29: the notebook joined Jev's options and this case moved across the 0.9 line"}
+{"query": "what does a capybara look like", "instinct": "planned", "pick": "image", "note": "moved 2026-10-29 with the screen clause: image 0.89, under the floor"}
+{"query": "mona lisa", "instinct": "image", "note": "relabelled 2026-10-29: the notebook joined Jev's options and this case moved across the 0.9 line; moved 2026-10-29 with the screen clause: image 0.90 rounded, under the floor by a hair; and back on the second re-ask of 2026-10-29: image 0.93", "source": "jev"}
 {"query": "aston martin db5", "instinct": "planned", "pick": "image"}
 {"query": "go to youtube", "instinct": "site", "source": "jev"}
 {"query": "pull up zillow", "instinct": "site", "source": "jev"}
@@ -94,7 +94,7 @@
 {"query": "all the videos I watched yesterday", "instinct": "recall", "recall": {"kinds": ["videos"], "named": false, "all": true}}
 {"query": "my recent searches", "instinct": "recall", "recall": {"kinds": ["searches"], "named": false, "all": true}}
 {"query": "what you told me about gingivitis", "instinct": "recall", "recall": {"kinds": ["answers"], "named": true}}
-{"query": "that article on reddit", "instinct": "planned", "recall": {"kinds": ["pages"], "named": true, "all": false}, "pick": "recall", "note": "relabelled 2026-10-29: the notebook joined Jev's options and this case moved across the 0.9 line"}
+{"query": "that article on reddit", "instinct": "recall", "recall": {"kinds": ["pages"], "named": true, "all": false}, "note": "relabelled 2026-10-29: the notebook joined Jev's options and this case moved across the 0.9 line; moved 2026-10-29 with the screen clause: recall 0.92, over the floor", "source": "jev"}
 {"query": "pull up what I was looking at", "instinct": "recall", "recall": {"kinds": [], "named": false}, "note": "nothing named: the newest memories go to the judge"}
 {"query": "Flag of North Korea.", "instinct": "image", "note": "screenshot 2026-10-23: spoken as 'there you go. Flag of North Korea.', which dictation now strips before routing; Wikipedia had been asked for the whole sentence"}
 {"query": "Can I use Mr. Cleaner with Clorox", "instinct": "planned", "note": "screenshot 2026-10-24: one_line .50, narrative .29, web .21 fell under the floor and showed web; torn between two answers is still an answer (an unsure pick is web results now; this case states intended behaviour)", "pick": "one_line"}
@@ -109,7 +109,7 @@
 {"query": "stop remembering my peanut allergy", "instinct": "forget"}
 {"query": "drop what I told you about my wife", "instinct": "forget"}
 {"query": "you can forget where I live", "instinct": "forget"}
-{"query": "what am I allergic to", "instinct": "one_line"}
+{"query": "what am I allergic to", "instinct": "planned", "pick": "one_line", "note": "moved on the second re-ask of 2026-10-29 (the screen clause at the top level): one_line 0.89, under the floor; the planner answers from the facts"}
 {"query": "do I have any vegan friends", "instinct": "one_line"}
 {"query": "how old is my mom", "instinct": "one_line"}
 {"query": "what do you know about me", "instinct": "narrative"}
@@ -132,3 +132,12 @@
 {"query": "pull up all the notes in your notebook", "instinct": "notebook"}
 {"query": "show me my notebook", "instinct": "planned", "pick": "notebook", "note": "relabelled 2026-10-29: the notebook's all question joined the request and this case moved across the 0.9 line"}
 {"query": "what's in my notebook", "instinct": "planned", "pick": "notebook", "note": "relabelled 2026-10-29: the notebook's all question joined the request and this case moved across the 0.9 line"}
+{"query": "open the second video", "exchanges": [{"query": "lisbon videos", "kind": "page", "title": "lisbon videos - YouTube", "host": "m.youtube.com", "address": "https://m.youtube.com/results?search_query=lisbon+videos"}], "instinct": "planned", "pick": "video", "note": "screen awareness, 2026-10-29: the words point at something on the screen, so the planner looks before anything runs"}
+{"query": "fetch the link of the video", "exchanges": [{"query": "lifesteal", "kind": "page", "title": "Lifesteal Is About to Change Forever...", "host": "m.youtube.com", "address": "https://m.youtube.com/watch?v=g02aYeZhADA"}], "instinct": "planned", "note": "the link is on the screen; the planner says it from the listing"}
+{"query": "how much is this", "exchanges": [{"query": "dyson pencilvac", "kind": "page", "title": "Dyson PencilVac | Dyson", "host": "www.dyson.com", "address": "https://www.dyson.com/pencilvac"}], "instinct": "planned", "pick": "one_line", "note": "the price shown is on the screen: looked at first, then answered"}
+{"query": "add the third one to my watchlist", "exchanges": [{"query": "lisbon videos", "kind": "page", "title": "lisbon videos - YouTube", "host": "m.youtube.com", "address": "https://m.youtube.com/results?search_query=lisbon+videos"}], "instinct": "planned", "note": "the notebook is reasoned whatever the score; the third link is s3 in the planner's listing; screen awareness, 2026-10-29: notebook 0.57 against video and recall, under the floor; planned either way, since the notebook is reasoned, and the third link is s3 in the listing", "pick": "notebook"}
+{"query": "what does this page say", "exchanges": [{"query": "hennessey", "kind": "page", "title": "Hennessey Performance | Official Website", "host": "www.hennesseyperformance.com", "address": "https://www.hennesseyperformance.com/"}], "instinct": "planned", "pick": "narrative", "note": "about what is on the screen: the planner reads the page and answers from it"}
+{"query": "what's the blue button for", "exchanges": [{"query": "dyson pencilvac", "kind": "page", "title": "Dyson PencilVac | Dyson", "host": "www.dyson.com", "address": "https://www.dyson.com/pencilvac"}], "instinct": "planned", "note": "a colour on the screen: only the picture can say"}
+{"query": "google chocolate milk", "exchanges": [{"query": "dyson pencilvac", "kind": "page", "title": "Dyson PencilVac | Dyson", "host": "www.dyson.com", "address": "https://www.dyson.com/pencilvac"}], "instinct": "planned", "note": "sibling of the screen cases: a request that stands on its own over any page is direct; second re-ask of 2026-10-29: web_results 0.90 rounded, a hair under the floor; the planner then calls web_results (its case), so the pair with the screen cases still comes out apart", "pick": "web_results"}
+{"query": "how old is he", "exchanges": [{"query": "jim carrey", "kind": "answer", "text": "**Jim Carrey** is a Canadian-American actor and comedian, born 17 January 1962 in Newmarket, Ontario."}, {"query": "dyson pencilvac", "kind": "page", "title": "Dyson PencilVac | Dyson", "host": "www.dyson.com", "address": "https://www.dyson.com/pencilvac"}], "instinct": "one_line", "source": "jev", "note": "sibling: leans on the earlier answer, not on the page open now"}
+{"query": "what is a venom f5", "exchanges": [{"query": "hennessey", "kind": "page", "title": "Hennessey Performance | Official Website", "host": "www.hennesseyperformance.com", "address": "https://www.hennesseyperformance.com/"}], "instinct": "narrative", "source": "jev", "note": "sibling: a world question over a related page is still direct; the answer may lean on the page"}

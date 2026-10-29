@@ -54,7 +54,7 @@ import Testing
         #expect(system.contains("What Jarvits knows about Lorcan"))
         #expect(system.contains("web_results, narrative, map, stock, one_line, image, site, video, time, notebook, say and open each put a result on screen, and a later one replaces the earlier: end on what Lorcan should see"))
         #expect(!system.contains("Show at most one thing"))
-        #expect(system.contains("The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2) and each note of my notebook (n1, n2)"))
+        #expect(system.contains("The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2)"))
         #expect(system.contains("never one you made up"))
         #expect(system.contains("call remember with it next"))
         #expect(system.contains("never call it again with the same arguments"))
@@ -62,6 +62,15 @@ import Testing
         #expect(system.contains("- Lorcan is vegetarian\n- Lorcan lives in Austin"))
         #expect(system.contains("Locale: en_US"))
         #expect(Planner.system(facts: [], context: .example).contains("- nothing yet"))
+    }
+
+    @Test func everyNoteIsListedWholeAndNumbered() {
+        let now = AnswerContext.example.now
+        let trip = Note(title: "Trip", body: "## Groceries\n- [milk](https://m.com)\n\n## Packing\n- [ ] passport", created: now.addingTimeInterval(-86_400), edited: now.addingTimeInterval(-86_400))
+        let input = Planner.input(query: "add eggs to the groceries", things: ThingTable(notes: [trip]), now: now)
+        #expect(input.contains("In my notebook, every note (newest first):\n- n1: My note \"Trip\", edited yesterday:\n    1| ## Groceries\n    2| - milk\n    3| \n    4| ## Packing\n    5| - [ ] passport"), "links as titles, blank lines numbered too")
+        let notebook = Planner.tools(for: InstinctSpec.all).first { $0.name == "notebook" }
+        #expect(notebook?.description.contains("text is the exact lines to add, in the marks of the lines around where they go, and after is the number of the line they follow") == true)
     }
 
     @Test func aFailureIsTheFirstThingThePlannerReads() {
@@ -86,7 +95,32 @@ import Testing
         #expect(input.contains("hennessey venom"))
         #expect(input.contains("Seen in this app before, the newest (recall finds the rest):\n- m1: A page from yesterday (www.hennesseyperformance.com): \"Hennessey Performance\"\n- m2: An answer from today: \"what is a venom f5\""))
         let bare = Planner.input(query: "x", exchanges: [], memories: [], now: now)
-        #expect(bare == "Request: x")
+        #expect(bare == "Request: x\n\nIn my notebook: no notes yet.", "an empty notebook is said, so a write makes a note instead of asking which")
+    }
+
+    @Test func theScreenComesLastInTheFirstTurnWithItsLinksByHandleAndThePictureBeside() throws {
+        let now = AnswerContext.example.now
+        let items = [ScreenItem(title: "Lisbon in 4K", address: URL(string: "https://m.youtube.com/watch?v=def")!)]
+        let screen = Screen(kind: .page, title: "YouTube", address: URL(string: "https://m.youtube.com/results?q=lisbon"), visible: "Lisbon in 4K\nRick Steves' Europe", items: items)
+        let things = ThingTable(exchanges: [.page(query: "lisbon videos", title: "YouTube", address: URL(string: "https://m.youtube.com/results?q=lisbon")!)], items: items)
+        let input = Planner.input(query: "open the first one", things: things, now: now, screen: screen)
+        #expect(input.hasSuffix("\n\nOn screen: the page \"YouTube\" at https://m.youtube.com/results?q=lisbon\nVisible now:\nLisbon in 4K\nRick Steves' Europe\nLinks in view, in order:\n- s1: \"Lisbon in 4K\" \u{2192} https://m.youtube.com/watch?v=def"))
+        let system = Planner.system(facts: [], context: .example, persona: .example)
+        #expect(system.contains("each link in view on the screen (s1, s2)"))
+        #expect(system.contains(Screen.rule) && system.contains(Screen.pictureRule))
+        #expect(Planner.firstTurn("words", picture: nil) == .userText("words"))
+        #expect(Planner.firstTurn("words", picture: Data()) == .userText("words"))
+        let picture = Data([0xFF, 0xD8, 0xFF])
+        let turn = Planner.firstTurn("words", picture: picture)
+        #expect(turn == .userParts([.text("words"), .image(picture, mimeType: "image/jpeg")]))
+        let bundle = PlanBundle(query: "q", exchanges: [], facts: [], memories: [], tools: [], context: .example, screen: screen)
+        let body = try Planner.request(bundle: bundle, transcript: [turn]).jsonData()
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let steps = try #require(json["input"] as? [[String: Any]])
+        let content = try #require(steps[0]["content"] as? [[String: Any]])
+        #expect(content.count == 2)
+        #expect(content[0]["type"] as? String == "text" && content[0]["text"] as? String == "words")
+        #expect(content[1]["type"] as? String == "image" && content[1]["mime_type"] as? String == "image/jpeg" && content[1]["data"] as? String == picture.base64EncodedString(), "Google's image part: type, data, mime_type")
     }
 
     @Test func theRequestIsOneWholeBodyCallWithEveryToolAndToolChoiceAny() throws {

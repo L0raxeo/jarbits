@@ -71,7 +71,7 @@ public enum AnswerPrompt {
     /// picture looked at), oldest first; empty for a query that stands alone.
     /// `facts` is everything Jarvits knows about the user, as he noted it,
     /// oldest first; every one goes, there are few.
-    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], persona: Persona = Persona()) -> String {
+    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], persona: Persona = Persona(), screen: Screen? = nil) -> String {
         var lines = [
             "Query: \(query)",
             "",
@@ -86,6 +86,12 @@ public enum AnswerPrompt {
             for exchange in earlier {
                 lines.append("- " + describe(exchange))
             }
+        }
+        if let screen, !screen.isEmpty {
+            // What the user sees as they ask, whole: a question about it is answered from it.
+            lines.append("")
+            lines.append("What \(persona.user) sees on screen as they ask (\(Screen.rule)):")
+            lines.append(screen.block(whole: true))
         }
         if !facts.isEmpty {
             lines.append("")
@@ -117,12 +123,13 @@ public enum AnswerPrompt {
         history: [AnswerTurn] = [],
         earlier: [Exchange] = [],
         facts: [String] = [],
-        persona: Persona = Persona()
+        persona: Persona = Persona(),
+        screen: Screen? = nil
     ) -> InteractionRequest {
         InteractionRequest(
             model: model,
             systemInstruction: system(for: format, persona: persona),
-            input: input(query: query, context: context, earlier: earlier, facts: facts, persona: persona),
+            input: input(query: query, context: context, earlier: earlier, facts: facts, persona: persona, screen: screen),
             history: history,
             maxOutputTokens: maxOutputTokens(for: format)
         )
