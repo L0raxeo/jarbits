@@ -25,6 +25,12 @@ struct InstinctContext {
     /// in a plan from the handle table, on the pick path from what the
     /// query leans on.
     var things: [String: Reference] = [:]
+    /// Every thing a field named when it named several handles ("s5, s6");
+    /// `things` holds the first.
+    var manyThings: [String: [Reference]] = [:]
+    /// Things the plan named in braces inside a text value ("- {s3}"), by
+    /// handle, resolved by the device like any other handle.
+    var namedThings: [String: Reference] = [:]
     /// A recall in a plan: return what was found, show nothing.
     var lookup = false
     /// How the extractor fared, when it was asked; for the log.

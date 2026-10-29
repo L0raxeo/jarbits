@@ -73,6 +73,24 @@ public struct Planner: Sendable {
             "additionalProperties": false,
         ]
     )
+    /// Reads more of a page that is open than the screen block holds. The
+    /// device runs the probe and sends the result back as text; links it
+    /// finds become `s` handles like the ones in view.
+    public static let lookTool = ToolDeclaration(
+        name: "look",
+        description: "Read more of a page that is open, when the request asks for what the screen block does not hold: the text further down (text, numbered by paragraph; from continues it), every link on the page (links, in screen order, each with a handle to open or keep), the headings with their paragraph numbers (outline), or the tables (tables). The block already holds what is in view, the rest of the text up to its cap, and the page's own data: when the answer is there, do not look. For how the page looks (a colour, a position, a layout), read the picture instead. Reads the page on screen unless page names an earlier page that is still open; a link (s2) is not an open page: open it first.",
+        parameters: [
+            "type": "object",
+            "properties": [
+                "page": ["type": "string", "description": "the handle of the page to read (p1), when it is not the one on screen; omit for the page on screen"],
+                "what": ["type": "string", "enum": ["text", "links", "outline", "tables"], "description": "what to read"],
+                "from": ["type": "integer", "description": "the paragraph or link number to continue from, as the last result numbered them; omit to start at the top"],
+            ],
+            "required": ["what"],
+            "additionalProperties": false,
+        ]
+    )
+
     public static let doneTool = ToolDeclaration(
         name: "done",
         description: "Call once the request has been handled, or once nothing you can do would help.",
@@ -90,7 +108,7 @@ public struct Planner: Sendable {
         registry.map { spec in
             let schema = ArgumentSchema(fields: [queryField] + spec.arguments.fields)
             return ToolDeclaration(name: spec.id, description: describe(spec), parameters: schema.jsonSchema())
-        } + [askTool, sayTool, openTool, doneTool]
+        } + [askTool, sayTool, openTool, lookTool, doneTool]
     }
 
     static func describe(_ spec: InstinctSpec) -> String {
@@ -100,7 +118,7 @@ public struct Planner: Sendable {
             // In a plan the recall finds; the plan decides what to do with what it found.
             text += " In a plan it shows nothing: its result names what it found, by handle, for open, say, or an answer's about."
         } else if spec.instinct == .notebook {
-            text += " Every note of my notebook is in the listing: the one the request means goes in note, by handle, whatever words it used for it (\"my watchlist\" means a note titled Watch List); a page or answer to keep goes in item, by handle, and its title and link go in. A topic with no note handle makes a new note by that name (add, new) or fails (open, delete). Every note is listed whole with its lines numbered: text is the exact lines to add, in the marks of the lines around where they go, and after is the number of the line they follow. \"add milk\" to a bulleted shopping list writes \"- milk\" after its last item; \"add eggs to the groceries\" in a note with a groceries list and a packing list writes \"- eggs\" after the last grocery line, not at the end; \"start a packing list here with passport\" in a note of prose writes a blank line, \"## Packing\" and \"- [ ] passport\" at the end; a page kept by handle goes as \"- {item}\" in a list and \"{item}\" alone in prose, and a note that is empty starts the way its purpose reads (a watch list or shopping list as a list, a thought as prose); \"add that the plumber comes tuesday\" to a note of prose, or as a new note, writes the sentence \"The plumber comes Tuesday.\", never a one-item list; a numbered list gets the next number. Shows the note afterwards."
+            text += " Every note of my notebook is in the listing: the one the request means goes in note, by handle, whatever words it used for it (\"my watchlist\" means a note titled Watch List); a page or answer to keep goes in item, by handle, or several handles separated by commas (\"s5, s6, s7\" after a look at the links), each becoming a line of its own where {item} stands. A topic with no note handle makes a new note by that name (add, new) or fails (open, delete). Every note is listed whole with its lines numbered: text is the exact lines to add, in the marks of the lines around where they go, and after is the number of the line they follow. \"add milk\" to a bulleted shopping list writes \"- milk\" after its last item; \"add eggs to the groceries\" in a note with a groceries list and a packing list writes \"- eggs\" after the last grocery line, not at the end; \"start a packing list here with passport\" in a note of prose writes a blank line, \"## Packing\" and \"- [ ] passport\" at the end; a page kept by handle goes as \"- {item}\" in a list and \"{item}\" alone in prose, and a note that is empty starts the way its purpose reads (a watch list or shopping list as a list, a thought as prose); \"add that the plumber comes tuesday\" to a note of prose, or as a new note, writes the sentence \"The plumber comes Tuesday.\", never a one-item list; a numbered list gets the next number. Shows the note afterwards."
         } else {
             text += spec.showsLayer ? " Puts its result on screen." : " Shows nothing; a mark says what was done."
         }
@@ -124,6 +142,7 @@ public struct Planner: Sendable {
             "- \(InstinctSpec.all.filter { $0.showsLayer && $0.instinct != .recall }.map(\.id).joined(separator: ", ")), say and open each put a result on screen, and a later one replaces the earlier: end on what \(persona.user) should see.",
             "- The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. recall's result names what it found by handle; open shows one; say, or an answer with about, tells \(persona.user) about one.",
             "- \(Screen.rule) \(Screen.pictureRule) A link in view is opened by its handle (open with s2), kept by its handle (notebook's item), and its address, which the listing gives, may be said when \(persona.user) asks for the link.",
+            "- look reads more of an open page than the screen block holds; what it finds comes back as its result, and the links it lists carry handles (s5, s6) used like any other: opened, kept, or said. Look once for what is asked, continue with from only when the result says it was cut, and never look for what the block already shows.",
             "- When an answer on the sheet is something lasting about \(persona.user) or their life, call remember with it next.",
             "- remember and forget show \(persona.user) a mark saying what was kept or dropped: never also say it.",
             "- A request about \(persona.users) own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about \(persona.user).",
@@ -202,6 +221,21 @@ public struct Planner: Sendable {
 
     /// What a recall found, as a step's result: the handles minted for the
     /// records, each with what it is.
+    /// A look's result as the planner reads it: what the probe read, then
+    /// the links it found, each by its new handle, as the screen block lists
+    /// them. An empty read says so, so the planner falls back.
+    public static func looked(what: String, text: String, handles: [String], in things: ThingTable) -> String {
+        let lines = handles.compactMap { handle in things.entries.first { $0.handle == handle }.map { ThingTable.line($0, now: .now) } }
+        if text.isEmpty, lines.isEmpty { return "nothing of that kind on the page (\(what)): it may be drawn rather than written; the picture shows how it looks" }
+        var out: [String] = []
+        if !lines.isEmpty {
+            out.append("Links on the page, in order:")
+            out += lines.map { "- " + $0 }
+        }
+        if !text.isEmpty { out.append(text) }
+        return out.joined(separator: "\n")
+    }
+
     public static func found(_ handles: [String], in things: ThingTable, now: Date, calendar: Calendar = .current) -> String {
         guard !handles.isEmpty else { return "found nothing" }
         let lines = handles.compactMap { handle in things.entries.first { $0.handle == handle }.map { ThingTable.line($0, now: now, calendar: calendar) } }

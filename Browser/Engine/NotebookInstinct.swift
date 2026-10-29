@@ -21,13 +21,17 @@ struct NotebookInstinct: InstinctRunner {
         // leans every thing field on what is on screen) is the item; an item
         // that is the note itself is nothing to add.
         var noteReference = context.things["note"]
-        var itemReference = context.things["item"]
+        var itemReferences = context.manyThings["item"] ?? context.things["item"].map { [$0] } ?? []
         if let leaned = noteReference, leaned.kind != .note {
             noteReference = nil
-            if itemReference == nil { itemReference = leaned }
+            if itemReferences.isEmpty { itemReferences = [leaned] }
         }
-        if let item = itemReference, item.kind == .note, item.noteID == noteReference?.noteID { itemReference = nil }
-        let content = Self.content(text: text, item: itemReference.map(Self.line(for:)), handle: context.arguments["item"]?.stringValue)
+        itemReferences.removeAll { $0.kind == .note && $0.noteID == noteReference?.noteID }
+        let itemReference = itemReferences.first
+        let handles = (context.arguments["item"]?.stringValue ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        var filled = context.namedThings.mapValues(Self.line(for:))
+        for (handle, reference) in zip(handles, itemReferences) { filled[handle.lowercased()] = Self.line(for: reference) }
+        let content = Self.content(text: text, items: itemReferences.map(Self.line(for:)), named: filled)
         let after = context.arguments["after"]?.intValue
 
         // The whole notebook: every note in the grid, newest first.
@@ -96,21 +100,30 @@ struct NotebookInstinct: InstinctRunner {
         }
     }
 
-    /// The lines to write: the planner's text with the item's line where
-    /// `{item}` stands (or the item's own handle in braces, `{p1}`, which
-    /// the model writes now and then); the item's line after the text when
-    /// the text has no place for it; a placeholder with nothing to fill it
-    /// goes with its line.
-    static func content(text: String, item: String?, handle: String? = nil) -> String {
-        let markers = ["{item}"] + (handle.map { ["{\($0.trimmingCharacters(in: .whitespaces).lowercased())}"] } ?? [])
-        let lowered = text.lowercased()
-        guard markers.contains(where: lowered.contains) else {
-            return [text, item ?? ""].filter { !$0.isEmpty }.joined(separator: "\n")
+    /// The lines to write: the planner's text with each item's line where
+    /// `{item}` stands, one line per item, and a thing's line where its own
+    /// handle stands in braces (`{s3}`, from `named`); the items' lines after
+    /// the text when the text has no place for them; a placeholder with
+    /// nothing to fill it goes with its line.
+    static func content(text: String, items: [String], named: [String: String] = [:]) -> String {
+        func holds(_ line: String) -> Bool {
+            let lowered = line.lowercased()
+            return lowered.contains("{item}") || named.keys.contains { lowered.contains("{\($0)}") }
         }
-        guard let item else {
-            return text.split(separator: "\n", omittingEmptySubsequences: false).filter { line in !markers.contains { line.lowercased().contains($0) } }.joined(separator: "\n").trimmingCharacters(in: .newlines)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard lines.contains(where: holds) else {
+            return ([text] + items).filter { !$0.isEmpty }.joined(separator: "\n")
         }
-        return markers.reduce(text) { $0.replacingOccurrences(of: $1, with: item, options: .caseInsensitive) }
+        var out: [String] = []
+        for line in lines {
+            guard holds(line) else { out.append(line); continue }
+            if let (handle, item) = named.first(where: { line.lowercased().contains("{\($0.key)}") }) {
+                out.append(line.replacingOccurrences(of: "{\(handle)}", with: item, options: .caseInsensitive))
+            } else if line.lowercased().contains("{item}") {
+                for item in items { out.append(line.replacingOccurrences(of: "{item}", with: item, options: .caseInsensitive)) }
+            }
+        }
+        return out.joined(separator: "\n").trimmingCharacters(in: .newlines)
     }
 
     /// What goes into a note for a thing: a page, site or search with an

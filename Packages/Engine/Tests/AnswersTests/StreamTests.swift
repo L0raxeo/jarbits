@@ -238,7 +238,7 @@ import Testing
         let sent = try #require(MockGeminiTransport.requests.first { $0.value(forHTTPHeaderField: "Accept") == "application/json" })
         let body = try #require(sent.httpBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 4)
+        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 5)
 
         let silent = Planner(client: MockGeminiTransport.client(status: 200, body: #"{"id":"x","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"I would do this"}]}]}"#))
         guard case .silent = await silent.propose(bundle, transcript: [.userText("Request: q")]) else {

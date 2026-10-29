@@ -556,9 +556,108 @@
       seen.add(href);
       items.push({ title: title.slice(0, 200), href });
     }
-    return { visible: visible.join('\n'), rest: rest.join('\n'), selection, items };
+    let data = '';
+    try { data = pageData(dataLimit); } catch (e) { }
+    return { visible: visible.join('\n'), rest: rest.join('\n'), selection, items, data };
   }
 
-  window.__pageChrome = { evaluate, notes, restore, screen };
+  // --- A look deeper into the page -----------------------------------------
+
+  // What the planner asks for beyond the screen: the page's text by
+  // paragraph, every link in screen order, the headings, or the tables.
+  // `request` is {what, from, limits}; `from` is the 1-based number the
+  // last result said it continues at. Read on request only, nothing changed.
+  function paragraphs(root) {
+    const leafy = 'p, h1, h2, h3, h4, h5, h6, pre, figcaption';
+    const blocky = 'li, blockquote, td, th, dt, dd, summary';
+    const out = [];
+    for (const el of root.querySelectorAll(leafy + ', ' + blocky + ', div')) {
+      if (hidden(el)) continue;
+      let text = '';
+      if (el.tagName === 'DIV') {
+        text = Array.from(el.childNodes).filter(n => n.nodeType === Node.TEXT_NODE).map(n => n.textContent).join(' ');
+      } else if (el.matches(blocky) && el.querySelector(leafy + ', ' + blocky)) {
+        continue;
+      } else {
+        text = el.innerText || el.textContent || '';
+      }
+      text = text.replace(/\s+/g, ' ').trim();
+      if (text) out.push({ el, text });
+    }
+    return out;
+  }
+  function look(request) {
+    const what = (request && request.what) || 'text';
+    const from = Math.max(0, ((request && request.from) || 1) - 1);
+    const limits = (request && request.limits) || {};
+    const root = document.body || document.documentElement;
+    if (what === 'text') {
+      const limit = limits.text || 4000;
+      const all = paragraphs(root);
+      const lines = [];
+      let count = 0;
+      let i = from;
+      for (; i < all.length; i++) {
+        const line = (i + 1) + '| ' + all[i].text;
+        if (count + line.length > limit && lines.length) break;
+        lines.push(line.slice(0, limit));
+        count += line.length + 1;
+      }
+      if (i < all.length) lines.push('\u2026 continues at paragraph ' + (i + 1) + ' of ' + all.length);
+      return { text: lines.join('\n'), items: [] };
+    }
+    if (what === 'outline') {
+      const limit = limits.outline || 60;
+      const lines = [];
+      paragraphs(root).forEach((p, i) => {
+        const level = p.el.tagName.match(/^H([1-6])$/);
+        if (level && lines.length < limit) lines.push('  '.repeat(level[1] - 1) + p.text + ' (paragraph ' + (i + 1) + ')');
+      });
+      return { text: lines.join('\n'), items: [] };
+    }
+    if (what === 'links') {
+      const limit = limits.links || 40;
+      const found = [];
+      const seen = new Set();
+      for (const a of root.querySelectorAll('a[href]')) {
+        const href = a.href;
+        if (!href || !/^https?:/i.test(href) || seen.has(href) || hidden(a)) continue;
+        const title = (a.innerText || a.textContent || a.getAttribute('aria-label') || a.title || '').replace(/\s+/g, ' ').trim();
+        if (!title) continue;
+        const rect = a.getBoundingClientRect();
+        seen.add(href);
+        found.push({ title: title.slice(0, 200), href, top: rect.top + window.scrollY, left: rect.left + window.scrollX });
+      }
+      found.sort((x, y) => (x.top - y.top) || (x.left - y.left));
+      const slice = found.slice(from, from + limit);
+      const more = from + limit < found.length ? '\u2026 more from link ' + (from + limit + 1) + ' of ' + found.length : '';
+      return { text: more, items: slice.map(l => ({ title: l.title, href: l.href })) };
+    }
+    if (what === 'tables') {
+      const limit = limits.tables || 3000;
+      const lines = [];
+      let count = 0;
+      let cut = false;
+      root.querySelectorAll('table').forEach((table, t) => {
+        if (cut || hidden(table)) return;
+        const head = 'Table ' + (t + 1) + ':';
+        lines.push(head);
+        count += head.length + 1;
+        for (const row of table.querySelectorAll('tr')) {
+          const cells = Array.from(row.querySelectorAll('th, td')).map(c => (c.innerText || c.textContent || '').replace(/\s+/g, ' ').trim());
+          const line = cells.join(' | ');
+          if (!line.trim()) continue;
+          if (count + line.length > limit) { cut = true; break; }
+          lines.push(line);
+          count += line.length + 1;
+        }
+      });
+      if (cut) lines.push('\u2026 more');
+      return { text: lines.join('\n'), items: [] };
+    }
+    return { text: '', items: [] };
+  }
+
+  window.__pageChrome = { evaluate, notes, restore, screen, look };
   schedule();
 })();

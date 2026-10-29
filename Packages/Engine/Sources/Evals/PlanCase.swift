@@ -65,6 +65,32 @@ public struct PlanCase: Codable, Equatable, Sendable {
         }
     }
 
+    /// A step already taken: the call and its result.
+    public struct PriorStep: Codable, Sendable, Equatable {
+        public var name: String
+        public var arguments: [String: JSONValue]?
+        public var result: String
+
+        public init(name: String, arguments: [String: JSONValue]? = nil, result: String) {
+            self.name = name
+            self.arguments = arguments
+            self.result = result
+        }
+
+        /// The step as the model's own words in the transcript: the call it
+        /// made and what came back. (The API refuses a function_call step the
+        /// client writes, so this is how a case seeds an earlier round.)
+        public var asModelWords: String { "I call \(call)." }
+
+        /// The device's result, as the input step that follows the call.
+        public var asResultInput: String { "Result of \(call):\n\(result)" }
+
+        var call: String {
+            let args = (arguments ?? [:]).sorted { $0.key < $1.key }.map { "\($0.key): \($0.value.stringValue ?? String(decoding: (try? $0.value.data()) ?? Data(), as: UTF8.self))" }.joined(separator: ", ")
+            return "\(name)(\(args))"
+        }
+    }
+
     /// What is on screen as the request is made: the planner's block, no picture.
     public struct ScreenCase: Codable, Sendable, Equatable {
         public var kind: Screen.Kind?
@@ -98,6 +124,10 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var memories: [Memory]?
     public var notes: [NoteCase]?
     public var screen: ScreenCase?
+    /// Steps already taken in this plan, oldest first: each a call the
+    /// model made and the result the device gave, put in the transcript
+    /// before the request, so a case tests the round after a look.
+    public var prior: [PriorStep]?
     public var calls: [ExpectedCall]
     /// The expected calls are the first ones; whatever follows in the same round is fine.
     public var prefix: Bool?
@@ -107,13 +137,14 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var picked: Instinct?
     public var note: String?
 
-    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, memories: [Memory]? = nil, notes: [NoteCase]? = nil, screen: ScreenCase? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
+    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, memories: [Memory]? = nil, notes: [NoteCase]? = nil, screen: ScreenCase? = nil, prior: [PriorStep]? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
         self.memories = memories
         self.notes = notes
         self.screen = screen
+        self.prior = prior
         self.calls = calls
         self.prefix = prefix
         self.failure = failure
@@ -129,6 +160,7 @@ public struct PlanCase: Codable, Equatable, Sendable {
         if let notes, !notes.isEmpty { name += " with \(notes.count) notes" }
         if let last = exchanges?.last { name += " after \"\(last.query)\"" }
         if let screen { name += " over \"\(screen.title)\"" }
+        if let prior, !prior.isEmpty { name += " after \(prior.map(\.name).joined(separator: ", "))" }
         if failure != nil { name += " after a failure" }
         if let picked { name += " picked \(picked.rawValue)" }
         return name

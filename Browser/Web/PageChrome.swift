@@ -280,6 +280,8 @@ extension PageChrome {
     static let restoreScript = "if (window.__pageChrome) window.__pageChrome.restore(saved)"
     /// What is on screen, for the models: `{visible, rest, selection, items}`.
     static let screenProbe = "return window.__pageChrome ? window.__pageChrome.screen(limits) : null"
+    /// A look deeper into the page: `{what, from, limits}` in, `{text, items}` out.
+    static let lookProbe = "return window.__pageChrome ? window.__pageChrome.look(request) : null"
 
     /// A page configuration with the watcher installed and `handler` listening.
     /// Video plays inline, as in Safari: the iPhone default (`.automatic`)

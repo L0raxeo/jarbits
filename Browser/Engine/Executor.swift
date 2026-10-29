@@ -189,6 +189,39 @@ final class Executor {
                         outcome = "dismissed"
                         ended = .declined
                     }
+                } else if call.name == Planner.lookTool.name {
+                    // More of an open page than the screen block holds; the page's
+                    // script reads it and the links it finds get handles.
+                    let what = call.arguments["what"]?.stringValue ?? "text"
+                    let from = call.arguments["from"]?.intValue
+                    let handle = call.arguments["page"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+                    var host: PageHost?
+                    var refusal: String?
+                    if handle.isEmpty {
+                        host = session.pageHost(for: nil)
+                        if host == nil { refusal = "no page is on screen to look at" }
+                    } else {
+                        switch things[handle] {
+                        case .item?: refusal = "\(handle) is a link, not an open page: open it first, then look"
+                        case let .exchange(exchange)? where exchange.kind == .page:
+                            host = session.pageHost(for: exchange.address.flatMap(URL.init(string:)))
+                            if host == nil { refusal = "that page is not open now: open \(handle), then look" }
+                        case nil: refusal = noSuchThing(handle)
+                        default: refusal = "\(handle) is not a page"
+                        }
+                    }
+                    if let refusal {
+                        result = refusal
+                        outcome = "failed: \(refusal)"
+                        failures += 1
+                    } else {
+                        let looked = await host?.look(what: what, from: from)
+                        guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
+                        let handles = things.mint(items: looked?.items ?? [])
+                        result = Planner.looked(what: what, text: looked?.text ?? "", handles: handles, in: things)
+                        outcome = looked == nil ? "looked: no reply" : "looked: \(what), \(looked!.text.count) chars, \(handles.count) links"
+                    }
+                    answered = false
                 } else if let instinct = instincts.first(where: { $0.spec.id == call.name }) {
                     let spec = instinct.spec
                     let key = ReasoningPolicy.stepKey(name: call.name, arguments: call.arguments)
@@ -196,12 +229,36 @@ final class Executor {
                     let stepQuery = values["query"]?.stringValue ?? query
                     if spec.instinct == .remember, answered { values[RememberInstinct.sourceField] = .string(Fact.Source.chosen.rawValue) }
                     answered = false
-                    // A thing field names a handle; the device resolves it, or the step fails.
+                    // A thing field names a handle, or several separated by commas;
+                    // the device resolves each, or the step fails.
                     var resolved: [String: Reference] = [:]
+                    var resolvedMany: [String: [Reference]] = [:]
                     var unknown: String?
                     for field in spec.arguments.things {
-                        guard let handle = values[field.name]?.stringValue else { continue }
-                        if let thing = things[handle] { resolved[field.name] = Reference(thing) } else { unknown = handle; break }
+                        guard let named = values[field.name]?.stringValue else { continue }
+                        var references: [Reference] = []
+                        for handle in named.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespaces) }).filter({ !$0.isEmpty }) {
+                            if let thing = things[handle] { references.append(Reference(thing)) } else { unknown = handle; break }
+                        }
+                        if unknown != nil { break }
+                        if let first = references.first {
+                            resolved[field.name] = first
+                            resolvedMany[field.name] = references
+                        }
+                    }
+                    // A handle named in braces inside a text value ("- {s3}") is a
+                    // thing too; the device fills it, or the step fails like any
+                    // unknown handle.
+                    var named: [String: Reference] = [:]
+                    if unknown == nil {
+                        for value in values.values {
+                            guard let text = value.stringValue else { continue }
+                            for match in text.matches(of: /\{([a-z]+\d+)\}/) {
+                                let handle = String(match.1).lowercased()
+                                if let thing = things[handle] { named[handle] = Reference(thing) } else { unknown = handle; break }
+                            }
+                            if unknown != nil { break }
+                        }
                     }
                     if let unknown {
                         result = noSuchThing(unknown)
@@ -225,6 +282,8 @@ final class Executor {
                             arguments: values.filter { $0.key != Planner.queryField.name }
                         )
                         context.things = resolved
+                        context.manyThings = resolvedMany
+                        context.namedThings = named
                         context.screen = screen   // an answer the plan asks for may be about what is on screen
                         if spec.instinct == .recall {
                             // In a plan the recall finds; what it found gets handles for the next step.

@@ -47,7 +47,15 @@ public struct PlanRunner: Sendable {
         let notes = (planCase.notes ?? []).map { $0.note(now: context.now) }
         let things = ThingTable(exchanges: planCase.exchanges ?? [], memories: memories, notes: notes, items: screen?.items ?? [])
         let lead = planCase.failure.map(Planner.failureLead) ?? planCase.picked.map(Planner.pickedLead)
-        let transcript: [InteractionStep] = [.userText(Planner.input(query: planCase.query, things: things, now: context.now, lead: lead, screen: screen))]
+        var transcript: [InteractionStep] = [.userText(Planner.input(query: planCase.query, things: things, now: context.now, lead: lead, screen: screen))]
+        // Steps already taken. The API refuses a function_call step the client
+        // wrote, and a transcript that ends on a model step (400 "invalid
+        // argument", 2026-10-29), so each goes in as two steps: the model's
+        // words naming the call, then the device's result as the next input.
+        for step in planCase.prior ?? [] {
+            transcript.append(.modelText(step.asModelWords))
+            transcript.append(.userText(step.asResultInput))
+        }
         return Planner.request(bundle: bundle, transcript: transcript, model: model)
     }
 

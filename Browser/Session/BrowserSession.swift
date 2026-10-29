@@ -85,6 +85,14 @@ final class BrowserSession {
     private(set) var layers: [Layer] = []
     private(set) var index = 0
     var current: Layer? { layers.indices.contains(index) ? layers[index] : nil }
+    /// The host of an open page, for the planner's look: the page on
+    /// screen when `address` is nil or is its address, else the newest live
+    /// layer that ended on that address; nil when no such page is open.
+    func pageHost(for address: URL?) -> PageHost? {
+        if let shown = current, let host = shown.page, address == nil || shown.pageAddress == address { return host }
+        guard let address else { return nil }
+        return layers.reversed().first { $0.page != nil && $0.pageAddress == address }?.page
+    }
     /// The query most recently sent, in flight or shown; a newer one wins.
     private(set) var lastQuery = ""
     /// Where the query in flight is; the instincts move it as they open their layers.

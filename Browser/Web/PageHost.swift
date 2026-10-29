@@ -341,22 +341,58 @@ final class PageHost {
         return Screen(
             kind: .page, title: title, address: address,
             visible: found?.visible ?? "", rest: found?.rest ?? "",
-            selection: found?.selection, items: found?.items ?? [], picture: await picture
+            selection: found?.selection, items: found?.items ?? [], data: found?.data ?? "", picture: await picture
         )
     }
 
-    /// The probe's reply, as a value: `{visible, rest, selection, items}`.
+    /// A look's wait: the page's whole text or every link, on a long page.
+    static let lookTimeout: Duration = .seconds(3)
+    /// What one look may bring back.
+    static let lookLimits: [String: Int] = ["text": 4_000, "links": 40, "outline": 60, "tables": 3_000]
+
+    /// What a look brought back: text (paragraphs, headings, tables, or a
+    /// cut marker) and links as items for the plan to mint.
+    struct Looked: Sendable {
+        var text: String
+        var items: [ScreenItem]
+
+        init?(_ reply: Any?) {
+            guard let found = reply as? [String: Any] else { return nil }
+            text = (found["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            items = ((found["items"] as? [[String: Any]]) ?? []).compactMap { item in
+                guard let title = item["title"] as? String, let href = item["href"] as? String, let url = URL(string: href) else { return nil }
+                return ScreenItem(title: title, address: url)
+            }
+        }
+    }
+
+    /// More of the page than the screen read gives, for the planner's
+    /// `look`: `what` is text, links, outline or tables; `from` the number
+    /// the last result said it continues at. Nil when the page did not
+    /// answer within `lookTimeout`.
+    func look(what: String, from: Int?) async -> Looked? {
+        let request: [String: Any] = ["what": what, "from": from ?? 1, "limits": Self.lookLimits]
+        let probe = Task { [page] () -> Looked? in
+            let reply = try? await page.callJavaScript(PageChrome.lookProbe, arguments: ["request": request], contentWorld: PageChrome.world)
+            return Looked(reply)
+        }
+        return await Self.bounded(Self.lookTimeout, probe)
+    }
+
+    /// The probe's reply, as a value: `{visible, rest, selection, items, data}`.
     private struct Probed: Sendable {
         var visible: String
         var rest: String
         var selection: String?
         var items: [ScreenItem]
+        var data: String
 
         init?(_ reply: Any?) {
             guard let found = reply as? [String: Any] else { return nil }
             visible = found["visible"] as? String ?? ""
             rest = found["rest"] as? String ?? ""
             selection = found["selection"] as? String
+            data = found["data"] as? String ?? ""
             items = ((found["items"] as? [[String: Any]]) ?? []).compactMap { item in
                 guard let title = item["title"] as? String, let href = item["href"] as? String, let url = URL(string: href) else { return nil }
                 return ScreenItem(title: title, address: url)

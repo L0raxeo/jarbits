@@ -827,12 +827,72 @@ venom f5" over the Hennessey page), and the pair must come out apart.
 <text> <url>... --picture <jpeg>` prints the first turn as the app sends
 it (the picture shown as `<picture>`) and, with the key, runs one round.
 
+**The page's own data.** Most pages publish facts for search engines and
+link previews that they do not draw: the canonical address, the preview
+title and description, and structured blocks (a product's price and
+availability, a video's duration and upload date, an article's author and
+date, a recipe's ingredients). The screen read collects them in the same
+call (`PageChrome.js` `pageData()`: the canonical link, a fixed set of
+preview tags, and every JSON-LD block flattened to `dotted.key: value`
+lines, strings and numbers only, in the page's own words, 1,500
+characters at most) and they ride with the screen as `Screen.data`, in
+the planner's and an answer's block under "The page's own data", not in
+the reader's. "How long is this video" on a page that draws no duration
+is answered from `duration: PT12M4S` in the first turn, with no look.
+
+### Looking deeper into a page
+
+What the eye cannot reach from the screen needs a read: "summarize this
+page" when the article runs past the block's cap, "put every link in this
+article in a note", "which plan is cheapest" when it sits in a table. The
+planner has a `look` tool for it (`Planner.lookTool`): `what` is one of
+`text` (the page's paragraphs, numbered, 4,000 characters a look, ending
+"… continues at paragraph N" when cut; `from` continues it), `links`
+(every link on the page in screen order, top then left, forty a look,
+each minted as an `s` handle that continues the screen's series, so it
+can be opened or kept), `outline` (the headings with their paragraph
+numbers, so a `text` look can start at a section) and `tables` (each
+table as rows, cells joined with `|`, 3,000 characters). It reads the page
+on screen, or an earlier page of the session that is still open in a
+live layer (`page: p2`); a link in view is not an open page and the result
+says to open it first; no page is loaded unseen. The page's own script
+answers (`PageChrome.js` `look()`, bounded at 3 s, `PageHost.look`), the
+executor sends the result back as the step's text (`Planner.looked`), and
+a look that finds nothing says so, so the planner falls back to the
+picture.
+
+When Jarvits looks, from the user's side: when the request asks for what
+the screen block does not hold, the text further down, the whole set of
+links, a table, a page's facts the block lacks. When he does not: when the
+thing asked for is in view ("how much is this" with the price on screen,
+"open the second one"), when the request stands on its own or leans on an
+earlier exchange, and when it is about how the page looks, which is the
+picture's job. The tool's description and one rule in the planner's prompt
+say exactly this, and the eval set keeps it honest with pairs: "summarize
+this page" over a cut article looks, over a short page it does not; "put
+every link in this article in a note" looks at the links, "add this to my
+reading list" keeps the page; "which plan is cheapest" looks at the tables
+when the prices are not drawn, and answers from the block when they are.
+A case may seed steps already taken (`prior` in `plans.jsonl`: the call
+and the device's result, put in the transcript as the API gives them), so
+the round after a look is tested too: the summary written from what was
+read, the links kept by handle in one write (the notebook's `item` takes
+several handles, "s3, s4, s5, s6", and `{item}` in its text becomes one
+line per item).
+
+What a look cannot read: links drawn as buttons with no address until
+tapped, content inside frames from another site, and content a page only
+loads as it is scrolled; the fallback for each is the picture and a tap.
+
 **What leaves the phone with a query.** The visible text, the selection,
-the links in view and the rest of the page (capped as above) go to Gemini
-with the query, for the reading and, when the query is planned or an
-answer is about the page, for those; a planned query also sends a picture
-of the viewport. Jev gets the query and the exchanges' titles, never the
-page's text or the picture. Nothing is kept by Google (`store: false`).
+the links in view, the page's own data and the rest of the page (capped as
+above) go to Gemini with the query, for the reading and, when the query is
+planned or an answer is about the page, for those; a planned query also
+sends a picture of the viewport, and a plan that looks sends what the look
+read: up to 4,000 characters of the page's text, forty links, the
+headings, or 3,000 characters of tables, per look. Jev gets the query and
+the exchanges' titles, never the page's text or the picture. Nothing is
+kept by Google (`store: false`).
 
 The planner (`Planner` in the Answers library) asks `gemini-3.1-flash-lite`,
 the extractor's model, at high thinking (accuracy over speed and cost,

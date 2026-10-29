@@ -52,4 +52,12 @@ import Testing
         #expect(try PlanCache.key(for: request) == PlanCache.key(for: PlanRunner.request(for: planCase)), "the same case keys the same file")
         #expect(request.systemInstruction.hasPrefix(Persona.example.identityLine))
     }
+
+    @Test func aPriorStepSeedsTheCallAndItsResult() throws {
+        let json = #"{"query": "summarize this page", "prior": [{"name": "look", "arguments": {"what": "text"}, "result": "1| Hello.\n2| World."}], "calls": [{"name": "narrative|say"}]}"#
+        let planCase = try JSONDecoder().decode(PlanCase.self, from: Data(json.utf8))
+        #expect(planCase.name == "summarize this page after look")
+        #expect(planCase.prior?.first?.asModelWords == "I call look(what: text).")
+        #expect(planCase.prior?.first?.asResultInput == "Result of look(what: text):\n1| Hello.\n2| World.")
+    }
 }

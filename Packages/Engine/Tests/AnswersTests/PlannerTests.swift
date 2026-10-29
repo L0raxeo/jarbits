@@ -8,16 +8,16 @@ import Testing
 /// instruction, the exchanges and memories in the first turn, and the
 /// wire shape the app sends.
 @Suite struct PlannerTests {
-    @Test func everyInstinctIsAToolWithAQueryFieldThenAskSayOpenAndDone() throws {
+    @Test func everyInstinctIsAToolWithAQueryFieldThenAskSayOpenLookAndDone() throws {
         let tools = Planner.tools(for: InstinctSpec.all)
-        #expect(tools.map(\.name) == InstinctSpec.all.map(\.id) + ["ask", "say", "open", "done"])
+        #expect(tools.map(\.name) == InstinctSpec.all.map(\.id) + ["ask", "say", "open", "look", "done"])
         let recall = try #require(tools.first { $0.name == "recall" })
         #expect(recall.description.contains("In a plan it shows nothing: its result names what it found, by handle"))
         let open = try #require(tools.first { $0.name == "open" })
         #expect(open.parameters["required"]?.arrayValue?.first?.stringValue == "things")
         #expect(open.parameters["properties"]?["things"]?["type"]?.stringValue == "array")
         #expect(open.description.contains("shown together in a grid"))
-        for tool in tools.dropLast(4) {
+        for tool in tools.dropLast(5) {
             let requiredNames = tool.parameters["required"]?.arrayValue?.compactMap { $0.stringValue }
             let required = try #require(requiredNames)
             #expect(required.contains("query"), "\(tool.name) takes a query")
@@ -71,6 +71,22 @@ import Testing
         #expect(input.contains("In my notebook, every note (newest first):\n- n1: My note \"Trip\", edited yesterday:\n    1| ## Groceries\n    2| - milk\n    3| \n    4| ## Packing\n    5| - [ ] passport"), "links as titles, blank lines numbered too")
         let notebook = Planner.tools(for: InstinctSpec.all).first { $0.name == "notebook" }
         #expect(notebook?.description.contains("text is the exact lines to add, in the marks of the lines around where they go, and after is the number of the line they follow") == true)
+    }
+
+    @Test func lookIsAToolWithARuleAndAResultShape() {
+        let tools = Planner.tools(for: InstinctSpec.all)
+        let look = tools.first { $0.name == "look" }
+        #expect(look != nil && tools.last?.name == "done")
+        #expect(look?.description.contains("when the request asks for what the screen block does not hold") == true)
+        #expect(look?.description.contains("a link (s2) is not an open page: open it first") == true)
+        #expect(Planner.system(facts: [], context: .example).contains("- look reads more of an open page than the screen block holds"))
+        let link = ScreenItem(title: "Rick Steves' Europe: Lisbon", address: URL(string: "https://m.youtube.com/watch?v=abc")!)
+        var things = ThingTable(items: [link])
+        let minted = things.mint(items: [ScreenItem(title: "48 Hours in Lisbon", address: URL(string: "https://m.youtube.com/watch?v=ccc")!)])
+        #expect(minted == ["s2"], "a look's links continue the screen's series")
+        #expect(Planner.looked(what: "links", text: "\u{2026} more from link 41 of 90", handles: minted, in: things) == "Links on the page, in order:\n- s2: \"48 Hours in Lisbon\" \u{2192} https://m.youtube.com/watch?v=ccc\n\u{2026} more from link 41 of 90")
+        #expect(Planner.looked(what: "text", text: "1| First paragraph.\n2| Second.", handles: [], in: things) == "1| First paragraph.\n2| Second.")
+        #expect(Planner.looked(what: "tables", text: "", handles: [], in: things).hasPrefix("nothing of that kind on the page (tables)"))
     }
 
     @Test func aFailureIsTheFirstThingThePlannerReads() {
@@ -130,8 +146,8 @@ import Testing
         #expect(request.model == Planner.model)
         #expect(request.stream == false)
         #expect(request.toolChoice == .any)
-        #expect(request.tools.count == InstinctSpec.all.count + 4)
-        #expect(request.tools.suffix(4).map(\.name) == ["ask", "say", "open", "done"])
+        #expect(request.tools.count == InstinctSpec.all.count + 5)
+        #expect(request.tools.suffix(5).map(\.name) == ["ask", "say", "open", "look", "done"])
         #expect(Planner.sayTool.parameters["required"]?.arrayValue?.first?.stringValue == "text")
         #expect(request.maxOutputTokens == Planner.maxOutputTokens)
         #expect(request.thinkingLevel == Planner.thinkingLevel)
@@ -139,7 +155,7 @@ import Testing
         #expect(json["model"] as? String == "gemini-3.1-flash-lite")
         #expect(json["stream"] as? Bool == false)
         #expect(json["store"] as? Bool == false)
-        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 4)
+        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 5)
         let config = try #require(json["generation_config"] as? [String: Any])
         #expect(config["tool_choice"] as? String == "any")
         #expect(config["thinking_level"] as? String == "high", "accuracy over speed: the planner thinks")
