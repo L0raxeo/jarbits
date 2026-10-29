@@ -8,12 +8,14 @@ import Engine
 /// instinct takes, and what rides on the log line beside the pick.
 struct InstinctContext {
     let query: String
-    let decision: Pick
+    /// Jev's pick, or the planner's step; an answer step about the
+    /// conversation on screen sets `continues` on it.
+    var decision: Pick
     let opened: OpenedSite?
     let canAnswer: Bool
     /// The conversation on screen, oldest first, when the query continues
     /// it; empty otherwise.
-    let thread: [AnswerTurn]
+    var thread: [AnswerTurn]
     /// The chained exchanges that are not the thread: a search made, a page
     /// read, a picture looked at; oldest first.
     var earlier: [Exchange]

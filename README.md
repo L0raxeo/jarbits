@@ -439,7 +439,10 @@ sheet's swipe did. A fresh one-line or narrative answer goes to the
 bubble (the clay or the capsule waves until the first text, then the
 screen goes back to where it stood and the bubble shows); a follow-up
 that continues a conversation already in the full view grows that layer
-as before. A narrative that needs live data still becomes web results,
+as before. A continuation is Jev's chain ending on the answer on screen,
+or, on the planner's path, an answer step whose `about` is that very
+conversation (`AnswerInstinct`): the device then makes it the thread and
+the turn grows the full view, instead of a card over the card. A narrative that needs live data still becomes web results,
 in the stack.
 
 A plan or an answer that brings nothing no longer becomes a web search

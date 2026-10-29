@@ -30,11 +30,22 @@ struct AnswerInstinct: InstinctRunner {
             return .nothing
         }
         // The thing the answer is about, in its context block, unless the
-        // chain already put it there.
+        // chain already put it there. A plan's answer about the conversation
+        // the user is in (the reply in the bubble, or the layer on screen)
+        // continues it, as Jev's chain does: the conversation is the thread,
+        // its turns leave the context block, and the step counts as a
+        // continuation, so the thread grows in the full view.
         var context = context
         if let about = context.things["about"] {
             let exchange = about.asExchange(query: context.query)
-            if !context.earlier.contains(exchange) { context.earlier.append(exchange) }
+            let conversation = session.focus?.exchanges.map(\.exchange) ?? []
+            if context.decision.source == .plan, about.kind == .answer, conversation.contains(exchange) {
+                context.thread = session.thread
+                context.earlier.removeAll { conversation.contains($0) }
+                context.decision.continues = true
+            } else if !context.earlier.contains(exchange) {
+                context.earlier.append(exchange)
+            }
         }
         // The screen goes with the answer when the query leans on what is
         // on it: Jev chained the layer on screen, the thing the answer is

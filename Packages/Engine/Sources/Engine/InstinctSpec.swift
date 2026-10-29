@@ -206,7 +206,7 @@ public struct InstinctSpec: Sendable, Identifiable {
     /// The thing an answer is about, when the request leans on one: a page
     /// read, a search made, an earlier answer, a memory. The device puts it
     /// in the answer's context; the model never sees an address.
-    public static let aboutField = ArgumentSchema.Field(name: "about", kind: .thing, description: "the thing this is about, when the request leans on one that was listed", required: false)
+    public static let aboutField = ArgumentSchema.Field(name: "about", kind: .thing, description: "the thing this is about, when the request leans on one that was listed; a follow-up to the answer the user is reading (the newest answer listed, p2) names that answer here, with query as the follow-up itself, and the device makes the reply its next turn", required: false)
 
     public init(instinct: Instinct) {
         self.instinct = instinct
