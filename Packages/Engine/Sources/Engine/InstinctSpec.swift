@@ -253,7 +253,7 @@ public struct InstinctSpec: Sendable, Identifiable {
             // Asked in every request: a yes on another pick is a fact noted quietly.
             questions = { _ in [(EngineRequest.rememberQuestionID, .noul(instructions: EngineRequest.rememberInstructions, criteria: EngineRequest.rememberCriteria))] }
             showsLayer = false
-            arguments = ArgumentSchema(fields: [.init(name: "fact", kind: .text, description: "the lasting personal fact to keep, as one whole sentence as Jarvits notes it, naming the user and whoever or whatever else the words relate to them; read by the fact reader (`ValueExtractor.distill`), not the value reader")])
+            arguments = ArgumentSchema(fields: [.init(name: "fact", kind: .text, description: "the lasting personal fact to keep, as one whole sentence as Jarbits notes it, naming the user and whoever or whatever else the words relate to them; read by the fact reader (`ValueExtractor.distill`), not the value reader")])
         case .forget:
             shortcut = true
             questions = { _ in [] }

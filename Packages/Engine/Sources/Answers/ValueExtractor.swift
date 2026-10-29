@@ -55,7 +55,7 @@ public struct ValueExtractor: Sendable {
     /// The schema and the instruction that read the lasting fact a query
     /// states: told outright ("remember my friend Noah is vegan") or on the
     /// way to asking something else ("I'm allergic to peanuts, what can I
-    /// snack on"). The fact is kept as Jarvits notes it, naming the user.
+    /// snack on"). The fact is kept as Jarbits notes it, naming the user.
     public static var factSchema: JSONValue { factSchema(Persona()) }
 
     public static func factSchema(_ persona: Persona) -> JSONValue {

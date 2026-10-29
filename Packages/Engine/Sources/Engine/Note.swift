@@ -1,6 +1,6 @@
 import Foundation
 
-/// One note in Jarvits's notebook: a Markdown file on the device, permanent,
+/// One note in Jarbits's notebook: a Markdown file on the device, permanent,
 /// not a memory. The first line is `# Title`, then a blank line, then the
 /// body in the six forms `NoteMarkdown` knows. The dates are the file's.
 public struct Note: Codable, Sendable, Hashable, Identifiable {

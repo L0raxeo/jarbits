@@ -69,7 +69,7 @@ public enum AnswerPrompt {
     /// `earlier` is the exchanges of this session the query depends on, from
     /// other layers than the answer's own thread (a search, a page read, a
     /// picture looked at), oldest first; empty for a query that stands alone.
-    /// `facts` is everything Jarvits knows about the user, as he noted it,
+    /// `facts` is everything Jarbits knows about the user, as he noted it,
     /// oldest first; every one goes, there are few.
     public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], persona: Persona = Persona(), screen: Screen? = nil) -> String {
         var lines = [
@@ -114,7 +114,7 @@ public enum AnswerPrompt {
     /// narrative on screen, sent whole: every earlier query and answer, so
     /// a reply can lean on anything said in it. Empty for a fresh answer.
     /// `earlier` is what else in this session the query depends on, and
-    /// `facts` what Jarvits knows about the user; see `input`.
+    /// `facts` what Jarbits knows about the user; see `input`.
     public static func request(
         format: Instinct,
         query: String,

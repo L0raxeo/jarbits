@@ -16,7 +16,7 @@ public enum NoteParagraph: String, Codable, Sendable, Hashable {
 
 public struct NoteParagraphAttribute: CodableAttributedStringKey {
     public typealias Value = NoteParagraph
-    public static let name = "jarvits.note.paragraph"
+    public static let name = "jarbits.note.paragraph"
 }
 
 extension AttributeScopes {

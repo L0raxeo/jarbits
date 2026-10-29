@@ -51,7 +51,7 @@ import Testing
         #expect(system.contains("Nothing you write outside a tool call is shown to anyone"))
         #expect(system.contains("call say with it"))
         #expect(system.contains("Never write an answer into a question"))
-        #expect(system.contains("What Jarvits knows about Lorcan"))
+        #expect(system.contains("What Jarbits knows about Lorcan"))
         #expect(system.contains("web_results, narrative, map, stock, one_line, image, site, video, time, notebook, say and open each put a result on screen, and a later one replaces the earlier: end on what Lorcan should see"))
         #expect(!system.contains("Show at most one thing"))
         #expect(system.contains("The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2)"))

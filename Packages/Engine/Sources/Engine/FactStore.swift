@@ -23,6 +23,7 @@ public actor FactStore {
         if let fileURL {
             self.fileURL = fileURL
         } else {
+            // "Browser" is the project's old name, kept: the files already on the phone are there.
             let support = URL.applicationSupportDirectory.appending(path: "Browser", directoryHint: .isDirectory)
             self.fileURL = support.appending(path: "facts.jsonl")
         }

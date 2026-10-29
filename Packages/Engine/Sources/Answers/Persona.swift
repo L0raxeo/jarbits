@@ -1,8 +1,8 @@
 import Foundation
 
-/// Who the assistant is and who it assists. The assistant is Jarvits; the
+/// Who the assistant is and who it assists. The assistant is Jarbits; the
 /// user is the person holding the phone, by name once they have given it.
-/// Every Gemini instruction Jarvits sends opens with one of two lines, so
+/// Every Gemini instruction Jarbits sends opens with one of two lines, so
 /// no model mistakes the speaker for itself: `identityLine` where he writes
 /// or answers (the fact reader, the answers, the planner), so a fact is
 /// kept from his point of view ("Lorcan's friend Noah is vegan");
@@ -10,7 +10,7 @@ import Foundation
 /// user's words come back as the user's, never recast in his. Jev never
 /// sees either.
 public struct Persona: Sendable, Equatable {
-    public static let assistant = "Jarvits"
+    public static let assistant = "Jarbits"
 
     /// The user's name; nil until asked and given.
     public var userName: String?
@@ -29,7 +29,7 @@ public struct Persona: Sendable, Equatable {
     /// The possessive: "Lorcan's", or "the person's" when the name is not known.
     public var users: String { userName.map { $0 + "'s" } ?? "the person's" }
 
-    /// The first line of the instructions where Jarvits writes or answers.
+    /// The first line of the instructions where Jarbits writes or answers.
     public var identityLine: String {
         if let userName {
             return "You are \(Self.assistant), the assistant in \(userName)'s phone browser. \(userName) is the person speaking to you; you are not \(userName). Speak of \(userName) by name and of yourself as \(Self.assistant)."
@@ -37,7 +37,7 @@ public struct Persona: Sendable, Equatable {
         return "You are \(Self.assistant), the assistant in a phone browser. The person speaking to you is the person you assist, whose name you do not know yet; you are not them. Speak of them as the person and of yourself as \(Self.assistant)."
     }
 
-    /// The first line of the instructions where Jarvits only reads: the
+    /// The first line of the instructions where Jarbits only reads: the
     /// words he hands back are the user's, in the user's own voice.
     public var readerLine: String {
         if let userName {

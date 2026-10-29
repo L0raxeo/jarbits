@@ -15,7 +15,7 @@ import Testing
         let markdown = AnswersReport.markdown()
         #expect(markdown.contains(AnswerPrompt.system(for: .narrative, persona: .example)))
         #expect(markdown.contains(AnswerPrompt.system(for: .oneLine, persona: .example)))
-        #expect(markdown.contains("## Who Jarvits is") && markdown.contains(Persona.example.identityLine))
+        #expect(markdown.contains("## Who Jarbits is") && markdown.contains(Persona.example.identityLine))
         #expect(markdown.contains(AnswerPrompt.input(query: "<query>", context: .example)))
         #expect(markdown.contains(GeminiClient.defaultModel))
         #expect(markdown.contains("### `narrative` — system instruction, max \(AnswerPrompt.maxOutputTokens(for: .narrative)) output tokens"))

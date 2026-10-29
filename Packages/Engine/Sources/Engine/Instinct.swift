@@ -31,7 +31,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
     /// The time or date now, here or in a named place, from the device
     /// clock; the reading names the place. See `LocalTimeAnswer`.
     case time
-    /// Jarvits's notebook: writing the user wants kept, added to, changed,
+    /// Jarbits's notebook: writing the user wants kept, added to, changed,
     /// opened, read back or deleted, as Markdown files on the device, found
     /// by title and text and judged by Jev. See `Note`.
     case notebook
@@ -204,7 +204,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
             )
         case .notebook:
             Criterion(
-                what: "Jarvits's notebook: writing the user wants kept as a note or a list, added to, changed, opened, read back or deleted. A note to make, something to put in a list, a page to keep in the notes, a note to open or read out, a note to delete. The notes are the user's own writing, kept as files, not facts about the user.",
+                what: "Jarbits's notebook: writing the user wants kept as a note or a list, added to, changed, opened, read back or deleted. A note to make, something to put in a list, a page to keep in the notes, a note to open or read out, a note to delete. The notes are the user's own writing, kept as files, not facts about the user.",
                 notFor: "A lasting fact about the user with nothing to write down (\"remember that I'm allergic to peanuts\"), which is remember; dropping such a fact, which is forget; bringing back a page, an answer or a search seen in this app before, which is recall.",
                 examples: ["make a note that the plumber comes tuesday", "add milk to my shopping list", "open my packing list", "what's in my notes about the trip", "put this page in my notes", "delete that note", "start a new note called ideas"]
             )

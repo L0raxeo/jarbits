@@ -1,5 +1,5 @@
-# Unlabelled queries for `report sample`: plausible things typed into a phone
-# browser, across all eight formats, with the phrasing, typos, casing, leads
+# Unlabelled queries for `report sample`: plausible things typed into the
+# assistant, across all eight formats, with the phrasing, typos, casing, leads
 # and trailers people actually use. Nothing here is a label; the section a
 # query sits under is only where it was written. One per line; `#` comments
 # and blank lines are skipped; a repeat is kept once.

@@ -1,7 +1,7 @@
-# Browser
+# Jarbits
 
-An iOS browser where a query goes through a router that decides what kind of
-card to show. The router is TypeSafe's Jev, a System One model: it picks one of
+Jarbits is an assistant for iPhone. A query goes through a router that
+decides what kind of card to show. The router is TypeSafe's Jev, a System One model: it picks one of
 nine response formats and reports how sure it is. Five providers exist
 behind it: a Google results web view (`web_results`), Gemini answers for
 `narrative` and `one_line`, Google's image results for `image`, the phone's
@@ -71,7 +71,7 @@ UIKit aborted touch delivery whenever such a page was scrolled far.
 
 ## Run
 
-1. Open `Browser.xcodeproj` in Xcode 26, pick your team under
+1. Open `Jarbits.xcodeproj` in Xcode 26, pick your team under
    Signing & Capabilities once. Minimum iOS 26.
 2. Get a Jev key from https://console.typesafe.ai/keys and a Gemini key from
    https://aistudio.google.com/apikey (on a project with billing enabled;
@@ -91,13 +91,13 @@ UIKit aborted touch delivery whenever such a page was scrolled far.
 
 ## How a query runs
 
-`BrowserSession.submit` → `Engine.route` → `EngineResult { instinct, context, decision }` → `instinct.run`.
-`BrowserSession.stage` (`idle`, `routing`, `loading`, `ready`) is what the
+`JarbitsSession.submit` → `Engine.route` → `EngineResult { instinct, context, decision }` → `instinct.run`.
+`JarbitsSession.stage` (`idle`, `routing`, `loading`, `ready`) is what the
 home screen reads to show the line or the result; a page counts as ready
 when WebKit commits its first content (or after 8 s), an answer when its
 first text arrives.
 
-The engine (`Browser/Engine/Engine.swift`) is the cognitive engine's first
+The engine (`Jarbits/Engine/Engine.swift`) is the cognitive engine's first
 stage: it knows the session's **exchanges**, every earlier query up to the
 layer on screen and what it got (an answer's text whole, a page's title and
 address, a search's term, a picture's subject, a grid's titles, a choice of
@@ -109,7 +109,7 @@ sent. An answer still streaming has no exchange yet.
 of everything the app can do for a query, one per `Instinct` case, in the
 order Jev sees the options: each one's criterion, the questions it adds to
 the request, the values it takes, and its side effects. The app binds each spec to an
-`InstinctRunner` (`Browser/Engine/Instincts.swift`, `SiteInstinct.swift`,
+`InstinctRunner` (`Jarbits/Engine/Instincts.swift`, `SiteInstinct.swift`,
 `RecallInstinct.swift`, `FactInstincts.swift`) that runs the query it was
 picked for: a showing instinct opens its layer, an acting one works the
 session's stores and sheet. Adding an instinct is one `Instinct` case, one
@@ -203,12 +203,12 @@ reading (see "The reading") in parallel:
 - **An instinct that cannot do the thing hands the query to the planner.**
   Nothing found to recall, no note the words mean, no site found for a
   name, a place the clock does not know, no fact to forget: the instinct
-  returns why, in Jarvits's words (`InstinctOutcome.failed`), shows
+  returns why, in Jarbits's words (`InstinctOutcome.failed`), shows
   nothing, and the session plans the query under the wave line with
   "Tried first, and could not: …" as the planner's first line, so it
   does what the request needs another way, or says so. Without a planner,
   web results. In a plan, a failed step's result reads "could not: …".
-- **The instinct runs** (`Browser/Engine/Instincts.swift` and the files
+- **The instinct runs** (`Jarbits/Engine/Instincts.swift` and the files
   beside it): `web_results`, `map` and `stock` load a Google results page
   for the words; `narrative` and `one_line` stream an answer, or show web
   results when Jev's `recent` says the reply may have gone stale; `time`
@@ -217,7 +217,7 @@ reading (see "The reading") in parallel:
   `video` loads Google's video results for them; `recall` works the memories (see
   "Recall"); `site` works the site book and the search (see "Sites");
   `remember` and `forget` work the facts (see "Facts"); `notebook` works
-  Jarvits's notes (see "Notebook"). A query whose
+  Jarbits's notes (see "Notebook"). A query whose
   reasoning score says it needs several steps goes to the executor instead
   (see "Advanced reasoning").
 - Each decision is appended to `Application Support/Browser/decisions.jsonl`
@@ -406,7 +406,7 @@ block without changing the cards.
 ## The bubble
 
 A reply that does not need the whole screen is shown in the bubble
-(`ReplyBubble`, `BrowserSession.reply`): one view in the page's own
+(`ReplyBubble`, `JarbitsSession.reply`): one view in the page's own
 layout, never a sheet, grown upward from the clay. Over a result it sits
 directly above the query capsule in the keyboard-aware layer of
 `HomeView`, the capsule's width, and rides the keyboard with it; on the
@@ -451,7 +451,7 @@ for the words, which read as a mishearing on "add this to my wishlist":
 the bubble says so ("I couldn't get through that one.", "That took too
 long to work out.", "Nothing came back.") with "Try again" and "Search
 instead" under it, and the screen stays as it stood
-(`BrowserSession.offerRetry`). Without a planner at all, web results
+(`JarbitsSession.offerRetry`). Without a planner at all, web results
 still stand in.
 
 ## Images
@@ -610,24 +610,24 @@ exported memories file. Debug builds show a "Clear memory" link at the top of th
 screen that deletes the file and every picture; there is no user-facing
 control yet.
 
-## Jarvits and the user
+## Jarbits and the user
 
-The app is an assistant, Jarvits, assisting the person holding the phone;
+The app is an assistant, Jarbits, assisting the person holding the phone;
 he is not that person. Every Gemini instruction he sends opens with one
 of two lines (`Persona` in the Answers library). Where he writes or
 answers (the fact reader, both answer formats, the planner):
-"You are Jarvits, the assistant in Lorcan's phone browser. Lorcan is the
+"You are Jarbits, the assistant in Lorcan's phone browser. Lorcan is the
 person speaking to you; you are not Lorcan. Speak of Lorcan by name and of
-yourself as Jarvits." Where he only reads (the reading, the value reader)
+yourself as Jarbits." Where he only reads (the reading, the value reader)
 the last sentence is instead "What you hand back is Lorcan's request in
 Lorcan's own words, not your words about it", so a search or a pick never
 sees the user's words recast in his. A question about the user's own life
 ("do I have any vegan friends") is answered from the facts: Jev's recency
 question says such a question does not go stale, and the answer prompts
 say to answer it from the facts block alone, or to say in a line that
-Jarvits does not know that yet. For that he needs the user's name: with none known,
+Jarbits does not know that yet. For that he needs the user's name: with none known,
 the home screen puts "What's your name?" in the bubble as soon as the
-circle is idle (`BrowserSession.askNameIfNeeded`), once per launch; a
+circle is idle (`JarbitsSession.askNameIfNeeded`), once per launch; a
 swipe away asks again at the next launch, and until a name is given the
 prompts say "the person you assist". The name lives in
 `facts.profile.json` beside the facts (`FactStore.userName`) and goes with
@@ -635,11 +635,11 @@ prompts say "the person you assist". The name lives in
 
 ## Notebook
 
-Jarvits keeps a notebook: notes the user types into, with bold, italic,
+Jarbits keeps a notebook: notes the user types into, with bold, italic,
 headings, bullets, numbered lists and checkboxes, kept as Markdown files
 on the device (`Application Support/Browser/Notebook/<id>.md`: the first
 line `# Title`, a blank line, the body), permanent, not memories. There
-are no folders and no tags: the user asks for a note and Jarvits finds
+are no folders and no tags: the user asks for a note and Jarbits finds
 it. He speaks of "my notebook" and "my notes": it is his way of keeping
 things for the user.
 
@@ -687,7 +687,7 @@ and a numbered run the lines land in is counted again from 1. Several notes show
 notes · 3"), by `open` with several handles or the notebook's `all`. A delete asks in the bubble ("Delete
 my note 'Packing list'?") and moves the file to `.trash/`, never gone.
 Every append or replace first copies the text as it was to
-`.versions/<id>/`, so any edit by Jarvits can be undone. A write leaves
+`.versions/<id>/`, so any edit by Jarbits can be undone. A write leaves
 the screen where it was: the bubble shows a line naming the note and
 what went in ("Added to Watch List: Rick Steves' Europe: Lisbon", "Made
 the note Trip", "Rewrote Shopping"), and "Read on" opens the note. A
@@ -705,7 +705,7 @@ bar above the keyboard offers the six forms while the note has the
 keyboard, and not while the capsule does. A page kept in the note is its
 title in link colour in the text, and a tap opens the page; there is no
 separate list of links. Typing saves after a pause and on leaving; the
-file is the truth, and a note Jarvits changes while it is on screen is
+file is the truth, and a note Jarbits changes while it is on screen is
 reloaded.
 `NoteMarkdown` in the Engine library turns the file's Markdown into the
 editor's text and back, exactly the six forms, a paragraph attribute
@@ -747,11 +747,11 @@ ranking of a few texts for a request, from the Mac.
 
 ## Facts
 
-A fact is one thing Jarvits knows about the user, noted from his point of
+A fact is one thing Jarbits knows about the user, noted from his point of
 view: "Lorcan is allergic to peanuts", "Lorcan's friend Noah is vegan",
 "Lorcan's mom Jasmine is 50". Facts are the second memory store, beside
 the memories of things seen: few, short, and never expiring on their own.
-Every fact goes into every answer (`AnswerPrompt`'s "What Jarvits knows
+Every fact goes into every answer (`AnswerPrompt`'s "What Jarbits knows
 about Lorcan" block, after the context and the earlier exchanges; the
 prompts say to let them shape the answer when they bear on it and never to
 repeat them), and into every plan. Nothing in the
@@ -763,7 +763,7 @@ A fact comes to be known three ways (`Fact.source`):
   vegetarian", "note that I don't eat pork". Jev picks the `remember`
   instinct; the fact is what the fact reader (`ValueExtractor.distill`,
   the same call that notes a fact on any other pick) reads out of the
-  words, as Jarvits notes it, naming the user and whoever else it is
+  words, as Jarbits notes it, naming the user and whoever else it is
   about ("Lorcan's friend Bob is vegan.").
   A plain statement with nothing asked ("I live in austin now") is a
   remember too.
@@ -772,7 +772,7 @@ A fact comes to be known three ways (`Fact.source`):
   request carries a `remember` question (ENGINE.md); at or above
   `EngineRequest.rememberThreshold` (0.5) on any other pick, the pick runs
   as usual and the same small call distils the fact into one sentence as
-  Jarvits notes it, which is kept quietly. The query waits for that call
+  Jarbits notes it, which is kept quietly. The query waits for that call
   (about a second) before the pick runs.
 - **chosen**: the answer to a question a plan put in the bubble, when the
   plan keeps it (a `remember` step right after an `ask`; see "Advanced
@@ -818,7 +818,7 @@ a value, needs sequencing); at or above `ReasoningPolicy.threshold` (1.2;
 the two-step "remember I'm vegetarian, then suggest a dinner recipe"
 measured 1.46 and a plain remember 0.82) a sure pick is planned too. The
 engine hands such a query to the executor
-(`Browser/Engine/Executor.swift`) rather than to the pick. Without a
+(`Jarbits/Engine/Executor.swift`) rather than to the pick. Without a
 Gemini key the pick runs as it would, and an unsure one is web results.
 
 ## Screen awareness
@@ -918,7 +918,7 @@ executor sends the result back as the step's text (`Planner.looked`), and
 a look that finds nothing says so, so the planner falls back to the
 picture.
 
-When Jarvits looks, from the user's side: when the request asks for what
+When Jarbits looks, from the user's side: when the request asks for what
 the screen block does not hold, the text further down, the whole set of
 links, a table, a page's facts the block lacks. When he does not: when the
 thing asked for is in view ("how much is this" with the price on screen,
@@ -1110,7 +1110,7 @@ middle of the stack drops the layers ahead, like browser history. Recall,
 the grid and tile taps are unchanged; there is no spoken "back".
 
 The current layer and the newest three others stay live
-(`BrowserSession.maxLive`); past that the oldest shown go, pages in use
+(`JarbitsSession.maxLive`); past that the oldest shown go, pages in use
 last (a video part way through, a form typed into, which the watcher
 reports as `pageUse`). A background page idle for thirty minutes goes
 too, and a memory warning takes every background page not in use, the
@@ -1128,26 +1128,32 @@ coming from it. Nothing of this outlives the app.
 | Path | Role |
 |---|---|
 | `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the screen as the models see it (`Screen`, `ScreenItem`: the text, the links as things, the one rule), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
-| `Browser/Engine/Engine.swift` | The cognitive engine's first stage: an address as typed, else one Jev request over the registry carrying the session's exchanges with the reading beside it, the extractor for every value the pick declares, and the instinct to run with what it needs; or the hand-off to the executor when the reasoning score says the query needs several steps. Also `BrowserSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
-| `Browser/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat or a second thing to show, and sending every result back to the planner until `done` or the bounds. |
-| `Browser/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the memories and Jev's judge. |
-| `Browser/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |
-| `Browser/Engine/FactInstincts.swift` | The two instincts that show nothing: `remember` keeps a fact, `forget` judges which one the words mean and asks in the bubble. |
-| `Browser/Engine/PendingQuestion.swift` | One question put to the user in the bubble and the wait on its answer, resumed once by a tap, a return or a cancel. |
-| `Browser/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
-| `Browser/Memory/MemoryStore.swift` | The memories file: load once, append as results appear, refresh a repeat within a day, drop the oldest past the cap, search by words (`MemorySearch` in the package). |
-| `Browser/Memory/SiteStore.swift` | The site book on disk: seeded on first load, written whole on each learn, touch, forget or clear. |
-| `Browser/Home/ReplyBubble.swift`, `RememberedMark.swift` | The bubble (see "The bubble"): a reply in a line or a card above the clay, a question with its buttons or a line to type, "Read on" to the full view; and the mark's type, the quiet line shown in it for a moment after a fact is kept or dropped. |
-| `Browser/Engine/DecisionLog.swift` | JSON Lines log of every decision and answer. |
-| `Browser/Engine/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`, `BraveAPIKey`). |
-| `Browser/Engine/CardPlan.swift` | The renderable plans. One enum case per card type. |
-| `Browser/Session/BrowserSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the engine, applies the plan (a recall through the memories, a site through the book or the search) or runs an instinct that shows nothing, keeps the facts and the mark, holds the reply in the bubble and puts a question there and waits for it, opens, swipes between, unloads and reloads layers under the live cap, memorises what each layer shows, writes the log. |
-| `Browser/Session/Layer.swift` | One query's result: its plan, its live page (`PageHost`) or the notes left by an unload, its own answer stream and pictures, the page it ended on (for the engine's exchanges), its opened site and memory chain, when it was last shown. |
-| `Browser/Web/PageHost.swift` | One live web page: the `WebPage` with its watcher, what it pins to its edges, whether it loads or plays or is in use, the navigation watch and the document bookkeeping behind the chrome, the notes read as it goes and the restore when it comes back. |
-| `Browser/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, address changes for the memories, audio, and whether the page is in use), the page's notes for an unload, the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
-| `Browser/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `Clay` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar; the page bounces sideways only when it is wider than the screen, since the web view's default rubber-bands sideways on every page and a vertical drag with a little drift wobbles it) `ClayCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard, and swipes between layers) and `QueryField` (the text field the clay and the capsule share). No system toolbars, so no Liquid Glass. |
-| `Browser/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the three API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
+| `Jarbits/Engine/Engine.swift` | The cognitive engine's first stage: an address as typed, else one Jev request over the registry carrying the session's exchanges with the reading beside it, the extractor for every value the pick declares, and the instinct to run with what it needs; or the hand-off to the executor when the reasoning score says the query needs several steps. Also `JarbitsSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
+| `Jarbits/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat or a second thing to show, and sending every result back to the planner until `done` or the bounds. |
+| `Jarbits/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the memories and Jev's judge. |
+| `Jarbits/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |
+| `Jarbits/Engine/FactInstincts.swift` | The two instincts that show nothing: `remember` keeps a fact, `forget` judges which one the words mean and asks in the bubble. |
+| `Jarbits/Engine/PendingQuestion.swift` | One question put to the user in the bubble and the wait on its answer, resumed once by a tap, a return or a cancel. |
+| `Jarbits/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
+| `Jarbits/Memory/MemoryStore.swift` | The memories file: load once, append as results appear, refresh a repeat within a day, drop the oldest past the cap, search by words (`MemorySearch` in the package). |
+| `Jarbits/Memory/SiteStore.swift` | The site book on disk: seeded on first load, written whole on each learn, touch, forget or clear. |
+| `Jarbits/Home/ReplyBubble.swift`, `RememberedMark.swift` | The bubble (see "The bubble"): a reply in a line or a card above the clay, a question with its buttons or a line to type, "Read on" to the full view; and the mark's type, the quiet line shown in it for a moment after a fact is kept or dropped. |
+| `Jarbits/Engine/DecisionLog.swift` | JSON Lines log of every decision and answer. |
+| `Jarbits/Engine/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`, `BraveAPIKey`). |
+| `Jarbits/Engine/CardPlan.swift` | The renderable plans. One enum case per card type. |
+| `Jarbits/Session/JarbitsSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the engine, applies the plan (a recall through the memories, a site through the book or the search) or runs an instinct that shows nothing, keeps the facts and the mark, holds the reply in the bubble and puts a question there and waits for it, opens, swipes between, unloads and reloads layers under the live cap, memorises what each layer shows, writes the log. |
+| `Jarbits/Session/Layer.swift` | One query's result: its plan, its live page (`PageHost`) or the notes left by an unload, its own answer stream and pictures, the page it ended on (for the engine's exchanges), its opened site and memory chain, when it was last shown. |
+| `Jarbits/Web/PageHost.swift` | One live web page: the `WebPage` with its watcher, what it pins to its edges, whether it loads or plays or is in use, the navigation watch and the document bookkeeping behind the chrome, the notes read as it goes and the restore when it comes back. |
+| `Jarbits/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, address changes for the memories, audio, and whether the page is in use), the page's notes for an unload, the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
+| `Jarbits/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `Clay` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar; the page bounces sideways only when it is wider than the screen, since the web view's default rubber-bands sideways on every page and a vertical drag with a little drift wobbles it) `ClayCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard, and swipes between layers) and `QueryField` (the text field the clay and the capsule share). No system toolbars, so no Liquid Glass. |
+| `Jarbits/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the three API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
+
+Two names keep the project's old one, on purpose: the app's bundle id,
+`com.lorcancheng.browser`, and the folder its files live in on the phone,
+`Application Support/Browser/`. A new bundle id installs as a second app
+with nothing in it, and a new folder leaves every memory, fact and note
+behind in the old one.
 
 ## The engine contract
 
