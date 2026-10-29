@@ -67,6 +67,10 @@ final class Layer: Identifiable {
     /// A reply that only lingers in the bubble for a moment (a mark such as
     /// "Remembered: …"): not an exchange, not a thread, never promoted.
     var lingers = false
+    /// One line the bubble shows for this reply instead of its content: a
+    /// write's confirmation ("Added to Watch List: …"); "Read on" shows the
+    /// content itself.
+    var summary: String?
 
     init(plan: CardPlan, query: String, decision: Pick? = nil) {
         self.plan = plan

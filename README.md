@@ -416,8 +416,9 @@ tappable around it. Three sizes, picked on the device from the content
 (layout, not interpretation):
 
 - a line: a one-liner, the time, a mark ("Remembered: I'm vegetarian",
-  quiet, gone after three seconds), a limit the planner states;
-- a card: a narrative, what the planner said (`say`), or a question with
+  quiet, gone after three seconds), a write to a note ("Added to Watch
+  List: …", the note on "Read on"), a limit the planner states;
+- a card: a narrative, a note asked for, what the planner said (`say`), or a question with
   its one to three buttons or a line to type (`ask`, "What's your
   name?", "Delete my note …?", "Forget which?"); it grows to at most 40%
   of the screen, and past that the text is cut at the foot with "Read
@@ -686,8 +687,14 @@ and a numbered run the lines land in is counted again from 1. Several notes show
 notes · 3"), by `open` with several handles or the notebook's `all`. A delete asks in the bubble ("Delete
 my note 'Packing list'?") and moves the file to `.trash/`, never gone.
 Every append or replace first copies the text as it was to
-`.versions/<id>/`, so any edit by Jarvits can be undone. Every change
-shows the note afterwards.
+`.versions/<id>/`, so any edit by Jarvits can be undone. A write leaves
+the screen where it was: the bubble shows a line naming the note and
+what went in ("Added to Watch List: Rick Steves' Europe: Lisbon", "Made
+the note Trip", "Rewrote Shopping"), and "Read on" opens the note. A
+note asked for shows in the bubble as a card, its marks drawn as the
+note card draws them, the editable note one "Read on" away; the grid of
+several notes stays a layer; a note already on screen that is written
+into updates in place, where the user is looking.
 
 The note card (`NoteView`) is laid out like the iOS Notes app: one page
 you write on, the first line the title (large and bold, whatever is typed

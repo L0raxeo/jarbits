@@ -683,12 +683,14 @@ final class BrowserSession {
         }
     }
 
-    /// One of Jarvits's notes, open for typing. A layer already showing
-    /// this note takes the new text instead of a new layer, so an edit by
-    /// Jarvits to the note on screen shows at once.
-    func showNote(_ note: Note, context: InstinctContext) {
+    /// One of Jarvits's notes, in the bubble: as a card when asked for, as
+    /// a line saying what was written (`wrote`) after a write, the note
+    /// itself one "Read on" away. A layer already showing this note takes
+    /// the new text instead, so an edit by Jarvits to the note on screen
+    /// shows at once, where the user is looking.
+    func showNote(_ note: Note, wrote summary: String? = nil, context: InstinctContext) {
         lastQuery = context.query
-        if let shown = current, case let .note(old) = shown.plan, old.id == note.id {
+        if let shown = current, stage != .idle, case let .note(old) = shown.plan, old.id == note.id {
             shown.plan = .note(note)
             shown.query = context.query
             shown.decision = context.decision
@@ -697,7 +699,8 @@ final class BrowserSession {
             record(context)
             return
         }
-        showCard(.note(note), context: context)
+        let layer = showReply(.note(note), context: context)
+        layer.summary = summary
     }
 
     /// Several of his notes, in the grid.

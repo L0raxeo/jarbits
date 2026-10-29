@@ -49,7 +49,7 @@ struct NotebookInstinct: InstinctRunner {
         if action == "new" {
             let note = await session.notebook.create(title: title ?? topic, body: content)
             guard session.isCurrent(token) else { return .nothing }
-            session.showNote(note, context: context)
+            session.showNote(note, wrote: "Made the note \(note.title)", context: context)
             return InstinctOutcome(fact: nil, text: "made my note \"\(note.title)\"")
         }
 
@@ -68,14 +68,17 @@ struct NotebookInstinct: InstinctRunner {
                 // No listed note was it: a note by that name is made.
                 let note = await session.notebook.create(title: title ?? topic, body: content)
                 guard session.isCurrent(token) else { return .nothing }
-                session.showNote(note, context: context)
+                session.showNote(note, wrote: "Made the note \(note.title)", context: context)
                 return InstinctOutcome(fact: nil, text: "made my note \"\(note.title)\"")
             }
             let changed = action == "add"
                 ? await session.notebook.insert(content, into: note.id, after: after)
                 : await session.notebook.replace(note.id, body: content, title: title)
             guard session.isCurrent(token), let changed else { return .nothing }
-            session.showNote(changed, context: context)
+            // The line in the bubble: the note, and what went in (the item's
+            // title, else the first words written, plain).
+            let what = itemReference?.title ?? Note.title(from: content)
+            session.showNote(changed, wrote: action == "add" ? "Added to \(changed.title): \(what)" : "Rewrote \(changed.title)", context: context)
             return InstinctOutcome(fact: nil, text: "\(action == "add" ? "added to" : "rewrote") my note \"\(changed.title)\"")
         case "delete":
             guard let note = found else {

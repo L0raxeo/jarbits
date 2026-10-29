@@ -61,7 +61,7 @@ struct ReplyBubble: View {
         if layer.lingers { return false }
         switch layer.plan {
         case let .answer(format, _, _, _): return format == .narrative || cut
-        case .said: return true
+        case .said, .note: return true
         default: return cut
         }
     }
@@ -81,7 +81,23 @@ struct ReplyBubble: View {
 
     @ViewBuilder
     private func reply(_ layer: Layer) -> some View {
-        if layer.lingers {
+        if let summary = layer.summary {
+            // A write's confirmation: quieter than an answer; "Read on" shows the note.
+            VStack(alignment: .leading, spacing: 8) {
+                Text(summary)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack {
+                    Spacer()
+                    Button("Read on", action: onReadOn)
+                        .buttonStyle(.plain)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Palette.quiet)
+                }
+            }
+        } else if layer.lingers {
             // A mark: "Remembered: I'm vegetarian", quiet, for a moment.
             Text(layer.plan.replyText)
                 .font(.footnote.weight(.medium))
@@ -97,6 +113,9 @@ struct ReplyBubble: View {
                 card(layer.answer?.styledSpans ?? [], stoppedEarly: layer.answer?.stoppedEarly ?? false)
             case .said:
                 card(AnswerMarkup.styled(layer.plan.replyText, for: .narrative), stoppedEarly: false)
+            case let .note(note):
+                // The note as written, its marks drawn as the note card draws them, read-only.
+                noteCard(note)
             default:
                 card(AnswerMarkup.styled(layer.plan.replyText, for: .narrative), stoppedEarly: false)
             }
@@ -134,6 +153,37 @@ struct ReplyBubble: View {
                         .font(.footnote)
                         .foregroundStyle(Palette.quiet)
                 }
+                Spacer()
+                Button("Read on", action: onReadOn)
+                    .buttonStyle(.plain)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Palette.quiet)
+            }
+        }
+    }
+
+    /// A note's text with its bullets, checkboxes and headings, up to the
+    /// cap; "Read on" opens the note itself for typing.
+    private func noteCard(_ note: Note) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(NoteMarkdown.attributed(from: note.body.isEmpty ? "(empty)" : note.body))
+                .font(.body)
+                .foregroundStyle(Palette.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
+                .frame(maxHeight: maxHeight, alignment: .top)
+                .clipped()
+                .overlay(alignment: .bottom) {
+                    if cut {
+                        LinearGradient(colors: [.white.opacity(0), .white], startPoint: .top, endPoint: .bottom)
+                            .frame(height: 48)
+                            .allowsHitTesting(false)
+                    }
+                }
+            HStack {
+                Text(note.title)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Palette.quiet)
                 Spacer()
                 Button("Read on", action: onReadOn)
                     .buttonStyle(.plain)
@@ -199,6 +249,7 @@ extension CardPlan {
         switch self {
         case let .time(_, text), let .said(_, text): text
         case let .memory(record): record.text ?? record.title
+        case let .note(note): note.body
         default: ""
         }
     }
