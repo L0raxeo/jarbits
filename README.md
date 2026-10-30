@@ -1031,7 +1031,10 @@ words; on a no in the bubble; when the rounds or the time run out; or when
 a newer query takes the screen, where it stands and never after a step
 with a side effect. The wave line stays up while the plan runs; a plan
 that only did something hands the screen back to where it stood, as
-`remember` does.
+`remember` does. Where it stood is the last thing that stood on it: the
+idle circle, or a drawn layer, the plan's own results page included, so a
+plan that opens results and then answers keeps the results under the
+bubble and never returns to the circle.
 
 **Things and handles.** The first turn tags each earlier exchange of the
 session (`p1`, `p2`, oldest first), each memory shown (`m1`, `m2`), each

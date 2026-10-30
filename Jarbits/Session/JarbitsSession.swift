@@ -121,7 +121,12 @@ final class JarbitsSession {
     /// The query most recently sent, in flight or shown; a newer one wins.
     private(set) var lastQuery = ""
     /// Where the query in flight is; the instincts move it as they open their layers.
-    var stage: Stage = .idle
+    /// The idle circle and a drawn layer are places the screen stands, so each
+    /// is remembered as it comes: a query hands back to the last of them,
+    /// whether the user or the query itself put it there.
+    var stage: Stage = .idle {
+        didSet { if stage == .idle || stage == .ready { stageBefore = stage } }
+    }
     /// The layer the query in flight works against: the one on screen when
     /// it was asked, then each layer the query itself opens. The user may
     /// move on meanwhile; the planner's look and a continued conversation
@@ -190,8 +195,8 @@ final class JarbitsSession {
     let factResolver: FactResolver?
     /// Clears the mark in the bubble after `FactMark.linger`.
     private var markTask: Task<Void, Never>?
-    /// Where the screen stood before the query in flight: what an instinct
-    /// that shows nothing hands back to.
+    /// Where the screen last stood, the idle circle or a drawn layer, the
+    /// query's own included: what a step that shows nothing hands back to.
     private var stageBefore: Stage = .idle
     /// Opens the connections to Gemini and Jev as the capsule takes focus.
     private let warmer = ConnectionWarmer()
@@ -281,7 +286,6 @@ final class JarbitsSession {
         let screenRead: Task<Screen?, Never>? = shown.map { layer in Task { await layer.screen(picture: early) } }
         lastQuery = trimmed
         askedOver = shown
-        if stage == .idle || stage == .ready { stageBefore = stage }
         stage = .routing
         let token = UUID()
         requestToken = token
