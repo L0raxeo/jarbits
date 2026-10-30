@@ -783,6 +783,7 @@ final class JarbitsSession {
     func openLink(_ url: URL, title: String) {
         lastQuery = title
         openPage(url, query: title, decision: current?.decision, byQuery: false)
+        showedByUser()   // from the idle screen too: the page, not the circle
     }
 
     /// Opens a note by a tap in the grid, in a new layer.
