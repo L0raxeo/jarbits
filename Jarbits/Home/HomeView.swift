@@ -372,6 +372,12 @@ struct HomeView: View {
             // counts as a touch all the same, so listening waits after it.
             if !swiping { session.attention.touched() }
         }
+        // The capsule taking focus, or a word heard over a result: a query is
+        // likely, so the connections are warmed and the page's picture taken
+        // now rather than at submit.
+        .onChange(of: typing) { _, now in if now { session.prepareForQuery() } }
+        .onChange(of: followingUp) { _, now in if now { session.prepareForQuery() } }
+        .onChange(of: session.dictation.heardSpeech) { _, now in if now { session.prepareForQuery() } }
         .onChange(of: session.stage) { _, stage in
             // A result arriving counts as something happening: no listening
             // the instant a page appears.

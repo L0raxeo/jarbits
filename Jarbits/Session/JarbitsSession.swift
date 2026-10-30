@@ -93,7 +93,14 @@ final class JarbitsSession {
     var focus: Layer? { reply.flatMap { $0.lingers ? nil : $0 } ?? current }
     /// The bubble holds a reply with something to read: a plan step that
     /// put one there counts as shown.
-    var replyShown: Bool {
+    /// The bubble is up: a reply exists, an answer's from the moment its
+    /// stream starts (it pulses until the first words), or a question.
+    var replyShown: Bool { reply != nil }
+
+    /// The reply has something to show: an answer's first words are in.
+    /// What a user's own move (a swipe, a tap on a card) may put away; an
+    /// answer still on its way is the query's and survives the move.
+    var replyHasContent: Bool {
         guard let reply else { return false }
         if case .answer = reply.plan { return !(reply.answer?.text.isEmpty ?? true) }
         return true
@@ -186,6 +193,13 @@ final class JarbitsSession {
     /// Where the screen stood before the query in flight: what an instinct
     /// that shows nothing hands back to.
     private var stageBefore: Stage = .idle
+    /// Opens the connections to Gemini and Jev as the capsule takes focus.
+    private let warmer = ConnectionWarmer()
+    /// The page's picture taken as the capsule took focus, for the query to
+    /// come: reused only while the page has not moved (no scroll came to
+    /// rest, no navigation, no address change) and the layer is still the one
+    /// on screen. The text is always read at submit.
+    private var earlyPicture: (layer: Layer, task: Task<Data?, Never>)?
     /// Runs a plan when the engine says a query needs one; nil without a Gemini key.
     @ObservationIgnored private lazy var executor: Executor? = engine.planner.map { Executor(planner: $0, session: self, instincts: engine.instincts) }
     /// A Gemini key is configured, so an answer can be shown.
@@ -229,6 +243,24 @@ final class JarbitsSession {
         resignObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.takePicture(reason: "leave") }
         }
+        warmer.warm()
+    }
+
+    /// The capsule took focus, or speech was heard: a query is likely. The
+    /// connections are warmed, and the page on screen has its picture taken
+    /// now, so the screen read at submit has only the text to fetch. Nothing
+    /// any model receives changes: the picture is the same viewport, reused
+    /// only if the page does not move before the query.
+    func prepareForQuery() {
+        warmer.warm()
+        guard let layer = current, layer.isWeb, layer.drawn, let host = layer.page else { return }
+        if let early = earlyPicture, early.layer === layer { return }   // one already taken, still good
+        earlyPicture = (layer, host.pictureTask())
+    }
+
+    /// The page moved, or the screen changed: a picture taken earlier is not what the user sees.
+    private func dropEarlyPicture() {
+        earlyPicture = nil
     }
 
     func submit(_ query: String) {
@@ -244,7 +276,9 @@ final class JarbitsSession {
         let newest = focus
         // What is on screen, read as the query begins: the models that
         // interpret see it; Jev does not wait for it.
-        let screenRead: Task<Screen?, Never>? = shown.map { layer in Task { await layer.screen() } }
+        let early = earlyPicture.flatMap { $0.layer === shown ? $0.task : nil }
+        earlyPicture = nil
+        let screenRead: Task<Screen?, Never>? = shown.map { layer in Task { await layer.screen(picture: early) } }
         lastQuery = trimmed
         askedOver = shown
         if stage == .idle || stage == .ready { stageBefore = stage }
@@ -389,11 +423,11 @@ final class JarbitsSession {
         let clock = ContinuousClock()
         let start = clock.now
         while clock.now - start < Self.performWait {
-            if stage == .ready || replyShown { return (true, nil) }
+            if stage == .ready || replyHasContent { return (true, nil) }
             guard token == requestToken else { return (false, nil) }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return (stage == .ready || replyShown, nil)
+        return (stage == .ready || replyHasContent, nil)
     }
 
     /// How long a plan step may take to reach the screen.
@@ -570,6 +604,7 @@ final class JarbitsSession {
         requestToken = UUID()
         askedOver = nil
         dismissReply()
+        dropEarlyPicture()
         stage = .idle
     }
 
@@ -581,8 +616,9 @@ final class JarbitsSession {
     /// is drawn at once; a page once it commits. `byQuery` is false when
     /// the user opened it, so a query in flight keeps its own layer.
     private func open(_ layer: Layer, byQuery: Bool = true) {
+        dropEarlyPicture()
         // An answer still on its way to the bubble is the query's: the user's own move keeps it.
-        if let bubble = reply, bubble !== layer, byQuery || replyShown { dismissReply() }
+        if let bubble = reply, bubble !== layer, byQuery || replyHasContent { dismissReply() }
         if !layer.isWeb { layer.drawn = true }
         if byQuery { askedOver = layer }
         if let leaving = current {
@@ -787,7 +823,7 @@ final class JarbitsSession {
             layer.decision = context.decision
             layer.lastShown = .now
         } else {
-            // The bubble, once the first text is in; the wave meanwhile.
+            // The bubble at once, its pulse until the first text; the wave meanwhile.
             layer = Layer(plan: plan, query: context.query, decision: context.decision)
             reply?.answer?.cancel()
             reply = layer
@@ -867,14 +903,17 @@ final class JarbitsSession {
             guard let self, let layer else { return }
             // A tapped link: the old page is still on screen.
             takePicture(of: layer, reason: "leave")
+            dropEarlyPicture()
         }
         host.onRest = { [weak self, weak layer] in
             guard let self, let layer else { return }
             takePicture(of: layer, reason: "rest")
+            dropEarlyPicture()   // a scroll moved the page
         }
         host.onAddress = { [weak self, weak layer] url, title in
             guard let self, let layer else { return }
             addressChanged(to: url, title: title, in: layer)
+            dropEarlyPicture()
         }
         return host
     }
@@ -913,9 +952,10 @@ final class JarbitsSession {
     /// on: its result lands over wherever the user went.
     private func move(to target: Int) {
         takePicture(reason: "leave")
+        dropEarlyPicture()
         question?.cancel()
         // An answer still on its way to the bubble is the query's: it shows when its text comes.
-        if replyShown { dismissReply() }
+        if replyHasContent { dismissReply() }
         let leaving = current
         Task { await leaving?.page?.pause() }
         #if DEBUG

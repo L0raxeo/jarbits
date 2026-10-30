@@ -422,7 +422,10 @@ measurements per model), clear of the thumb. It grows down from the top
 centre as it comes and shrinks back up as it goes; a new one replaces the
 old through the same pair (`HomeView.bubbleKey`). On the idle screen it
 stops short of the clay's circle. The page stays live and tappable around
-it. Every form has an x at the left of its foot row, "Read on" at the
+it. An answer's bubble appears the moment its stream starts, a short bar
+breathing where the words will land, and the text streams into it; the
+wave in the capsule says a query is in flight, the bubble where the reply
+lands. Every form has an x at the left of its foot row, "Read on" at the
 right where the form has it. A drag stretches the body with the finger
 (down longer, showing more of a cut card; up shorter) and springs back. Three sizes, picked on the device from the content
 (layout, not interpretation):
@@ -965,6 +968,16 @@ read: up to 4,000 characters of the page's text, forty links, the
 headings, or 3,000 characters of tables, per look. Jev gets the query and
 the exchanges' titles, never the page's text or the picture. Nothing is
 kept by Google (`store: false`).
+
+**Ahead of the query.** When the capsule takes focus, or a word is heard
+over a result, the connections to Gemini and Jev are opened (one HEAD to
+each host, no key, `ConnectionWarmer`) so the first request skips the
+handshake, and the page on screen has its picture taken then
+(`PageHost.pictureTask`). At submit the text is always probed fresh; the
+early picture is used only if the page did not move meanwhile (no scroll
+came to rest, no navigation, no address change, the same layer), else a
+fresh one is taken. The words every model receives are the same either way;
+the console prints the probe's and the picture's times (2026-10-29).
 
 The planner (`Planner` in the Answers library) asks `gemini-3.1-flash-lite`,
 the extractor's model, at high thinking (accuracy over speed and cost,

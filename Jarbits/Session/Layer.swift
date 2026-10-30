@@ -85,11 +85,11 @@ final class Layer: Identifiable {
     /// What the user sees in this layer as a query starts, for the models:
     /// a page through its host (text, links, picture), a note its text, an
     /// answer its text, a grid its tiles. Nil for an unloaded web layer.
-    func screen() async -> Screen? {
+    func screen(picture early: Task<Data?, Never>? = nil) async -> Screen? {
         switch plan {
         case .web:
             let title = pageTitle ?? pageAddress.map { QueryParser.displayText(for: $0) } ?? query
-            return await page?.screen(title: title)
+            return await page?.screen(title: title, picture: early)
         case let .note(note):
             return Screen(kind: .note, title: note.title, visible: note.body)
         case let .notes(notes, title):

@@ -92,10 +92,16 @@ struct ReplyBubble: View {
         if let question { question.cancel() } else { onDismiss() }
     }
 
+    /// An answer whose first words have not come: the bubble pulses where they will land.
+    private var awaitingText: Bool {
+        guard let layer, case .answer = layer.plan else { return false }
+        return layer.answer?.text.isEmpty ?? true
+    }
+
     /// A narrative, or anything cut by the cap, can open as the full layer.
     private var expandable: Bool {
         guard let layer else { return false }
-        if layer.lingers { return false }
+        if layer.lingers || awaitingText { return false }
         switch layer.plan {
         case let .answer(format, _, _, _): return format == .narrative || cut
         case .said, .note: return true
@@ -175,6 +181,9 @@ struct ReplyBubble: View {
             switch layer.plan {
             case .time:
                 line(AnswerMarkup.styled(layer.plan.replyText, for: .oneLine))
+            case .answer where awaitingText:
+                // The reply is on its way: its place, breathing, until the first words.
+                pulse()
             case let .answer(format, _, _, _) where format == .oneLine:
                 line(layer.answer?.styledSpans ?? [])
             case .answer:
@@ -187,6 +196,24 @@ struct ReplyBubble: View {
             default:
                 card(AnswerMarkup.styled(layer.plan.replyText, for: .narrative), stoppedEarly: false)
             }
+        }
+    }
+
+    /// A short bar breathing where the answer's text will stream in. The x
+    /// puts the reply away, which cancels the answer.
+    private func pulse() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Palette.quiet)
+                .frame(width: 56, height: 8)
+                .phaseAnimator([0.35, 0.8]) { bar, opacity in
+                    bar.opacity(opacity)
+                } animation: { _ in
+                    .easeInOut(duration: 1.1)
+                }
+                .padding(.vertical, 6)
+                .accessibilityLabel("Answer coming")
+            foot(readOn: false)
         }
     }
 

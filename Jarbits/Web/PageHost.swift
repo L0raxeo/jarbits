@@ -325,24 +325,54 @@ final class PageHost {
     /// the text in view, the rest, the selection, the links in view, and a
     /// picture of the viewport, each bounded in time. `title` is the
     /// layer's, as the page last reported it. With no address there is
-    /// nothing on screen; a probe that fails gives the title alone.
-    func screen(title: String) async -> Screen? {
+    /// nothing on screen; a probe that fails gives the title alone. The
+    /// text is always read now; `picture` is one taken a moment earlier
+    /// (as the capsule took focus) when the session knows the page has not
+    /// moved since, else the picture is taken now.
+    func screen(title: String, picture early: Task<Data?, Never>? = nil) async -> Screen? {
         guard let address = page.url else { return nil }
-        let limits: [String: Any] = ["visible": Screen.visibleLimit, "rest": Screen.restLimit, "items": Screen.itemLimit, "data": Screen.dataLimit]
-        // The probe's reply is read into a plain value inside the task, so
-        // only that crosses to the group that bounds it.
-        let probe = Task { [page] () -> Probed? in
-            let reply = try? await page.callJavaScript(PageChrome.screenProbe, arguments: ["limits": limits], contentWorld: PageChrome.world)
-            return Probed(reply)
-        }
-        let viewport = CGRect(origin: .zero, size: window == .zero ? CGSize(width: 390, height: 844) : window)
-        async let picture: Data? = Self.jpeg(await WebPageExport.image(of: page, region: .rect(viewport), width: Self.pictureWidth, timeout: Self.pictureTimeout))
+        #if DEBUG
+        let clock = ContinuousClock()
+        let start = clock.now
+        #endif
+        let probe = probeTask()
+        let pictureTask = early ?? pictureTask()
         let found = await Self.bounded(Self.screenTimeout, probe)
+        #if DEBUG
+        let probed = Int((clock.now - start) / .milliseconds(1))
+        #endif
+        let picture = await pictureTask.value
+        #if DEBUG
+        let whole = Int((clock.now - start) / .milliseconds(1))
+        print("screen read: probe \(probed) ms, picture \(early == nil ? "fresh" : "early"), \(whole) ms in all")
+        #endif
         return Screen(
             kind: .page, title: title, address: address,
             visible: found?.visible ?? "", rest: found?.rest ?? "",
-            selection: found?.selection, items: found?.items ?? [], data: found?.data ?? "", picture: await picture
+            selection: found?.selection, items: found?.items ?? [], data: found?.data ?? "", picture: picture
         )
+    }
+
+    /// The screen probe, started: the text in view, the rest, the selection,
+    /// the links and the page's data. The reply is read into a plain value
+    /// inside the task, so only that crosses to the group that bounds it.
+    private func probeTask() -> Task<Probed?, Never> {
+        let limits: [String: Any] = ["visible": Screen.visibleLimit, "rest": Screen.restLimit, "items": Screen.itemLimit, "data": Screen.dataLimit]
+        return Task { [page] () -> Probed? in
+            let reply = try? await page.callJavaScript(PageChrome.screenProbe, arguments: ["limits": limits], contentWorld: PageChrome.world)
+            return Probed(reply)
+        }
+    }
+
+    /// The viewport's picture, started: a JPEG of what is in view, bounded
+    /// by `pictureTimeout`. The viewport is the window: the page does not
+    /// shrink for the keyboard, so a picture taken as the capsule takes
+    /// focus is the one a query would take.
+    func pictureTask() -> Task<Data?, Never> {
+        let viewport = CGRect(origin: .zero, size: window == .zero ? CGSize(width: 390, height: 844) : window)
+        return Task { [page] in
+            Self.jpeg(await WebPageExport.image(of: page, region: .rect(viewport), width: Self.pictureWidth, timeout: Self.pictureTimeout))
+        }
     }
 
     /// A look's wait: the page's whole text or every link, on a long page.
