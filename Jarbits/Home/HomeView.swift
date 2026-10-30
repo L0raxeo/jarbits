@@ -493,6 +493,20 @@ private struct SessionBubble: View {
             onReadOn: session.promoteReply,
             onDismiss: session.dismissReply
         )
+        .environment(\.openURL, OpenURLAction { url in
+            // A link in a note card: the page it names, in this app, not Safari.
+            session.openLink(url, title: title(of: url))
+            return .handled
+        })
+    }
+
+    /// The link's title as the note has it, else its host.
+    private func title(of url: URL) -> String {
+        if case let .note(note)? = session.reply?.plan,
+           let kept = NoteMarkdown.links(in: NoteMarkdown.attributed(from: note.body)).first(where: { $0.url == url }) {
+            return kept.title
+        }
+        return url.host() ?? url.absoluteString
     }
 }
 
