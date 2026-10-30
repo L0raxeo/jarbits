@@ -17,6 +17,10 @@ import Testing
         #expect(open.parameters["required"]?.arrayValue?.first?.stringValue == "things")
         #expect(open.parameters["properties"]?["things"]?["type"]?.stringValue == "array")
         #expect(open.description.contains("shown together in a grid"))
+        // The principle: a thing the listing holds is shown as itself, never retold.
+        #expect(open.description.contains("is open with its handle, never a retelling of it in say"))
+        #expect(Planner.sayTool.description.contains("Never to retell something the listing holds as a thing"))
+        #expect(Planner.sayTool.description.contains("say is for a fact with no thing to show"))
         for tool in tools.dropLast(5) {
             let requiredNames = tool.parameters["required"]?.arrayValue?.compactMap { $0.stringValue }
             let required = try #require(requiredNames)
@@ -124,6 +128,7 @@ import Testing
         let system = Planner.system(facts: [], context: .example, persona: .example)
         #expect(system.contains("each link in view on the screen (s1, s2)"))
         #expect(system.contains(Screen.rule) && system.contains(Screen.pictureRule))
+        #expect(system.contains("open shows it as itself") && system.contains("Never retell a thing you could show."))
         #expect(Planner.firstTurn("words", picture: nil) == .userText("words"))
         #expect(Planner.firstTurn("words", picture: Data()) == .userText("words"))
         let picture = Data([0xFF, 0xD8, 0xFF])

@@ -212,7 +212,12 @@ public enum PlanCheck {
                 // "<prose>" accepts any text whose first line carries no Markdown mark.
                 let accepted = value.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
                 let prose = accepted.contains("<prose>") && !got.isEmpty && NoteMarkdown.form(of: got.split(separator: "\n").first.map(String.init) ?? "") == .plain
-                if !prose, !accepted.contains(got.lowercased()) {
+                // A handle pinned on a field may instead be written in braces inside
+                // another field's text ("- {p1}" for item p1): the device fills both.
+                let braced = got.isEmpty && call.arguments.contains { other, text in
+                    other != field && accepted.contains { !$0.isEmpty && text.contains("{\($0)}") }
+                }
+                if !prose, !braced, !accepted.contains(got.lowercased()) {
                     failures.append("\(expected.name).\(field): expected \"\(value)\", got \(got.isEmpty ? "nothing" : "\"\(got)\"")")
                 }
             }

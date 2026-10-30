@@ -36,6 +36,10 @@ import Testing
         let two = PlanCase(query: "remember then suggest", calls: [.init(name: "remember"), .init(name: "narrative")])
         #expect(PlanCheck.failures(two, calls: [("remember", ["fact": "f"]), ("narrative", ["query": "q"])]).isEmpty)
         #expect(PlanCheck.failures(two, calls: [("remember", ["fact": "f"])]) == ["calls: expected remember, narrative, got remember"])
+        // A pinned handle written in braces inside another field is the same write on the device.
+        let kept = PlanCase(query: "add this video to a watch list", calls: [.init(name: "notebook", arguments: ["item": "p1"])])
+        #expect(PlanCheck.failures(kept, calls: [("notebook", ["text": "- {p1}", "title": "Watch List"])]).isEmpty)
+        #expect(PlanCheck.failures(kept, calls: [("notebook", ["text": "- {p2}", "title": "Watch List"])]) == ["notebook.item: expected \"p1\", got nothing"])
     }
 
     @Test func theRequestListsThingsWithHandlesAndIsStable() throws {

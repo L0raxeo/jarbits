@@ -7,7 +7,7 @@ import SwiftUI
 /// thumb. Three sizes, picked from the content: a line (a one-liner, the
 /// time, a mark, a short say), a card (a narrative, a longer say, a question
 /// with its buttons or a line to type), and the full answer layer it becomes
-/// on "Read on", on a pull down, or when a follow-up continues it. Never
+/// on "Read on", on a tap, on a pull down, or when a follow-up continues it. Never
 /// modal: the page stays live around it. Every form has an x at the foot;
 /// a push up puts it away too, as a notification goes; a question put away
 /// answers nil. A drag stretches the body with the finger and springs back.
@@ -61,6 +61,11 @@ struct ReplyBubble: View {
                     .shadow(color: ListeningCapsule.shadowColor, radius: ListeningCapsule.shadowRadius, y: ListeningCapsule.shadowY)
             }
             .contentShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+            // A tap anywhere on the body reads on, as the button and a pull
+            // down do; the buttons inside keep their own taps.
+            .onTapGesture {
+                if question == nil, expandable { onReadOn() }
+            }
             .gesture(
                 DragGesture(minimumDistance: 12)
                     .onChanged { value in

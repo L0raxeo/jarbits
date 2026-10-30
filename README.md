@@ -436,7 +436,7 @@ right where the form has it. A drag stretches the body with the finger
   of the screen, and past that the text is cut at the foot with "Read
   on";
 - the full view: the answer layer as before, reached by "Read on", by a
-  pull down on the card, or by a follow-up that continues the reply ("why?"
+  tap on the body, by a pull down on the card, or by a follow-up that continues the reply ("why?"
   after a narrative): the same layer object is put into the stack
   (`promoteReply`), its text and turns carried over, and from then on it
   swipes like any other.
@@ -706,7 +706,10 @@ the note Trip", "Rewrote Shopping"), and "Read on" opens the note. A
 note asked for shows in the bubble as a card, its marks drawn as the
 note card draws them, the editable note one "Read on" away; the grid of
 several notes stays a layer; a note already on screen that is written
-into updates in place, where the user is looking.
+into updates in place, where the user is looking. A request for a note
+("what's on my watchlist") is the note itself, never a retelling of its
+lines: the planner is told that a thing the listing holds is shown as it
+is, and `say` is for a fact with no thing to show (2026-10-29).
 
 The note card (`NoteView`) is laid out like the iOS Notes app: one page
 you write on, the first line the title (large and bold, whatever is typed
@@ -974,7 +977,13 @@ line to type), `say` shows the planner's own text in the bubble as it is, and
 "I don't know that yet"; a question needing knowledge beyond that goes
 through `narrative` or `one_line` with a question the planner writes,
 folding in what earlier steps returned, never an answer written into a
-question. A said card is styled as a narrative whatever its length, the
+question. And `say` never retells a thing the listing holds (a note's
+lines, a page, an earlier answer): those are shown as themselves with
+`open`, and the user reads on into them; `say` is for a fact with no
+thing to show (a memory, a count, whether a line is in a note), and a
+question about a thing that must be worked out is an answer with it in
+`about` (the shown / told / worked-out triples in the eval set hold this,
+2026-10-29). A said card is styled as a narrative whatever its length, the
 capsule shows the user's words, and it is kept as a narrative memory so
 "that story you told me" brings it back. It is told the classifier was unsure or saw
 several steps, so the request may need one tool or many; and a request
