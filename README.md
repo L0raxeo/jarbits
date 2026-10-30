@@ -48,7 +48,10 @@ narrative or a one-liner, Jev is also asked whether it continues that
 answer, and if so the card grows into a conversation instead of being
 replaced (see "How a query runs"). The capsule itself
 becomes the wave line, small, at the foot, until the new result is ready; a
-link tapped inside a page shows the same line while the page loads. The
+link tapped inside a page shows the same line while the page loads. A
+link the page wants in a new window opens as a new layer of its own, the
+user's; every other link, into the page, into another app, or to mail or
+phone, goes where the system takes it. The
 query works in the background: the result on screen stays up and usable
 (scroll, tap, swipe the line between layers) and clears only when the query
 opens a layer of its own; a reply in the bubble never clears it. Only a new
@@ -721,8 +724,10 @@ rest the body, in one rich editor over an attributed string, scrolling as
 one, the query capsule floating over it with no bar of its own below. A
 bar above the keyboard offers the six forms while the note has the
 keyboard, and not while the capsule does. A page kept in the note is its
-title in link colour in the text, and a tap opens the page; there is no
-separate list of links. Typing saves after a pause and on leaving; the
+title in link colour in the text, and a tap opens the page in Jarbits,
+caught before the editor can hand it to the system (`NoteLinkCatcher`);
+while typing, a tap on a link places the cursor, as on any text. There is
+no separate list of links. Typing saves after a pause and on leaving; the
 file is the truth, and a note Jarbits changes while it is on screen is
 reloaded.
 `NoteMarkdown` in the Engine library turns the file's Markdown into the

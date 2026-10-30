@@ -45,6 +45,9 @@ struct NoteView: View {
                         .scrollDisabled(true)   // the page scrolls, not the editor
                         .frame(minHeight: proxy.size.height - topInset - 160, alignment: .top)
                         .focused($editing)
+                    // The editor opens a tapped link through the system; this takes it first.
+                    NoteLinkCatcher(onLink: openLink)
+                        .frame(width: 0, height: 0)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, topInset + 12)
@@ -53,9 +56,8 @@ struct NoteView: View {
             .scrollDismissesKeyboard(.interactively)
             .ignoresSafeArea(.container, edges: [.top, .bottom])
             .environment(\.openURL, OpenURLAction { url in
-                // A link in the text: the page it names, in this app.
-                let title = NoteMarkdown.links(in: text).first { $0.url == url }?.title ?? url.host() ?? url.absoluteString
-                session.openLink(url, title: title)
+                // A link in the text, should the editor ever ask: the page it names, in this app.
+                openLink(url)
                 return .handled
             })
             .onChange(of: text) { _, _ in
@@ -90,6 +92,12 @@ struct NoteView: View {
     private func formButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: symbol) }
             .accessibilityLabel(label)
+    }
+
+    /// A link in the text: the page it names, in this app.
+    private func openLink(_ url: URL) {
+        let title = NoteMarkdown.links(in: text).first { $0.url == url }?.title ?? url.host() ?? url.absoluteString
+        session.openLink(url, title: title)
     }
 
     // MARK: The page and the file

@@ -919,6 +919,10 @@ final class JarbitsSession {
             addressChanged(to: url, title: title, in: layer)
             dropEarlyPicture()
         }
+        host.onNewWindow = { [weak self] url in
+            // A link the page wanted in a new window: a layer of its own, the user's.
+            self?.open(url)
+        }
         return host
     }
 

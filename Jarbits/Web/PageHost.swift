@@ -44,6 +44,9 @@ final class PageHost {
     var onNavigationStarted: (() -> Void)?
     /// A scroll in the page has come to rest.
     var onRest: (() -> Void)?
+    /// The page asked for a new window (`target="_blank"`, `window.open`)
+    /// with a web address: the owner opens it as a layer of its own.
+    var onNewWindow: ((URL) -> Void)?
 
     private let handler: PageChromeHandler
     private var loadTask: Task<Void, Never>?
@@ -74,7 +77,9 @@ final class PageHost {
     init() {
         let handler = PageChromeHandler()
         self.handler = handler
-        page = WebPage(configuration: PageChrome.configuration(handler: handler))
+        let decider = PageNavigationDecider()
+        page = WebPage(configuration: PageChrome.configuration(handler: handler), navigationDecider: decider)
+        decider.host = self
         // Never `page.isInspectable = true`, not even in Debug: an inspectable
         // page under SwiftUI's WebView crashes UIKit's touch delivery on the
         // first tap (iOS 26.5 and 27.0.1, found 2026-10-22). Debug builds
@@ -496,5 +501,22 @@ final class PageHost {
 
     func stop() {
         page.stopLoading()
+    }
+}
+
+/// Answers WebKit's one question the page cannot answer itself: a link that
+/// asks for a new window. There is no window to give it, so a web address
+/// becomes a new layer and the request is cancelled; every other
+/// navigation, same-page links, links into other apps, mail and phone
+/// links, gets the answer WebKit gives on its own, allow.
+@MainActor
+final class PageNavigationDecider: WebPage.NavigationDeciding {
+    weak var host: PageHost?
+
+    func decidePolicy(for action: WebPage.NavigationAction, preferences: inout WebPage.NavigationPreferences) async -> WKNavigationActionPolicy {
+        guard action.target == nil, let url = action.request.url,
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return .allow }
+        host?.onNewWindow?(url)
+        return .cancel
     }
 }
