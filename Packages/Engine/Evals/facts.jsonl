@@ -10,3 +10,8 @@
 {"query": "my mom Jasmine turned 50 today", "known": ["Lorcan's mom is Jasmine."], "expect": [{"kind": "new", "contains": ["50"]}], "allowMore": true, "note": "a new fact beside a known one about the same person"}
 {"query": "she lives in austin now", "exchanges": [{"query": "my sister Ana is visiting next week", "kind": "answer", "text": "That sounds lovely. Anything you want to plan for her visit?"}], "expect": [{"kind": "new", "contains": ["Ana", "Austin"]}], "allowMore": true, "note": "she resolves against the earlier exchange"}
 {"query": "my wife Ana and I split up last month", "known": ["Lorcan's wife is Ana."], "expect": [{"kind": "changed", "of": 1}], "allowMore": true, "note": "a change to a known fact about a person"}
+{"query": "can you add to my notes about the project I'm working on that I want it to be represented by a robot rather than an animal", "expect": [], "note": "a decision inside the work: the note keeps it, not a fact about Lorcan (2026-10-31)"}
+{"query": "make the logo blue, add that to the design note", "expect": [], "note": "a detail of the work, whatever words carry it"}
+{"query": "add to my project notes that my cofounder Maya wants a robot", "expect": [{"kind": "new", "contains": ["Maya"]}], "note": "the mixed case: the cofounder is a fact about Lorcan's life, the robot is the work's; no allowMore, so a robot fact fails it"}
+{"query": "add to my notes that my sister moved to Austin", "expect": [{"kind": "new", "contains": ["Austin"]}], "note": "a fact about Lorcan's life is kept wherever the words were headed"}
+{"query": "I prefer window seats", "expect": [{"kind": "new", "contains": ["window"]}], "note": "a standing preference about how Lorcan lives"}

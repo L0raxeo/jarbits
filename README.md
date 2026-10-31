@@ -816,7 +816,13 @@ A fact comes to be known three ways (`Fact.source`):
   old words replaced and kept as `Fact.previous`). A story told plainly
   yields its facts ("Lorcan has a friend named Noah", and what Noah did);
   "I'm hungry", "the capital of Peru is Lima" and "remember that page"
-  yield none. The reader interprets; the device writes what it said, and
+  yield none. A fact is about Lorcan's own life, not about something he
+  is making: "add to my project notes that I want it represented by a
+  robot" yields none, since the robot is the project's and the note keeps
+  it, while "add to my notes that my sister moved to Austin" yields the
+  sister, and "my cofounder Maya wants a robot" yields Maya and not the
+  robot (2026-10-31, after the reader kept a project's mascot as a
+  preference of Lorcan's; the planner's `remember` draws the same line). The reader interprets; the device writes what it said, and
   nothing on the device decides what is a fact or the same fact. Before
   this, a fact was inferred only when Jev's `remember` question said so, as
   one sentence, on the direct path alone, and the pick waited for it; the
