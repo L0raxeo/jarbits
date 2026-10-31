@@ -365,10 +365,23 @@ private struct ReplyPiece: View {
         }
     }
 
-    /// Note text as the note card draws it, capped and faded at the foot
-    /// when cut: the whole note, or the lines a write put in.
+    /// Note text as the note card draws it: each line its own row with its
+    /// marker ("• ", "1. ", "☐ ") and a heading's font, as the editor shows
+    /// them (`NoteDisplay`), capped and faded at the foot when cut: the
+    /// whole note, or the lines a write put in.
     private func noteBody(_ markdown: String) -> some View {
-        capped(Text(NoteMarkdown.attributed(from: markdown.isEmpty ? "(empty)" : markdown)).font(.body).foregroundStyle(Palette.ink))
+        let display = NoteDisplay.display(from: NoteMarkdown.attributed(from: markdown.isEmpty ? "(empty)" : markdown))
+        let lines = NoteMarkdown.paragraphs(of: display)
+        return capped(
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    Text(line.text)
+                        .font(line.form == .heading ? .title3.weight(.semibold) : .body)
+                        .foregroundStyle(Palette.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        )
     }
 
     /// Text measured, cut at the cap (lengthened by a pull down) and faded
