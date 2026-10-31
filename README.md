@@ -719,6 +719,11 @@ into updates in place, where the user is looking. A request for a note
 ("what's on my watchlist") is the note itself, never a retelling of its
 lines: the planner is told that a thing the listing holds is shown as it
 is, and `say` is for a fact with no thing to show (2026-10-29).
+A link in a note is always a clickable title carrying its address: a page
+kept by handle is written as `[title](address)`, the planner is told to
+name a link by its handle in braces and never to write an address out,
+and a bare address typed into a note is shown tappable while the note's
+text keeps the bare address (`NoteMarkdown.inline`, 2026-10-30).
 
 The note card (`NoteView`) is laid out like the iOS Notes app: one page
 you write on, the first line the title (large and bold, whatever is typed

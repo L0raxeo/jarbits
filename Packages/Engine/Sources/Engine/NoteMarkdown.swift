@@ -154,39 +154,63 @@ public enum NoteMarkdown {
 
     // MARK: Inline
 
-    /// `**bold**`, `__bold__`, `*italic*`, `_italic_`, `***both***`, and a
-    /// link `[title](url)`, which becomes its title carrying the address.
+    /// `**bold**`, `__bold__`, `*italic*`, `_italic_`, `***both***`, a
+    /// link `[title](url)`, which becomes its title carrying the address,
+    /// and a bare address, which becomes itself carrying itself: a link in
+    /// a note is always something to tap (Lorcan, 2026-10-30).
     static func inline(_ text: String) -> AttributedString {
         var out = AttributedString()
         var rest = Substring(text)
+        let emphasis = /(\*\*\*|___)(.+?)\1|(\*\*|__)(.+?)\3|(\*|_)(.+?)\5/
         while !rest.isEmpty {
-            if let link = rest.firstMatch(of: /\[([^\]]+)\]\(([^)\s]+)\)/), let url = URL(string: String(link.2)),
-               rest.firstMatch(of: /(\*\*\*|___)(.+?)\1|(\*\*|__)(.+?)\3|(\*|_)(.+?)\5/).map({ link.range.lowerBound <= $0.range.lowerBound }) ?? true {
-                out += AttributedString(String(rest[rest.startIndex..<link.range.lowerBound]))
+            // Whichever mark comes first in what is left wins: a titled link,
+            // emphasis, or a bare address; text before it is plain.
+            let link = rest.firstMatch(of: /\[([^\]]+)\]\(([^)\s]+)\)/)
+            let mark = rest.firstMatch(of: emphasis)
+            let bare = rest.firstMatch(of: /https?:\/\/[^\s<>"'\]\)]+/)
+            let starts = [link?.range.lowerBound, mark?.range.lowerBound, bare?.range.lowerBound].compactMap { $0 }
+            guard let first = starts.min() else {
+                out += AttributedString(String(rest))
+                break
+            }
+            out += AttributedString(String(rest[rest.startIndex..<first]))
+            if let link, link.range.lowerBound == first, let url = URL(string: String(link.2)) {
                 var piece = AttributedString(String(link.1))
                 piece.link = url
                 out += piece
                 rest = rest[link.range.upperBound...]
-                continue
-            }
-            if let match = rest.firstMatch(of: /(\*\*\*|___)(.+?)\1|(\*\*|__)(.+?)\3|(\*|_)(.+?)\5/) {
-                out += AttributedString(String(rest[rest.startIndex..<match.range.lowerBound]))
+            } else if let mark, mark.range.lowerBound == first {
                 var piece: AttributedString
-                if let both = match.2 {
+                if let both = mark.2 {
                     piece = AttributedString(String(both))
                     piece.inlinePresentationIntent = [.stronglyEmphasized, .emphasized]
-                } else if let bold = match.4 {
+                } else if let bold = mark.4 {
                     piece = AttributedString(String(bold))
                     piece.inlinePresentationIntent = .stronglyEmphasized
                 } else {
-                    piece = AttributedString(String(match.6 ?? ""))
+                    piece = AttributedString(String(mark.6 ?? ""))
                     piece.inlinePresentationIntent = .emphasized
                 }
                 out += piece
-                rest = rest[match.range.upperBound...]
+                rest = rest[mark.range.upperBound...]
+            } else if let bare, bare.range.lowerBound == first {
+                // Punctuation that ends a sentence stays outside the link.
+                var address = Substring(bare.0)
+                while let last = address.last, ".,;:!?".contains(last) { address = address.dropLast() }
+                if !address.isEmpty, let url = URL(string: String(address)) {
+                    var piece = AttributedString(String(address))
+                    piece.link = url
+                    out += piece
+                    rest = rest[address.endIndex...]
+                } else {
+                    out += AttributedString(String(rest[first..<bare.range.upperBound]))
+                    rest = rest[bare.range.upperBound...]
+                }
             } else {
-                out += AttributedString(String(rest))
-                break
+                // A link whose address is not a URL: its text stands as written.
+                let upper = link?.range.upperBound ?? rest.endIndex
+                out += AttributedString(String(rest[first..<upper]))
+                rest = rest[upper...]
             }
         }
         return out
@@ -197,7 +221,8 @@ public enum NoteMarkdown {
         for run in text.runs {
             let piece = String(text[run.range].characters)
             if let url = run.link {
-                out += "[\(piece)](\(url.absoluteString))"
+                // An address that was its own link goes back as the bare address it was.
+                out += piece == url.absoluteString ? piece : "[\(piece)](\(url.absoluteString))"
                 continue
             }
             let intent = run.inlinePresentationIntent ?? []

@@ -27,6 +27,17 @@ import Testing
         #expect(roundTrip("[a_b](https://x.y/a_b)") == "[a_b](https://x.y/a_b)", "an underscore inside a link is not italic")
     }
 
+    @Test func aBareAddressIsItselfCarryingItselfAndStaysBareInTheFile() {
+        let text = NoteMarkdown.attributed(from: "see https://example.com/a?b=c, then **this** and [titled](https://x.y/z).")
+        let links = NoteMarkdown.links(in: text)
+        #expect(links.map(\.title) == ["https://example.com/a?b=c", "titled"])
+        #expect(links.map(\.url.absoluteString) == ["https://example.com/a?b=c", "https://x.y/z"])
+        #expect(String(text.characters) == "see https://example.com/a?b=c, then this and titled.", "the comma stays outside the link")
+        #expect(roundTrip("see https://example.com/a?b=c, then **this** and [titled](https://x.y/z).") == "see https://example.com/a?b=c, then **this** and [titled](https://x.y/z).")
+        #expect(roundTrip("- http://a.b/c") == "- http://a.b/c")
+        #expect(NoteMarkdown.links(in: NoteMarkdown.attributed(from: "no link here")).isEmpty)
+    }
+
     @Test func aMixedDocumentKeepsItsShapeAndBlankLines() {
         let document = "## Trip\n\n- [ ] passport\n- [x] **charger**\n\nNotes on the _hotel_\n1. check in\n2. gym"
         #expect(roundTrip(document) == document)

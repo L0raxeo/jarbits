@@ -78,6 +78,8 @@ import Testing
         #expect(!system.contains("Show at most one thing"))
         #expect(system.contains("The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2)"))
         #expect(system.contains("never one you made up"))
+        #expect(system.contains("in a note it is never written out: the handle in braces is the link"))
+        #expect(Planner.describe(InstinctSpec.spec(for: .notebook)).contains("a link always goes into a note as the thing's handle in braces"))
         #expect(system.contains("never call remember for what the request says. Call remember for something lasting that came out of an answer or of ask"))
         #expect(system.contains("never call it again with the same arguments"))
         #expect(system.contains("Call done when the request has been handled"))
