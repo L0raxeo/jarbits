@@ -124,6 +124,9 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var memories: [Memory]?
     public var notes: [NoteCase]?
     public var screen: ScreenCase?
+    /// The reply in the bubble over the screen, when one is up: a second
+    /// place in view, named in the listing by its handle (a note by title).
+    public var bubble: ScreenCase?
     /// Steps already taken in this plan, oldest first: each a call the
     /// model made and the result the device gave, put in the transcript
     /// before the request, so a case tests the round after a look.
@@ -137,13 +140,14 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var picked: Instinct?
     public var note: String?
 
-    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, memories: [Memory]? = nil, notes: [NoteCase]? = nil, screen: ScreenCase? = nil, prior: [PriorStep]? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
+    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, memories: [Memory]? = nil, notes: [NoteCase]? = nil, screen: ScreenCase? = nil, bubble: ScreenCase? = nil, prior: [PriorStep]? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
         self.memories = memories
         self.notes = notes
         self.screen = screen
+        self.bubble = bubble
         self.prior = prior
         self.calls = calls
         self.prefix = prefix

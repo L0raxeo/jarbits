@@ -1404,8 +1404,13 @@ final class JarbitsSession {
         // A note on screen is named in the listing by the notebook's handle for it.
         var screenNoteID: UUID?
         if case let .note(note)? = onScreenLayer?.plan { screenNoteID = note.id }
+        // The bubble's reply is a second place in view, named in the listing too.
+        let inBubble = replies.last { !$0.lingers }
+        var bubbleNoteID: UUID?
+        if case let .note(note)? = inBubble?.plan { bubbleNoteID = note.id }
         Task {
-            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, screenNoteID: screenNoteID, token: token)
+            let bubble = await inBubble?.screen()
+            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, token: token)
             guard token == requestToken else { return }
             #if DEBUG
             print("plan \(summary.outcome) after \(summary.rounds) rounds, \(summary.steps.count) steps, \(summary.latencyMs) ms")

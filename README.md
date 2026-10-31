@@ -1172,7 +1172,13 @@ the planner can point at, the five memories nearest the request in
 meaning (the newest, without the index; recall is its tool for anything
 beyond them), every note of the notebook, a line each, and last the
 screen as the user sees it, its links in view as `s` handles, the thing
-on it named by the handle it already has ("On screen, n1: my note …",
+on it named by the handle it already has ("On screen, n1: my note …"; the
+reply in the bubble is a second place in view, named too, "In the bubble,
+n3: my note …", and the rules say that when the words point at a thing
+without naming it and more than one thing in view fits, ask which with the
+titles as options before any write, while one thing pulled up is that thing
+with no question; 2026-10-31, after "change the bullets to checkboxes"
+with two notes in view rewrote every note;
 "On screen, p1: the page …"; a note or an answer so named is not repeated,
 since its content stands under its handle, and an opened note's line
 points at the notebook's handle for it, "p2: Opened my note "X" (n1)";

@@ -71,7 +71,7 @@ public struct Screen: Sendable, Equatable {
 
     /// One line naming what is on screen, by its handle in the listing when
     /// it has one: "On screen, n1: my note "Trip"".
-    public func described(handle: String?) -> String {
+    public func described(handle: String?, place: String = "On screen") -> String {
         let what: String = switch kind {
         case .page: "the page"
         case .note: "my note"
@@ -79,7 +79,7 @@ public struct Screen: Sendable, Equatable {
         case .grid: "a grid"
         case .other: "a card"
         }
-        var line = "On screen\(handle.map { ", \($0)" } ?? ""): \(what) \"\(title)\""
+        var line = "\(place)\(handle.map { ", \($0)" } ?? ""): \(what) \"\(title)\""
         if let address { line += " at \(address.absoluteString)" }
         return line
     }
@@ -90,14 +90,14 @@ public struct Screen: Sendable, Equatable {
     /// (the planner's), else by number. With `handle`, the thing on screen
     /// is named by it; a note or an answer so named is not repeated, since
     /// its content already stands in the listing under that handle.
-    public func block(whole: Bool, handles: [String] = [], handle: String? = nil) -> String {
+    public func block(whole: Bool, handles: [String] = [], handle: String? = nil, place: String = "On screen") -> String {
         if whole, let handle, kind == .note || kind == .answer {
             let under = kind == .note ? "its lines are listed under \(handle) above" : "listed under \(handle) above"
-            var lines = ["\(described(handle: handle)) (\(under))"]
+            var lines = ["\(described(handle: handle, place: place)) (\(under))"]
             if let selection { lines.append("Selected on it: \"\(selection)\"") }
             return lines.joined(separator: "\n")
         }
-        var lines = [described(handle: handle)]
+        var lines = [described(handle: handle, place: place)]
         if let selection { lines.append("Selected on it: \"\(selection)\"") }
         if !visible.isEmpty {
             lines.append(whole ? "Visible now:" : "Visible:")
