@@ -75,6 +75,12 @@ final class Layer: Identifiable {
     /// preview under the heading, drawn as the note draws them. Nil for a
     /// new note or a rewrite, whose preview is the note's first lines.
     var wrote: String?
+    /// The words a voice would say for this piece of a reply, once Jarbits
+    /// has one: what the planner said, a write's heading ("Added to Watch
+    /// List"), the time, a one-liner once it has finished. Nil for a piece
+    /// that is only shown (a narrative, a note asked for). Nothing reads it
+    /// yet; the bubble's pieces are the units a voice would speak in order.
+    var spoken: String?
     /// The layer has something on screen: a card from the moment it opens,
     /// a page from its first commit. A page starting in a fresh host is not
     /// drawn until it commits; the home screen hides the layer meanwhile.

@@ -83,29 +83,55 @@ final class JarbitsSession {
     /// The question the bubble is showing, if any; see `ask`.
     private(set) var question: PendingQuestion?
 
-    /// A reply shown in the bubble above the clay rather than as a layer
-    /// in the stack: a one-liner, the time, a narrative not yet read on, a
-    /// mark, what the planner said. It is a layer all the same, so its
-    /// thread, its exchanges, its memory and its record work as for any
-    /// other; `promoteReply` puts the same object into the stack as the
-    /// full view. Nil when nothing is up. See `ReplyBubble`.
-    private(set) var reply: Layer?
-    /// The layer the next query reads as the newest: the reply when one is
-    /// up (a follow-up continues it), else the one on screen.
-    var focus: Layer? { reply.flatMap { $0.lingers ? nil : $0 } ?? current }
-    /// The bubble holds a reply with something to read: a plan step that
-    /// put one there counts as shown.
-    /// The bubble is up: a reply exists, an answer's from the moment its
+    /// The replies shown in the bubble above the clay rather than as layers
+    /// in the stack, oldest first: a one-liner, the time, a narrative not
+    /// yet read on, a mark, what the planner said. Within one query Jarbits
+    /// only adds: each step's reply is a piece under the one before, and
+    /// nothing shown for the query is removed until the next query's first
+    /// piece replaces the stack (`bubbleToken`), the way a spoken sentence
+    /// cannot be unsaid. Each is a layer all the same, so its thread, its
+    /// exchanges, its memory and its record work as for any other;
+    /// `promoteReply` puts the one read on into the stack as the full
+    /// view. Empty when nothing is up. See `ReplyBubble`.
+    private(set) var replies: [Layer] = []
+    /// The newest piece, when any is up.
+    var reply: Layer? { replies.last }
+    /// The request the pieces belong to; another request's first piece
+    /// starts the stack afresh.
+    private var bubbleToken: UUID?
+    /// The layer the next query reads as the newest: the newest reply when
+    /// one is up (a follow-up continues it), else the one on screen.
+    var focus: Layer? { replies.last { !$0.lingers } ?? current }
+    /// The bubble is up: a piece exists, an answer's from the moment its
     /// stream starts (it pulses until the first words), or a question.
-    var replyShown: Bool { reply != nil }
+    var replyShown: Bool { !replies.isEmpty }
 
-    /// The reply has something to show: an answer's first words are in.
-    /// What a user's own move (a swipe, a tap on a card) may put away; an
-    /// answer still on its way is the query's and survives the move.
-    var replyHasContent: Bool {
-        guard let reply else { return false }
-        if case .answer = reply.plan { return !(reply.answer?.text.isEmpty ?? true) }
+    /// The piece has something to show: an answer's first words are in.
+    func hasContent(_ layer: Layer) -> Bool {
+        if case .answer = layer.plan { return !(layer.answer?.text.isEmpty ?? true) }
         return true
+    }
+
+    /// The newest piece has something to show. What a user's own move (a
+    /// swipe, a tap on a card) may put away; an answer still on its way is
+    /// the query's and survives the move.
+    var replyHasContent: Bool { reply.map(hasContent) ?? false }
+
+    /// A piece under the ones already up for this request; another
+    /// request's pieces go first, as the old reply went before.
+    private func append(_ layer: Layer) {
+        if bubbleToken != requestToken {
+            for piece in replies { piece.answer?.cancel() }
+            replies = []
+            bubbleToken = requestToken
+        }
+        replies.append(layer)
+    }
+
+    /// One piece out of the stack, the rest staying.
+    private func remove(_ layer: Layer) {
+        replies.removeAll { $0 === layer }
+        if replies.isEmpty { bubbleToken = nil }
     }
 
     /// The layers, oldest first, and which one is on screen.
@@ -515,12 +541,11 @@ final class JarbitsSession {
         replyFoot = nil
         let layer = Layer(plan: .said(query: lastQuery, text: mark.line), query: lastQuery, decision: nil)
         layer.lingers = true
-        reply?.answer?.cancel()
-        reply = layer
+        append(layer)
         markTask = Task { [weak self] in
             try? await Task.sleep(for: FactMark.linger)
-            guard !Task.isCancelled, let self, reply === layer else { return }
-            reply = nil
+            guard !Task.isCancelled, let self, replies.contains(where: { $0 === layer }) else { return }
+            remove(layer)
         }
     }
 
@@ -538,16 +563,18 @@ final class JarbitsSession {
     func perform(_ instinct: any InstinctRunner, context: InstinctContext, token: UUID) async -> (shown: Bool, failed: String?) {
         guard token == requestToken else { return (false, nil) }
         // The capsule keeps the user's words; a step's query is the planner's.
+        let before = replies.last   // a piece already up is not this step's
         let outcome = await instinct.run(context, in: self, token: token)
         if let reason = outcome.failed { return (false, reason) }
         let clock = ContinuousClock()
         let start = clock.now
+        let landed = { [self] in stage == .ready || (replies.last !== before && replyHasContent) }
         while clock.now - start < Self.performWait {
-            if stage == .ready || replyHasContent { return (true, nil) }
+            if landed() { return (true, nil) }
             guard token == requestToken else { return (false, nil) }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return (stage == .ready || replyHasContent, nil)
+        return (landed(), nil)
     }
 
     /// How long a plan step may take to reach the screen.
@@ -574,8 +601,7 @@ final class JarbitsSession {
     /// planner tells what the user saw from what it read.
     var exchanges: [SessionExchange] {
         let stacked = (Array(layers.prefix(index + 1)) + desk).sorted { $0.created < $1.created }.flatMap(\.exchanges)
-        guard let reply, !reply.lingers else { return stacked }
-        return stacked + reply.exchanges
+        return stacked + replies.filter { !$0.lingers }.flatMap(\.exchanges)
     }
 
     /// The layer on screen is up and usable. A query in flight leaves it up
@@ -740,8 +766,14 @@ final class JarbitsSession {
     /// the user opened it, so a query in flight keeps its own layer.
     private func open(_ layer: Layer, byQuery: Bool = true) {
         dropEarlyPicture()
-        // An answer still on its way to the bubble is the query's: the user's own move keeps it.
-        if let bubble = reply, bubble !== layer, byQuery || replyHasContent { dismissReply() }
+        // A query's own pieces stay over what it opens; another query's go, as
+        // the old reply went. A user's own move puts the bubble away unless an
+        // answer is still on its way to it, which is the query's.
+        if byQuery {
+            if replyShown, bubbleToken != requestToken { dismissReply() }
+        } else if let bubble = reply, bubble !== layer, replyHasContent {
+            dismissReply()
+        }
         if !layer.isWeb { layer.drawn = true }
         if byQuery { askedOver = layer }
         if let leaving = current {
@@ -800,33 +832,37 @@ final class JarbitsSession {
     }
 
     /// A reply in the bubble, over the screen as it stood: the stage goes
-    /// back to where it was before the query, and the layer is held as
-    /// `reply` rather than opened.
+    /// back to where it was before the query, and the layer joins
+    /// `replies` under the query's earlier pieces rather than being opened.
     @discardableResult
     func showReply(_ plan: CardPlan, context: InstinctContext, recording: Bool = true) -> Layer {
         let layer = Layer(plan: plan, query: context.query, decision: context.decision)
         layer.extraction = context.extraction
         layer.fact = context.fact
         layer.reading = context.reading
-        reply?.answer?.cancel()
-        reply = layer
+        if case let .time(_, text) = plan { layer.spoken = text }
+        append(layer)
         stage = stageBefore
         if recording { record(context) }
         return layer
     }
 
-    /// The reply read on: the same layer, now in the stack as the full view.
-    func promoteReply() {
-        guard let layer = reply, !layer.lingers else { return }
-        reply = nil
+    /// A piece read on (the newest when none is named): the same layer, now
+    /// in the stack as the full view; the bubble goes, as on any move of
+    /// the user's own.
+    func promoteReply(_ piece: Layer? = nil) {
+        guard let layer = piece ?? replies.last(where: { !$0.lingers }), !layer.lingers else { return }
+        remove(layer)
+        dismissReply()
         open(layer, byQuery: false)
         showedByUser()
     }
 
-    /// The bubble put away.
+    /// The bubble put away, every piece with it.
     func dismissReply() {
-        reply?.answer?.cancel()
-        reply = nil
+        for piece in replies { piece.answer?.cancel() }
+        replies = []
+        bubbleToken = nil
         replyFoot = nil
         markTask?.cancel()
     }
@@ -890,6 +926,7 @@ final class JarbitsSession {
         let layer = showReply(.note(note), context: context)
         layer.summary = summary
         layer.wrote = lines
+        layer.spoken = summary
     }
 
     /// Several of his notes, in the grid.
@@ -929,6 +966,7 @@ final class JarbitsSession {
         lastQuery = context.query   // the capsule shows the user's words, not the planner's
         let layer = showReply(.said(query: context.query, text: text), context: context)
         layer.sources = readThisQuery
+        layer.spoken = text
         remember(MemoryRecord(kind: .narrative, query: context.query, text: text), in: layer)
     }
 
@@ -941,8 +979,8 @@ final class JarbitsSession {
     func showAnswer(format: Instinct, context: InstinctContext) {
         let plan = CardPlan.answer(format: format, query: context.query, history: context.thread, earlier: context.earlier)
         let layer: Layer
-        if context.decision.continuesThread, let bubble = reply, !bubble.lingers, !bubble.thread.isEmpty {
-            promoteReply()
+        if context.decision.continuesThread, let bubble = replies.last(where: { !$0.lingers }), !bubble.thread.isEmpty {
+            promoteReply(bubble)
             askedOver = bubble
             layer = bubble
             layer.plan = plan
@@ -960,8 +998,7 @@ final class JarbitsSession {
         } else {
             // The bubble at once, its pulse until the first text; the wave meanwhile.
             layer = Layer(plan: plan, query: context.query, decision: context.decision)
-            reply?.answer?.cancel()
-            reply = layer
+            append(layer)
         }
         layer.sources = readThisQuery   // what Jarbits read on its screen for this answer
         layer.extraction = context.extraction
@@ -1593,7 +1630,7 @@ final class JarbitsSession {
     /// reply, the screen goes back to where it stood and the bubble shows.
     private func answerStarted(in layer: Layer) {
         guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
-        if layer === reply { stage = stageBefore } else if layer === current { stage = .ready }
+        if replies.contains(where: { $0 === layer }) { stage = stageBefore } else if layer === current { stage = .ready }
     }
 
     private func answerFinished(_ summary: AnswerSummary, in layer: Layer) {
@@ -1612,17 +1649,18 @@ final class JarbitsSession {
         case .needsLiveData:
             // The layer becomes the results page: live data is what the
             // web has. A reply leaves the bubble for the stack first.
-            if layer === reply { reply = nil; open(layer) }
+            if replies.contains(where: { $0 === layer }) { remove(layer); open(layer) }
             show(QueryParser.searchURL(for: answer.query), in: layer)
         case .fellBackToWeb:
             // Nothing came back: said so, the choice left to the user.
-            if layer === reply { reply = nil }
+            if replies.contains(where: { $0 === layer }) { remove(layer) }
             if let decision = layer.decision {
                 offerRetry(query: answer.query, decision: decision, message: "Nothing came back.", token: requestToken)
             } else {
                 stage = stageBefore
             }
         case .completed:
+            if answer.format == .oneLine { layer.spoken = answer.text }
             let turns = answer.history + [AnswerTurn(query: answer.query, answer: answer.text, format: answer.format)]
             if turns.count > 1, let first = turns.first {
                 // One memory per conversation, under its first query and of

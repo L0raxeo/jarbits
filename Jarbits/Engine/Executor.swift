@@ -344,7 +344,7 @@ final class Executor {
                         } else if spec.showsLayer {
                             let (didShow, reason) = await session.perform(instinct, context: context, token: token)
                             guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
-                            shown = didShow
+                            shown = shown || didShow   // an earlier piece stays shown whatever a later step does
                             result = didShow ? "shown on screen" : "could not: \(reason ?? "not shown")"
                             outcome = didShow ? "shown" : "failed: \(reason ?? "not shown")"
                             if !didShow { failures += 1 }

@@ -2,31 +2,36 @@ import Engine
 import Answers
 import SwiftUI
 
-/// The bubble: one surface for a reply that does not need the whole screen,
-/// hung from the top of the screen just under the island, clear of the
-/// thumb. Three sizes, picked from the content: a line (a one-liner, the
-/// time, a mark, a short say), a card (a narrative, a longer say, a question
-/// with its buttons or a line to type), and the full answer layer it becomes
-/// on "Read on", on a tap, on a pull down, or when a follow-up continues it. Never
-/// modal: the page stays live around it. Every form has an x at the foot;
-/// a push up puts it away too, as a notification goes; a question put away
-/// answers nil. A drag stretches the body with the finger and springs back.
+/// The bubble: one surface for the replies that do not need the whole
+/// screen, hung from the top of the screen just under the island, clear of
+/// the thumb. Within one query Jarbits only adds: each reply is a piece
+/// under the one before, newest at the bottom, nothing removed until the
+/// next query; a question joins the stack at the bottom. The pieces above
+/// the newest shrink to a compact height, each with its own "Read on"; the
+/// newest gets the rest of the room. A piece is a line (a one-liner, the
+/// time, a mark, a short say) or a card (a narrative, a longer say, a note),
+/// and becomes the full answer layer on "Read on", on a tap, or, for the
+/// newest, on a pull down. Never modal: the page stays live around it. The
+/// x sits at the foot of the bottom entry; a push up puts the bubble away
+/// too, as a notification goes; a question put away answers nil. A drag
+/// stretches the body with the finger and springs back.
 struct ReplyBubble: View {
-    /// The reply shown, when there is one and no question is up.
-    let layer: Layer?
-    /// A question takes the bubble over while it waits for its answer.
+    /// The replies up, oldest first.
+    let pieces: [Layer]
+    /// A question waiting for its answer, under the pieces.
     let question: PendingQuestion?
-    /// A fact kept while this reply is up: one quiet line at the foot for a
-    /// moment, so the reply stays.
+    /// A fact kept while the bubble is up: one quiet line at its foot for a
+    /// moment, so the pieces stay.
     var footMark: FactMark? = nil
-    /// A card grows no taller than this; past it the text is cut and "Read on" shows.
+    /// The newest piece's text grows no taller than this; past it the text
+    /// is cut and "Read on" shows.
     let maxHeight: CGFloat
     let width: CGFloat
-    var onReadOn: () -> Void
+    /// A piece read on.
+    var onReadOn: (Layer) -> Void
     var onDismiss: () -> Void
 
     @State private var typed = ""
-    @State private var textHeight: CGFloat = 0
     @FocusState private var focused: Bool
     /// The bubble's height at rest, measured; the drag stretches from it.
     @State private var restingHeight: CGFloat = 0
@@ -41,6 +46,8 @@ struct ReplyBubble: View {
     private static let stretchUp: CGFloat = 24
     /// The finger travel over which the stretch eases toward its most.
     private static let stretchTravel: CGFloat = 160
+    /// The text of a piece above the newest: about four lines, then cut.
+    private static let compactCap: CGFloat = 96
 
     var body: some View {
         content
@@ -64,11 +71,6 @@ struct ReplyBubble: View {
                     .shadow(color: ListeningCapsule.shadowColor, radius: ListeningCapsule.shadowRadius, y: ListeningCapsule.shadowY)
             }
             .contentShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
-            // A tap anywhere on the body reads on, as the button and a pull
-            // down do; the buttons inside keep their own taps.
-            .onTapGesture {
-                if question == nil, expandable { onReadOn() }
-            }
             .gesture(
                 DragGesture(minimumDistance: 12)
                     .onChanged { value in
@@ -80,8 +82,8 @@ struct ReplyBubble: View {
                         let dy = value.translation.height
                         if dy < -Self.dragThreshold {
                             close()
-                        } else if dy > Self.dragThreshold, question == nil, expandable {
-                            onReadOn()
+                        } else if dy > Self.dragThreshold, question == nil, let newest = newestExpandable {
+                            onReadOn(newest)
                         } else {
                             withAnimation(.spring(duration: 0.35, bounce: 0.3)) { stretch = 0 }
                         }
@@ -90,46 +92,163 @@ struct ReplyBubble: View {
             .accessibilityElement(children: .contain)
     }
 
-    /// The x, a push up: a question answers nil, a reply goes.
+    /// The x, a push up: a question answers nil, the bubble goes.
     private func close() {
         if let question { question.cancel() } else { onDismiss() }
     }
 
-    /// An answer whose first words have not come: the bubble pulses where they will land.
+    /// The newest piece a pull down can open: by its kind, before the cut
+    /// is known (a tap on the piece itself knows).
+    private var newestExpandable: Layer? {
+        pieces.last { ReplyPiece.expandableByKind($0) }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(pieces.indices, id: \.self) { index in
+                piece(at: index)
+            }
+            if let question {
+                if !pieces.isEmpty { divider }
+                ask(question)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .animation(.smooth(duration: 0.25), value: pieces.count)
+        .animation(.smooth(duration: 0.25), value: question.map { $0.id as UUID })
+    }
+
+    /// One entry of the stack: the newest gets the room and, with no
+    /// question under it, the x and the mark.
+    @ViewBuilder
+    private func piece(at index: Int) -> some View {
+        let layer = pieces[index]
+        let newest = index == pieces.count - 1
+        let bottom = newest && question == nil
+        let closes: (() -> Void)? = bottom ? { close() } : nil
+        let mark: FactMark? = bottom ? footMark : nil
+        let cap: CGFloat = newest ? maxHeight : Self.compactCap
+        let stretched: CGFloat = newest ? max(stretch, 0) : 0
+        if index > 0 { divider }
+        ReplyPiece(layer: layer, cap: cap, stretched: stretched, footMark: mark, onClose: closes, onReadOn: { onReadOn(layer) })
+        .id(layer.id)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color(white: 0.9))
+            .frame(height: 1)
+            .padding(.horizontal, -20)
+    }
+
+    // MARK: A question
+
+    /// The question in a line or two, then one to three buttons in the
+    /// listening buttons' look, or a plain line to type into. A tap or a
+    /// return answers; the x answers nil.
+    private func ask(_ question: PendingQuestion) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(question.title)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            switch question.input {
+            case let .options(options):
+                VStack(spacing: 10) {
+                    ForEach(Array(options.prefix(3).enumerated()), id: \.offset) { index, option in
+                        Button {
+                            question.answer(.option(index: index, text: option))
+                        } label: {
+                            Text(option)
+                                .font(.subheadline.weight(index == 0 ? .bold : .semibold))
+                                .foregroundStyle(index == 0 ? Color(white: 0.2) : Palette.quiet)
+                                .frame(maxWidth: .infinity, minHeight: ListeningCapsule.height)
+                                .listeningCapsule(true)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            case let .text(placeholder):
+                VStack(spacing: 8) {
+                    TextField(placeholder ?? "", text: $typed)
+                        .font(.body)
+                        .foregroundStyle(Palette.ink)
+                        .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit {
+                            let text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !text.isEmpty else { return }
+                            question.answer(.text(text))
+                        }
+                    Rectangle()
+                        .fill(Color(white: 0.85))
+                        .frame(height: 1)
+                }
+                .onAppear { focused = true }
+            }
+            ReplyFootRow(label: nil, readOn: nil, onClose: close)
+        }
+        .id(question.id)
+    }
+}
+
+/// One reply in the bubble: a line, a card, a note, a write's preview, a
+/// mark, or the pulse of an answer on its way. Its text is capped; past
+/// the cap it is cut with a fade and "Read on". The bottom entry of the
+/// bubble carries the x and the fact mark in its foot row; the others have
+/// only their label and "Read on", when they have either.
+private struct ReplyPiece: View {
+    let layer: Layer
+    /// The text's cap at rest.
+    let cap: CGFloat
+    /// How much a pull down lengthens the cap, so the pull shows more.
+    let stretched: CGFloat
+    var footMark: FactMark?
+    /// The x, on the bottom entry only.
+    var onClose: (() -> Void)?
+    var onReadOn: () -> Void
+
+    @State private var textHeight: CGFloat = 0
+
+    var body: some View {
+        reply
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            // A tap anywhere on the piece reads it on, as its button does;
+            // the buttons inside keep their own taps.
+            .onTapGesture { if expandable { onReadOn() } }
+    }
+
+    /// An answer whose first words have not come: the piece pulses where they will land.
     private var awaitingText: Bool {
-        guard let layer, case .answer = layer.plan else { return false }
+        guard case .answer = layer.plan else { return false }
         return layer.answer?.text.isEmpty ?? true
     }
 
     /// A narrative, or anything cut by the cap, can open as the full layer.
     private var expandable: Bool {
-        guard let layer else { return false }
         if layer.lingers || awaitingText { return false }
+        return Self.expandableByKind(layer) || cut
+    }
+
+    /// Expandable before its height is known: a narrative, a say, a note.
+    static func expandableByKind(_ layer: Layer) -> Bool {
+        if layer.lingers { return false }
         switch layer.plan {
-        case let .answer(format, _, _, _): return format == .narrative || cut
+        case let .answer(format, _, _, _): return format == .narrative && !(layer.answer?.text.isEmpty ?? true)
         case .said, .note: return true
-        default: return cut
+        default: return false
         }
     }
 
-    /// The text's cap, lengthened by a pull down so the pull shows more.
-    private var cap: CGFloat { maxHeight + max(stretch, 0) }
-    private var cut: Bool { textHeight > maxHeight }
+    private var cut: Bool { textHeight > cap }
 
-    @ViewBuilder
-    private var content: some View {
-        if let question {
-            ask(question)
-        } else if let layer {
-            reply(layer)
-        }
-    }
-
-    /// The row at the foot of every form: the x at the left, then what the
-    /// form says there, and "Read on" at the right where the form has it.
+    /// The foot of the piece: the fact mark when this is the bottom entry,
+    /// then the row, when it has anything to hold.
     private func foot(_ label: Text? = nil, readOn: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let footMark, question == nil {
+            if let footMark {
                 Text(footMark.line)
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(Palette.quiet)
@@ -137,45 +256,15 @@ struct ReplyBubble: View {
                     .transition(.opacity)
                     .accessibilityLabel(footMark.line)
             }
-            footRow(label, readOn: readOn)
+            if onClose != nil || label != nil || readOn {
+                ReplyFootRow(label: label, readOn: readOn ? { onReadOn() } : nil, onClose: onClose)
+            }
         }
         .animation(.smooth(duration: 0.2), value: footMark)
     }
 
-    private func footRow(_ label: Text?, readOn: Bool) -> some View {
-        HStack(spacing: 8) {
-            Button(action: close) {
-                Image(systemName: "xmark")
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(Palette.quiet)
-                    .frame(width: 32, height: 32)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            // The glyph lines up with the text above; the tap area reaches past it.
-            .padding(.leading, -10)
-            .padding(.vertical, -8)
-            .accessibilityLabel("Dismiss")
-            if let label {
-                label
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(Palette.quiet)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if readOn {
-                Button("Read on", action: onReadOn)
-                    .buttonStyle(.plain)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Palette.quiet)
-            }
-        }
-    }
-
-    // MARK: A reply
-
     @ViewBuilder
-    private func reply(_ layer: Layer) -> some View {
+    private var reply: some View {
         if let summary = layer.summary, case let .note(note) = layer.plan {
             // A write: where it wrote, then the lines themselves as the note
             // draws them (a bullet, a checkbox, a link as its title); a new
@@ -231,7 +320,7 @@ struct ReplyBubble: View {
     }
 
     /// A short bar breathing where the answer's text will stream in. The x
-    /// puts the reply away, which cancels the answer.
+    /// puts the bubble away, which cancels the answer.
     private func pulse() -> some View {
         VStack(alignment: .leading, spacing: 8) {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -262,20 +351,7 @@ struct ReplyBubble: View {
     /// Prose up to the cap; cut at the foot when longer, with "Read on".
     private func card(_ spans: [StyledSpan], stoppedEarly: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(AttributedString(spans: spans, ink: Palette.ink))
-                .font(.body)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
-                .frame(maxHeight: cap, alignment: .top)
-                .clipped()
-                .overlay(alignment: .bottom) {
-                    if cut {
-                        LinearGradient(colors: [.white.opacity(0), .white], startPoint: .top, endPoint: .bottom)
-                            .frame(height: 48)
-                            .allowsHitTesting(false)
-                    }
-                }
+            capped(Text(AttributedString(spans: spans, ink: Palette.ink)).font(.body).textSelection(.enabled))
             foot(stoppedEarly ? Text("Stopped early.") : nil, readOn: true)
         }
     }
@@ -292,12 +368,16 @@ struct ReplyBubble: View {
     /// Note text as the note card draws it, capped and faded at the foot
     /// when cut: the whole note, or the lines a write put in.
     private func noteBody(_ markdown: String) -> some View {
-        Text(NoteMarkdown.attributed(from: markdown.isEmpty ? "(empty)" : markdown))
-            .font(.body)
-            .foregroundStyle(Palette.ink)
+        capped(Text(NoteMarkdown.attributed(from: markdown.isEmpty ? "(empty)" : markdown)).font(.body).foregroundStyle(Palette.ink))
+    }
+
+    /// Text measured, cut at the cap (lengthened by a pull down) and faded
+    /// into the foot when cut.
+    private func capped<Body: View>(_ text: Body) -> some View {
+        text
             .frame(maxWidth: .infinity, alignment: .leading)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
-            .frame(maxHeight: cap, alignment: .top)
+            .frame(maxHeight: cap + stretched, alignment: .top)
             .clipped()
             .overlay(alignment: .bottom) {
                 if cut {
@@ -307,55 +387,46 @@ struct ReplyBubble: View {
                 }
             }
     }
+}
 
-    // MARK: A question
+/// The row at the foot of an entry: the x at the left when this entry
+/// closes the bubble, then what the entry says there, and "Read on" at the
+/// right where the entry has it.
+private struct ReplyFootRow: View {
+    let label: Text?
+    let readOn: (() -> Void)?
+    let onClose: (() -> Void)?
 
-    /// The question in a line or two, then one to three buttons in the
-    /// listening buttons' look, or a plain line to type into. A tap or a
-    /// return answers; the x answers nil.
-    private func ask(_ question: PendingQuestion) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(question.title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(Palette.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            switch question.input {
-            case let .options(options):
-                VStack(spacing: 10) {
-                    ForEach(Array(options.prefix(3).enumerated()), id: \.offset) { index, option in
-                        Button {
-                            question.answer(.option(index: index, text: option))
-                        } label: {
-                            Text(option)
-                                .font(.subheadline.weight(index == 0 ? .bold : .semibold))
-                                .foregroundStyle(index == 0 ? Color(white: 0.2) : Palette.quiet)
-                                .frame(maxWidth: .infinity, minHeight: ListeningCapsule.height)
-                                .listeningCapsule(true)
-                        }
-                        .buttonStyle(.plain)
-                    }
+    var body: some View {
+        HStack(spacing: 8) {
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(Palette.quiet)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
-            case let .text(placeholder):
-                VStack(spacing: 8) {
-                    TextField(placeholder ?? "", text: $typed)
-                        .font(.body)
-                        .foregroundStyle(Palette.ink)
-                        .focused($focused)
-                        .submitLabel(.done)
-                        .onSubmit {
-                            let text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !text.isEmpty else { return }
-                            question.answer(.text(text))
-                        }
-                    Rectangle()
-                        .fill(Color(white: 0.85))
-                        .frame(height: 1)
-                }
-                .onAppear { focused = true }
+                .buttonStyle(.plain)
+                // The glyph lines up with the text above; the tap area reaches past it.
+                .padding(.leading, -10)
+                .padding(.vertical, -8)
+                .accessibilityLabel("Dismiss")
             }
-            foot(readOn: false)
+            if let label {
+                label
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Palette.quiet)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if let readOn {
+                Button("Read on", action: readOn)
+                    .buttonStyle(.plain)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Palette.quiet)
+            }
         }
-        .id(question.id)
     }
 }
 

@@ -418,12 +418,26 @@ block without changing the cards.
 ## The bubble
 
 A reply that does not need the whole screen is shown in the bubble
-(`ReplyBubble`, `JarbitsSession.reply`): one view in the page's own
+(`ReplyBubble`, `JarbitsSession.replies`): one view in the page's own
 layout, never a sheet, hung from the top of the screen just under the
 island (the top of the safe area, so the same on every iPhone, with no
 measurements per model), clear of the thumb. It grows down from the top
-centre as it comes and shrinks back up as it goes; a new one replaces the
-old through the same pair (`HomeView.bubbleKey`). On the idle screen it
+centre as it comes and shrinks back up as it goes; a new query's first
+reply replaces the old through the same pair (`HomeView.bubbleKey`).
+Within one query Jarbits only adds (2026-10-31, after a write's card was
+wiped by the planner's "I just made the change" line): every reply a
+query produces is a piece under the one before, nothing shown for the
+query is removed until the next query's first piece, and a question joins
+the stack at the bottom instead of taking the bubble over. The pieces
+above the newest shrink to a compact height with their own "Read on"; the
+newest gets the rest. "Read on" on a piece opens that piece as the full
+view and puts the bubble away, the user's own move. A mark ("Remembered:
+…") is a foot line under the stack when a piece with content is up, else
+a piece that lingers three seconds and goes. This is the rule speech has
+(a sentence said cannot be unsaid): a voice, when Jarbits has one, reads
+each piece as it arrives (`Layer.spoken` holds the words, unread for
+now), and the screen holds the same pieces for a user whose sound is off.
+On the idle screen it
 stops short of the clay's circle. The page stays live and tappable around
 it. An answer's bubble appears the moment its stream starts, a short bar
 breathing where the words will land, and the text streams into it; the
@@ -451,10 +465,10 @@ right where the form has it. A drag stretches the body with the finger
   and a tap brings that page forward as it is (`Layer.sources`,
   `JarbitsSession.bringForward`).
 
-The one idea underneath: a reply is a `Layer` held in `reply` instead of
+The one idea underneath: a reply is a `Layer` held in `replies` instead of
 pushed onto the stack. So its thread and exchanges reach Jev, the reader
-and the planner as the newest exchange ("Asked X and got Y"; `focus` is
-the reply when one is up, else the current layer), an `AnswerSession`
+and the planner as the newest exchanges ("Asked X and got Y"; `focus` is
+the newest reply when one is up, else the current layer), an `AnswerSession`
 streams into it, its memory is written against it, and its record is
 kept. The x or a push up puts it away; a new layer opening, a swipe between
 layers, or the circle clears it; a question put away answers nil, as the
@@ -1132,10 +1146,13 @@ screen as the user sees it, its links in view as `s` handles, with its
 picture as a second content part (see "Screen awareness"); nothing in
 the listing is judged or thinned by a second model, since reading what a
 request means is the planner's work. Every fact
-goes in the system instruction, as it does for an answer. A later showing step replaces what the step before
-showed on the user's screen; the planner is told to end on what the user
-should see, and nothing refuses a second card. What the planner opens to
-read goes to a screen of its own: the next section.
+goes in the system instruction, as it does for an answer. A later showing
+step adds a piece under what the step before showed in the bubble, and a
+page replaces the page; the planner is told that each stays, never to say
+what a step has already shown, and to call `done` after a step that
+showed something unless something is still missing. Nothing refuses a
+second card. What the planner opens to read goes to a screen of its own:
+the next section.
 
 The executor runs each call in order through the same paths a single
 query takes: a showing instinct through the session, waiting until its

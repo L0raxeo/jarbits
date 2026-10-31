@@ -67,9 +67,10 @@ struct HomeView: View {
     /// The bubble has something to show: a question first, else the reply
     /// with something to read (a narrative shows once its first text is in).
     private var bubbleUp: Bool { session.question != nil || session.replyShown }
-    /// What the bubble shows, by identity: a new one replaces the old
-    /// through the transition rather than changing in place.
-    private var bubbleKey: UUID? { bubbleUp ? (session.question?.id ?? session.reply?.id) : nil }
+    /// The bubble by identity: its first piece, so a piece or a question
+    /// added under it changes it in place, and a new query's first piece
+    /// replaces it through the transition.
+    private var bubbleKey: UUID? { bubbleUp ? (session.replies.first?.id ?? session.question?.id) : nil }
     /// The bubble in window coordinates: touches there are not interactions.
     @State private var bubbleFrame = CGRect.null
 
@@ -489,12 +490,12 @@ private struct SessionBubble: View {
 
     var body: some View {
         ReplyBubble(
-            layer: session.reply,
+            pieces: session.replies,
             question: session.question,
             footMark: session.replyFoot,
             maxHeight: maxHeight,
             width: width,
-            onReadOn: session.promoteReply,
+            onReadOn: { session.promoteReply($0) },
             onDismiss: session.dismissReply
         )
         .environment(\.openURL, OpenURLAction { url in
@@ -506,9 +507,11 @@ private struct SessionBubble: View {
 
     /// The link's title as the note has it, else its host.
     private func title(of url: URL) -> String {
-        if case let .note(note)? = session.reply?.plan,
-           let kept = NoteMarkdown.links(in: NoteMarkdown.attributed(from: note.body)).first(where: { $0.url == url }) {
-            return kept.title
+        for piece in session.replies.reversed() {
+            if case let .note(note) = piece.plan,
+               let kept = NoteMarkdown.links(in: NoteMarkdown.attributed(from: note.body)).first(where: { $0.url == url }) {
+                return kept.title
+            }
         }
         return url.host() ?? url.absoluteString
     }
