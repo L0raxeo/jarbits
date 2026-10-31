@@ -30,6 +30,9 @@ struct NoteView: View {
     @State private var loadedEdited: Date?
     @State private var saveTask: Task<Void, Never>?
     @FocusState private var editing: Bool
+    /// The keyboard's height while it is up: room added under the text so
+    /// the page can scroll the last lines above it, as Notes does.
+    @State private var keyboardHeight: CGFloat = 0
 
     /// The title line's look; the body is `.body`, a heading `.title3`.
     static let titleFont = Font.title.weight(.bold)
@@ -57,7 +60,15 @@ struct NoteView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, topInset + 12)
-                .padding(.bottom, 120)   // the capsule floats over the page
+                .padding(.bottom, 120 + (editing ? keyboardHeight : 0))   // the capsule floats over the page; the keyboard's room while typing
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                guard let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
+                let screen = UIScreen.main.bounds
+                keyboardHeight = max(0, screen.maxY - frame.minY)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+                keyboardHeight = 0
             }
             .scrollDismissesKeyboard(.interactively)
             .ignoresSafeArea(.container, edges: [.top, .bottom])
