@@ -350,12 +350,20 @@ final class Executor {
                                 failures += 1
                             }
                         } else if spec.showsLayer {
-                            let (didShow, reason) = await session.perform(instinct, context: context, token: token)
+                            let (didShow, reason, declined) = await session.perform(instinct, context: context, token: token)
                             guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                             shown = shown || didShow   // an earlier piece stays shown whatever a later step does
-                            result = didShow ? "shown on screen" : "could not: \(reason ?? "not shown")"
-                            outcome = didShow ? "shown" : "failed: \(reason ?? "not shown")"
-                            if !didShow { failures += 1 }
+                            if declined {
+                                // The user said no to the device's question: the
+                                // plan is over, and the model is not asked to tell it.
+                                result = "the user said no"
+                                outcome = "declined"
+                                ended = .declined
+                            } else {
+                                result = didShow ? "shown on screen" : "could not: \(reason ?? "not shown")"
+                                outcome = didShow ? "shown" : "failed: \(reason ?? "not shown")"
+                                if !didShow { failures += 1 }
+                            }
                         } else {
                             let act = await instinct.run(context, in: session, token: token)
                             guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
@@ -363,6 +371,10 @@ final class Executor {
                                 result = "could not: \(reason)"
                                 outcome = "failed: \(reason)"
                                 failures += 1
+                            } else if act.declined {
+                                result = "the user said no"
+                                outcome = "declined"
+                                ended = .declined
                             } else {
                                 result = act.text.isEmpty ? "done" : act.text
                                 outcome = "ran"

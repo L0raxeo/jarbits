@@ -64,21 +64,25 @@ public struct Note: Codable, Sendable, Hashable, Identifiable {
 
     /// The most lines, and the most characters, of a note the planner's
     /// listing shows; a longer note is cut with a line saying how much more.
-    public static let linesListed = 60
-    public static let charactersListed = 3000
+    /// Wide enough that a note the planner is asked to rewrite is shown
+    /// whole (60 lines and 3,000 characters cut real notes; 2026-10-31).
+    public static let linesListed = 200
+    public static let charactersListed = 12_000
 
     /// The whole body as the planner's listing shows it: every line as
     /// written, marks and all, numbered from 1 so a write can name the line
-    /// it goes after; links as their titles; empty lines kept, since they
-    /// are places too. Capped by `linesListed` and `charactersListed`.
+    /// it goes after; a link as its title in square brackets, so the
+    /// planner sees which lines are links without ever seeing an address;
+    /// empty lines kept, since they are places too. Capped by
+    /// `linesListed` and `charactersListed`.
     public var numberedLines: [String] {
-        let lines = Self.linksAsTitles(body.trimmingCharacters(in: .newlines)).split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let lines = Self.linksBracketed(body.trimmingCharacters(in: .newlines)).split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         guard !lines.isEmpty, lines != [""] else { return [] }
         var out: [String] = []
         var characters = 0
         for (index, line) in lines.enumerated() {
             if out.count >= Self.linesListed || characters + line.count > Self.charactersListed {
-                out.append("\u{2026} \(lines.count - index) more lines")
+                out.append("\u{2026} \(lines.count - index) more lines (too long to rewrite whole: add or remove by line)")
                 break
             }
             out.append("\(index + 1)| \(line)")
@@ -90,6 +94,12 @@ public struct Note: Codable, Sendable, Hashable, Identifiable {
     /// Links as their titles: the model reads what a line is, not its address.
     static func linksAsTitles(_ markdown: String) -> String {
         markdown.replacingOccurrences(of: "\\[([^\\]]*)\\]\\([^)]*\\)", with: "$1", options: .regularExpression)
+    }
+
+    /// Links as their titles in square brackets, the address gone: a line
+    /// the planner can tell is a link, in a form it copies back whole.
+    static func linksBracketed(_ markdown: String) -> String {
+        markdown.replacingOccurrences(of: "\\[([^\\]]*)\\]\\([^)]*\\)", with: "[$1]", options: .regularExpression)
     }
 
     /// What the meaning index keeps for the note: the title, then the

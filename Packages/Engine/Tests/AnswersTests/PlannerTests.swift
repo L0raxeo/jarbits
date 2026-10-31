@@ -81,6 +81,8 @@ import Testing
         #expect(system.contains("in a note it is never written out: the handle in braces is the link"))
         #expect(Planner.describe(InstinctSpec.spec(for: .notebook)).contains("a link always goes into a note as the thing's handle in braces"))
         #expect(Planner.describe(InstinctSpec.spec(for: .notebook)).contains("Taking lines out is remove, by their numbers, never a rewrite of the rest"))
+        #expect(Planner.describe(InstinctSpec.spec(for: .notebook)).contains("a line whose words stand in square brackets is a link"), "the planner can tell a link from a plain line")
+        #expect(Planner.describe(InstinctSpec.spec(for: .notebook)).contains("a note emptied is a note with no lines, never a deleted one"))
         #expect(Planner.fields(for: InstinctSpec.spec(for: .notebook)).contains { $0.name == "remove" }, "lines come out by number")
         #expect(InstinctSpec.spec(for: .notebook).arguments.fields.contains { $0.name == "remove" } == false, "on the tool, never on the spec: Jev's questions stay")
         #expect(Planner.fields(for: InstinctSpec.spec(for: .remember)).contains { $0.name == "remove" } == false)
@@ -98,7 +100,7 @@ import Testing
         let now = AnswerContext.example.now
         let trip = Note(title: "Trip", body: "## Groceries\n- [milk](https://m.com)\n\n## Packing\n- [ ] passport", created: now.addingTimeInterval(-86_400), edited: now.addingTimeInterval(-86_400))
         let input = Planner.input(query: "add eggs to the groceries", things: ThingTable(notes: [trip]), now: now)
-        #expect(input.contains("In my notebook, every note (newest first):\n- n1: My note \"Trip\", edited yesterday:\n    1| ## Groceries\n    2| - milk\n    3| \n    4| ## Packing\n    5| - [ ] passport"), "links as titles, blank lines numbered too")
+        #expect(input.contains("In my notebook, every note (newest first):\n- n1: My note \"Trip\", edited yesterday:\n    1| ## Groceries\n    2| - [milk]\n    3| \n    4| ## Packing\n    5| - [ ] passport"), "a link as its bracketed title, blank lines numbered too")
         let notebook = Planner.tools(for: InstinctSpec.all).first { $0.name == "notebook" }
         #expect(notebook?.description.contains("text is the exact lines to add, in the marks of the lines around where they go, and after is the number of the line they follow") == true)
     }

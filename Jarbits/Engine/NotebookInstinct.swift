@@ -98,8 +98,9 @@ struct NotebookInstinct: InstinctRunner {
             let answer = await session.ask("Delete my note \u{201C}\(note.title)\u{201D}?", .options(["Delete", "Keep"]), token: token)
             guard session.isCurrent(token) else { return .nothing }
             guard case .option(0, _)? = answer else {
+                // Kept: the note shown as it is, and the plan ends here.
                 session.showNote(note, context: context)
-                return InstinctOutcome(fact: nil, text: "kept my note \"\(note.title)\"")
+                return .declined("kept my note \"\(note.title)\"")
             }
             await session.notebook.delete(note.id)
             guard session.isCurrent(token) else { return .nothing }

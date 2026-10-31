@@ -71,11 +71,11 @@ import Testing
         #expect(NoteMarkdown.continuing("milk", after: "") == "milk")
         let note = Note(title: "Shopping", body: "- [ ] eggs\n- [x] [Bread](https://b.com)\n\n**later**")
         #expect(note.preview == "- [ ] eggs / - [x] Bread / **later**", "the listing shows the form as written")
-        #expect(note.numberedLines == ["1| - [ ] eggs", "2| - [x] Bread", "3| ", "4| **later**"], "the whole note, numbered, links as titles, empty lines kept")
+        #expect(note.numberedLines == ["1| - [ ] eggs", "2| - [x] [Bread]", "3| ", "4| **later**"], "the whole note, numbered, a link as its bracketed title, empty lines kept")
         #expect(Note(title: "Empty").numberedLines.isEmpty)
-        let long = Note(title: "Long", body: (1...70).map { "- item \($0)" }.joined(separator: "\n"))
+        let long = Note(title: "Long", body: (1...250).map { "- item \($0)" }.joined(separator: "\n"))
         let listed = long.numberedLines
-        #expect(listed.count == 61 && listed.last == "\u{2026} 10 more lines", "cut at the cap with the remainder counted")
+        #expect(listed.count == 201 && listed.last == "\u{2026} 50 more lines (too long to rewrite whole: add or remove by line)", "cut at the cap with the remainder counted")
     }
 
     @Test func linesGoInAfterTheNamedLine() {
@@ -111,5 +111,7 @@ import Testing
         let twice = "- [Same](https://a.example)\n- [Same](https://b.example)"
         #expect(NoteMarkdown.relinked("- Same", from: twice) == "- Same", "a title with two addresses is left alone")
         #expect(NoteMarkdown.relinked("- milk", from: "- eggs") == "- milk", "no links before: as written")
+        #expect(NoteMarkdown.relinked("- [Framework 13 Pro review]\n- [New words]\n- Cooking pasta", from: old) == "- [Framework 13 Pro review](https://m.youtube.com/watch?v=fw13)\n- New words\n- [Cooking pasta](https://m.youtube.com/watch?v=pasta)", "the listing's brackets: a linked title gets its link, an unlinked one loses the brackets")
+        #expect(NoteMarkdown.relinked("- [Same]", from: twice) == "- [Same]", "bracketed and ambiguous: as written")
     }
 }

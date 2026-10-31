@@ -59,9 +59,15 @@ struct InstinctOutcome {
     /// showed nothing and recorded nothing; the session hands the query to
     /// the planner, and a plan step reads it as its result.
     var failed: String? = nil
+    /// The user said no to the instinct's own question ("Delete my note
+    /// X?" → Keep): the instinct showed what it showed, and the plan is
+    /// over. The planner never gets a turn after a no, so it reports
+    /// nothing about it; the device already showed the outcome.
+    var declined = false
 
     static let nothing = InstinctOutcome(fact: nil, text: "")
     static func failed(_ reason: String) -> InstinctOutcome { InstinctOutcome(fact: nil, text: reason, failed: reason) }
+    static func declined(_ text: String) -> InstinctOutcome { InstinctOutcome(fact: nil, text: text, declined: true) }
 }
 
 /// One instinct as the app runs it: its spec from the registry, and what it

@@ -729,7 +729,14 @@ return at the end of a list does in Notes (`NoteMarkdown.continuing`),
 and a numbered run the lines land in is counted again from 1. Several notes shown at once go to the grid
 (`NotesGridView`, the recall grid's layout, headed in his voice: "My
 notes · 3"), by `open` with several handles or the notebook's `all`. A delete asks in the bubble ("Delete
-my note 'Packing list'?") and moves the file to `.trash/`, never gone.
+my note 'Packing list'?") and moves the file to `.trash/`, never gone; a
+Keep shows the note as it is and ends the plan there (`InstinctOutcome.declined`),
+so the planner never gets a turn in which to report it (2026-10-31, after
+"kept my note" came back as "I accidentally deleted the note"). The
+planner's listing shows every note whole, up to 200 lines or 12,000
+characters, with a link as its title in square brackets and no address, so
+"the ones with links" is a question it can answer and a rewrite copies the
+bracketed title, which the device writes back as the link.
 Every append, removal or replace first copies the text as it was to
 `.versions/<id>/`, so any edit by Jarbits can be undone. A replace writes
 back the links the planner copied as titles: a line whose words after its

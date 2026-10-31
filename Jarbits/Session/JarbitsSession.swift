@@ -560,21 +560,22 @@ final class JarbitsSession {
     /// Runs a plan step's showing instinct as the ordinary path would, and
     /// waits until its result is on screen: true then, false when it never
     /// came within `performWait` or the query was overtaken.
-    func perform(_ instinct: any InstinctRunner, context: InstinctContext, token: UUID) async -> (shown: Bool, failed: String?) {
-        guard token == requestToken else { return (false, nil) }
+    func perform(_ instinct: any InstinctRunner, context: InstinctContext, token: UUID) async -> (shown: Bool, failed: String?, declined: Bool) {
+        guard token == requestToken else { return (false, nil, false) }
         // The capsule keeps the user's words; a step's query is the planner's.
         let before = replies.last   // a piece already up is not this step's
         let outcome = await instinct.run(context, in: self, token: token)
-        if let reason = outcome.failed { return (false, reason) }
+        if let reason = outcome.failed { return (false, reason, false) }
+        if outcome.declined { return (true, nil, true) }   // the user said no to its question: shown what it showed, and over
         let clock = ContinuousClock()
         let start = clock.now
         let landed = { [self] in stage == .ready || (replies.last !== before && replyHasContent) }
         while clock.now - start < Self.performWait {
-            if landed() { return (true, nil) }
-            guard token == requestToken else { return (false, nil) }
+            if landed() { return (true, nil, false) }
+            guard token == requestToken else { return (false, nil, false) }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return (landed(), nil)
+        return (landed(), nil, false)
     }
 
     /// How long a plan step may take to reach the screen.
