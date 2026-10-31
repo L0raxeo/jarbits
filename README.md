@@ -1186,7 +1186,13 @@ answer in the bubble goes back to the model as the step's result, and a
 `remember` right after it keeps the fact as **chosen**. Each result goes
 back as a `function_result`, with every model step replayed verbatim, for
 at most six rounds within two minutes, each round within forty-five
-seconds. The
+seconds, and 8,000 output tokens a round, which the thinking shares: at
+1,000 a rewrite of a note, a comparison or a long list of links thought
+the whole budget away and came back incomplete with no call, which the
+device read as "no calls" and gave up on (four such rounds in the eval
+cache, about 950 thought tokens and no output each; the compare case
+waved through as a flake was one of them; 2026-10-31). An incomplete
+round with no call is now asked once more before the plan ends. The
 plan ends on `done`; when nothing was shown or done, the bubble's "I
 couldn't get through that one." with "Try again" and "Search instead"
 (`offerRetry`; a plan that only read on Jarbits's screen counts as

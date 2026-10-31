@@ -241,10 +241,16 @@ import Testing
         #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 5)
 
         let silent = Planner(client: MockGeminiTransport.client(status: 200, body: #"{"id":"x","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"I would do this"}]}]}"#))
-        guard case .silent = await silent.propose(bundle, transcript: [.userText("Request: q")]) else {
+        guard case .silent(_, _, _, false) = await silent.propose(bundle, transcript: [.userText("Request: q")]) else {
             Issue.record("prose and no calls is silent")
             return
         }
+        let starved = Planner(client: MockGeminiTransport.client(status: 200, body: #"{"id":"x","status":"incomplete","steps":[]}"#))
+        guard case .silent(_, _, _, true) = await starved.propose(bundle, transcript: [.userText("Request: q")]) else {
+            Issue.record("an incomplete round with no call is marked, so the executor asks once more")
+            return
+        }
+        #expect(Planner.request(bundle: bundle, transcript: []).maxOutputTokens == 8000, "the budget counts the thinking: room for a rewrite")
         let failed = Planner(client: MockGeminiTransport.client(status: 400, body: #"{"error":{"message":"bad tool"}}"#))
         guard case let .failed(reason, _) = await failed.propose(bundle, transcript: [.userText("Request: q")]) else {
             Issue.record("an HTTP error fails the round")

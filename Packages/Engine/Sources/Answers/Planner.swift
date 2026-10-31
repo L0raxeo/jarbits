@@ -23,9 +23,13 @@ public struct Planner: Sendable {
     /// Accuracy over speed: the planner thinks. "minimal" was the first
     /// setting, when only multi-step queries were planned (2026-10-27).
     public static let thinkingLevel = "high"
-    /// Room for the thoughts and a few calls with long queries; a call is
-    /// under a hundred tokens, and nothing is paid for that is not produced.
-    public static let maxOutputTokens = 1000
+    /// Room for the thoughts and the calls: the budget counts the thinking,
+    /// and at 1,000 a rewrite of a note, a comparison or a long list of links
+    /// spent it all thinking and came back incomplete with no call at all
+    /// (four such rounds in the eval cache, each about 950 thought tokens
+    /// and no output; 2026-10-31). Nothing is paid for that is not produced,
+    /// so a plain round costs what it did.
+    public static let maxOutputTokens = 8000
 
     /// The field every tool takes: what to run it on.
     public static let queryField = ArgumentSchema.Field(
@@ -307,7 +311,9 @@ public struct Planner: Sendable {
         }
         let calls = interaction.functionCalls
         if calls.isEmpty {
-            return .silent(steps: interaction.rawSteps, usage: interaction.usage, latencyMs: latency)
+            // "incomplete" with no call: the output budget ran out, usually
+            // while thinking; the executor asks the round once more.
+            return .silent(steps: interaction.rawSteps, usage: interaction.usage, latencyMs: latency, incomplete: interaction.status == "incomplete")
         }
         return .calls(calls, steps: interaction.rawSteps, usage: interaction.usage, latencyMs: latency)
     }
@@ -341,6 +347,6 @@ public enum PlanRound: Sendable, Equatable {
     /// The calls asked for, in order, and every model step verbatim for the next round.
     case calls([FunctionCall], steps: [JSONValue], usage: AnswerUsage?, latencyMs: Int)
     /// The model wrote text and called nothing: nothing to do.
-    case silent(steps: [JSONValue], usage: AnswerUsage?, latencyMs: Int)
+    case silent(steps: [JSONValue], usage: AnswerUsage?, latencyMs: Int, incomplete: Bool = false)
     case failed(String, latencyMs: Int)
 }

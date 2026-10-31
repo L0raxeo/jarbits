@@ -369,8 +369,8 @@ case "plan":
         for call in calls {
             print("  \(call.name)(\(String(decoding: (try? call.arguments.data()) ?? Data(), as: UTF8.self)))")
         }
-    case let .silent(steps, usage, latencyMs):
-        print("round 1 (\(latencyMs) ms): no calls; \(steps.count) model steps, \(usage.map { "\($0.outputTokens) out" } ?? "no usage")")
+    case let .silent(steps, usage, latencyMs, incomplete):
+        print("round 1 (\(latencyMs) ms): \(incomplete ? "incomplete, the budget ran out while thinking" : "no calls"); \(steps.count) model steps, \(usage.map { "\($0.outputTokens) out" } ?? "no usage")")
     case let .failed(reason, latencyMs):
         print("round 1 failed (\(latencyMs) ms): \(reason)")
     }

@@ -77,6 +77,8 @@ final class Executor {
         var ran: Set<String> = []
         var shown = false
         var failures = 0
+        /// An incomplete round with no call has been asked again once.
+        var reasked = false
         /// The pages this plan opened on Jarbits's own screen, by handle, and
         /// the step that opened each: look reads them, open brings one forward.
         var deskPages: [String: Layer] = [:]
@@ -97,11 +99,17 @@ final class Executor {
             case let .failed(reason, _):
                 let happened = shown || steps.contains { $0.outcome == "ran" }
                 return finish(happened ? .completed : .fellBackToWeb("round \(rounds): \(reason)"), memories: memories.count)
-            case let .silent(modelSteps, found, _):
+            case let .silent(modelSteps, found, _, incomplete):
                 add(found)
+                if incomplete, !reasked {
+                    // The budget ran out while thinking and nothing came: the
+                    // same round once more, the transcript as it was.
+                    reasked = true
+                    continue
+                }
                 transcript += modelSteps.map { .verbatim($0) }
                 let happened = shown || steps.contains { $0.outcome == "ran" }
-                return finish(happened ? .completed : .fellBackToWeb("round \(rounds): no calls"), memories: memories.count)
+                return finish(happened ? .completed : .fellBackToWeb("round \(rounds): \(incomplete ? "incomplete, the budget ran out while thinking" : "no calls")"), memories: memories.count)
             case let .calls(found, modelSteps, roundUsage, _):
                 add(roundUsage)
                 transcript += modelSteps.map { .verbatim($0) }
@@ -391,7 +399,7 @@ final class Executor {
         switch round {
         case let .calls(calls, steps, usage, latencyMs):
             "\(calls.map { "\($0.name)(\(String(decoding: (try? $0.arguments.data()) ?? Data(), as: UTF8.self)))" }.joined(separator: ", ")); \(steps.count) steps, \(latencyMs) ms, \(usage.map { "\($0.inputTokens) in \($0.outputTokens + $0.thoughtTokens) out" } ?? "no usage")"
-        case let .silent(steps, _, latencyMs): "no calls; \(steps.count) steps, \(latencyMs) ms"
+        case let .silent(steps, _, latencyMs, incomplete): "\(incomplete ? "incomplete: the budget ran out while thinking" : "no calls"); \(steps.count) steps, \(latencyMs) ms"
         case let .failed(reason, latencyMs): "failed: \(reason), \(latencyMs) ms"
         }
     }
