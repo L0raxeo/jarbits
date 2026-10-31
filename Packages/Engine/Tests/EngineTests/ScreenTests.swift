@@ -16,6 +16,9 @@ import Testing
         #expect(!Screen(kind: .page, title: "t", data: "duration: PT1M").isEmpty)
         let bare = Screen(kind: .note, title: "Packing list", visible: "passport")
         #expect(bare.block(whole: true) == "On screen: my note \"Packing list\"\nVisible now:\npassport")
+        #expect(bare.block(whole: true, handle: "n1") == "On screen, n1: my note \"Packing list\" (its lines are listed under n1 above)", "named by its handle, its lines not said twice")
+        #expect(Screen(kind: .answer, title: "q", visible: "42").block(whole: true, handle: "p2") == "On screen, p2: the answer \"q\" (listed under p2 above)")
+        #expect(withData.block(whole: true, handle: "p1").hasPrefix("On screen, p1: the page \"Lisbon in 4K\" at https://m.youtube.com/watch?v=def\nVisible now:"), "a page keeps its whole block")
         #expect(!bare.isEmpty && Screen(kind: .answer, title: "q").isEmpty)
         #expect(Screen(kind: .page, title: "t", selection: "  \n").selection == nil)
     }

@@ -50,14 +50,22 @@ extension Layer {
             let title = pageTitle ?? QueryParser.displayText(for: address)
             // A page on Jarbits's own screen is marked as its: the user never saw it.
             return [SessionExchange(exchange: .page(query: query, title: title, address: address, own: desk ? true : nil), turn: nil, layerID: id)]
-        case .answer, .time, .said, .memory:
+        case .answer, .time, .said:
             return thread.map { SessionExchange(exchange: .answer(query: $0.query, text: $0.answer), turn: $0, layerID: id) }
+        case let .memory(record):
+            // The saved record's id rides along, so a handle for it brings the record back.
+            return thread.map { turn in
+                var exchange = Exchange.answer(query: turn.query, text: turn.answer)
+                exchange.memoryID = record.id
+                return SessionExchange(exchange: exchange, turn: turn, layerID: id)
+            }
         case let .recallPicker(records, title):
             return [SessionExchange(exchange: .recall(query: query, title: title, titles: records.map(\.title)), turn: nil, layerID: id)]
         case let .siteChoices(name, candidates):
             return [SessionExchange(exchange: .site(query: query, name: name, hosts: candidates.map(\.host)), turn: nil, layerID: id)]
         case let .note(note):
-            return [SessionExchange(exchange: .note(query: query, title: note.title, excerpt: note.excerpt), turn: nil, layerID: id)]
+            // The note's id rides along, so the thing on screen and the notebook's entry are one note.
+            return [SessionExchange(exchange: .note(query: query, title: note.title, excerpt: note.excerpt, noteID: note.id), turn: nil, layerID: id)]
         case let .notes(notes, title):
             return [SessionExchange(exchange: .note(query: query, title: title ?? "my notes", excerpt: notes.map(\.title).joined(separator: "; ")), turn: nil, layerID: id)]
         }

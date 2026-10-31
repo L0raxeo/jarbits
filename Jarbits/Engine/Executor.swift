@@ -25,7 +25,7 @@ final class Executor {
     /// `exchanges` are the ones the query depends on, oldest first.
     /// `lead` is the line that tells the planner why it has the query.
     /// `screen` is what was on screen as the query began, when it could be read.
-    func run(query: String, decision: Pick, exchanges: [Exchange], lead: String? = nil, screen: Screen? = nil, token: UUID) async -> EngineSummary {
+    func run(query: String, decision: Pick, exchanges: [Exchange], lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil, token: UUID) async -> EngineSummary {
         let clock = ContinuousClock()
         let start = clock.now
         var steps: [EngineSummary.Step] = []
@@ -70,7 +70,7 @@ final class Executor {
         let notes = await session.notebook.all()
         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
         var things = ThingTable(exchanges: exchanges, memories: memories, notes: notes, items: screen?.items ?? [])
-        var transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: now, lead: lead, screen: screen), picture: screen?.picture)]
+        var transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: now, lead: lead, screen: screen, screenNoteID: screenNoteID), picture: screen?.picture)]
         func noSuchThing(_ handle: String) -> String {
             "no such thing: \(handle); the things are \(things.handles.isEmpty ? "none" : things.handles.joined(separator: ", "))"
         }

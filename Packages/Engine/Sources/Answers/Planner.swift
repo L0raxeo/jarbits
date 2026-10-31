@@ -172,7 +172,7 @@ public struct Planner: Sendable {
             "- To confirm something, to choose, or to get a value the request leaves out, call ask; the answer comes back as the result, with the question beside it. ask does nothing itself: after a yes-like answer (\"Delete\", \"Yes\", \"Go ahead\") call the step that does it; after a no-like one (\"Keep\", \"No\", \"Leave it\") say in a line that nothing was changed, or end; never report something done that no step did.",
             "- A tool that costs money or cannot be undone is confirmed with \(persona.user) by the device before it runs, not by you.",
             "- There are two screens. \(persona.user) has theirs, where everything they see goes: \(InstinctSpec.all.filter { $0.showsLayer && $0.instinct != .recall && !pageTools.contains($0.instinct) }.map(\.id).joined(separator: ", ")), say and open put their result there, each staying under the one before until the next request: so never say what a step has already shown (a note card says what was written, an answer answers), and after a step that showed something call done unless something is still missing (a caveat, a question). I have a screen of my own, where I read: \(InstinctSpec.all.filter { opensPage($0) }.map(\.id).joined(separator: ", ")) open their page there unless screen is user, and nothing on my screen is seen by \(persona.user). A page on my screen comes back in the step's result with a handle (p3): look reads it (page: p3), open brings it forward to \(persona.users) screen as it is, notebook's item keeps it, and an answer's about names it. A question is read on my screen and answered in a line or a card; a page or results \(persona.user) asked to see open on theirs.",
-            "- The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. recall's result names what it found by handle. When the request asks for a thing in the listing, open shows it as itself; say tells a fact that has no thing to show (a memory, a count, whether a line is in a note); an answer with about works something out about one. Never retell a thing you could show. A follow-up to the answer \(persona.user) is reading (\"could that be why?\", \"why?\", \"and in km?\") is narrative or one_line with that answer in about and the follow-up itself as the query, not reworded: the device grows the conversation with the reply as its next turn.",
+            "- The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. The last block names what is on the screen by its handle (\"On screen, n1: my note …\"): \"this\", \"these notes\", \"this page\", \"the one I'm looking at\" is that handle, whatever kind of thing it is, and a step takes it as any other handle. recall's result names what it found by handle. When the request asks for a thing in the listing, open shows it as itself; say tells a fact that has no thing to show (a memory, a count, whether a line is in a note); an answer with about works something out about one. Never retell a thing you could show. A follow-up to the answer \(persona.user) is reading (\"could that be why?\", \"why?\", \"and in km?\") is narrative or one_line with that answer in about and the follow-up itself as the query, not reworded: the device grows the conversation with the reply as its next turn.",
             "- \(Screen.rule) \(Screen.pictureRule) A link in view is opened by its handle (open with s2), kept by its handle (notebook's item), and its address, which the listing gives, may be said when \(persona.user) asks for the link; in a note it is never written out: the handle in braces is the link.",
             "- look reads more of an open page than the screen block holds; what it finds comes back as its result, and the links it lists carry handles (s5, s6) used like any other: opened, kept, or said. Look once for what is asked, continue with from only when the result says it was cut, and never look for what the block already shows.",
             "- Every lasting fact the request itself states is read and kept by the device as the words arrive, with a mark: never call remember for what the request says. Call remember for something lasting about \(persona.users) own life that came out of an answer or of ask, never for a decision or detail inside something they are making (a project's mascot, a logo's colour): the work keeps that.",
@@ -198,7 +198,7 @@ public struct Planner: Sendable {
     /// `lead` is the one line before the request that says why the planner
     /// has it: what an instinct tried and could not do (`failureLead`), or
     /// that the classifier picked an instinct that is reasoned (`pickedLead`).
-    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil) -> String {
+    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil) -> String {
         var lines = ["Request: \(query)"]
         if let lead, !lead.isEmpty {
             lines.append("")
@@ -208,7 +208,8 @@ public struct Planner: Sendable {
         if !exchanges.isEmpty {
             lines.append("")
             lines.append("Earlier in this session (oldest first):")
-            lines += exchanges.map { "- " + ThingTable.line($0, now: now, calendar: calendar) }
+            let noteHandles = things.noteHandles
+            lines += exchanges.map { "- " + ThingTable.line($0, now: now, calendar: calendar, noteHandles: noteHandles) }
         }
         let memories = things.memoryEntries
         if !memories.isEmpty {
@@ -226,9 +227,10 @@ public struct Planner: Sendable {
             lines += notes.map { "- " + ThingTable.line($0, now: now, calendar: calendar) }
         }
         if let screen {
-            // The screen as the user sees it, whole: the links by their handles.
+            // The screen as the user sees it, whole: the thing on it by the
+            // handle it already has, the links by theirs.
             lines.append("")
-            lines.append(screen.block(whole: true, handles: things.itemHandles))
+            lines.append(screen.block(whole: true, handles: things.itemHandles, handle: things.screenHandle(for: screen, noteID: screenNoteID)))
         }
         return lines.joined(separator: "\n")
     }

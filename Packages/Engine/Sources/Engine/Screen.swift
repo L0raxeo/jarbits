@@ -67,7 +67,11 @@ public struct Screen: Sendable, Equatable {
     public var isEmpty: Bool { visible.isEmpty && rest.isEmpty && selection == nil && items.isEmpty && data.isEmpty }
 
     /// One line naming what is on screen.
-    public var described: String {
+    public var described: String { described(handle: nil) }
+
+    /// One line naming what is on screen, by its handle in the listing when
+    /// it has one: "On screen, n1: my note "Trip"".
+    public func described(handle: String?) -> String {
         let what: String = switch kind {
         case .page: "the page"
         case .note: "my note"
@@ -75,7 +79,7 @@ public struct Screen: Sendable, Equatable {
         case .grid: "a grid"
         case .other: "a card"
         }
-        var line = "On screen: \(what) \"\(title)\""
+        var line = "On screen\(handle.map { ", \($0)" } ?? ""): \(what) \"\(title)\""
         if let address { line += " at \(address.absoluteString)" }
         return line
     }
@@ -83,9 +87,17 @@ public struct Screen: Sendable, Equatable {
     /// The text block a model reads. The reader gets the selection and the
     /// visible text (`whole` false); the planner and an answer get the
     /// page's own data, the rest and the items too, each item by its handle when `handles` are given
-    /// (the planner's), else by number.
-    public func block(whole: Bool, handles: [String] = []) -> String {
-        var lines = [described]
+    /// (the planner's), else by number. With `handle`, the thing on screen
+    /// is named by it; a note or an answer so named is not repeated, since
+    /// its content already stands in the listing under that handle.
+    public func block(whole: Bool, handles: [String] = [], handle: String? = nil) -> String {
+        if whole, let handle, kind == .note || kind == .answer {
+            let under = kind == .note ? "its lines are listed under \(handle) above" : "listed under \(handle) above"
+            var lines = ["\(described(handle: handle)) (\(under))"]
+            if let selection { lines.append("Selected on it: \"\(selection)\"") }
+            return lines.joined(separator: "\n")
+        }
+        var lines = [described(handle: handle)]
         if let selection { lines.append("Selected on it: \"\(selection)\"") }
         if !visible.isEmpty {
             lines.append(whole ? "Visible now:" : "Visible:")

@@ -1386,9 +1386,13 @@ final class JarbitsSession {
             return
         }
         var listed = exchanges
-        if let onScreen = (askedOver ?? current)?.exchanges.last?.exchange, !listed.contains(onScreen) { listed.append(onScreen) }
+        let onScreenLayer = askedOver ?? current
+        if let onScreen = onScreenLayer?.exchanges.last?.exchange, !listed.contains(onScreen) { listed.append(onScreen) }
+        // A note on screen is named in the listing by the notebook's handle for it.
+        var screenNoteID: UUID?
+        if case let .note(note)? = onScreenLayer?.plan { screenNoteID = note.id }
         Task {
-            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, token: token)
+            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, screenNoteID: screenNoteID, token: token)
             guard token == requestToken else { return }
             #if DEBUG
             print("plan \(summary.outcome) after \(summary.rounds) rounds, \(summary.steps.count) steps, \(summary.latencyMs) ms")

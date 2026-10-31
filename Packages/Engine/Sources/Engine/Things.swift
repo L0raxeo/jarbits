@@ -46,13 +46,13 @@ public struct Reference: Sendable, Equatable {
             case .search:
                 self.init(kind: .search, title: exchange.text ?? exchange.query, term: exchange.text ?? exchange.query)
             case .answer:
-                self.init(kind: .answer, title: exchange.query, text: exchange.text)
+                self.init(kind: .answer, title: exchange.query, text: exchange.text, memoryID: exchange.memoryID)
             case .recall:
                 self.init(kind: .recall, title: exchange.title ?? exchange.query, text: exchange.text)
             case .site:
                 self.init(kind: .site, title: exchange.title ?? exchange.query, text: exchange.text)
             case .note:
-                self.init(kind: .note, title: exchange.title ?? exchange.query, text: exchange.text)
+                self.init(kind: .note, title: exchange.title ?? exchange.query, text: exchange.text, noteID: exchange.noteID)
             }
         case let .memory(record):
             let kind: Kind = switch record.kind {
@@ -77,11 +77,14 @@ public struct Reference: Sendable, Equatable {
             if let address { return .page(query: query, title: title, address: address) }
             return Exchange(query: query, kind: .page, title: title)
         case .search: return .search(query: query, term: term ?? title)
-        case .answer, .action: return .answer(query: title, text: text ?? "")
+        case .answer, .action:
+            var exchange = Exchange.answer(query: title, text: text ?? "")
+            exchange.memoryID = memoryID
+            return exchange
         case .picture: return Exchange(query: query, kind: .search, text: title)
         case .recall: return .recall(query: query, title: title, titles: [])
         case .site: return .site(query: query, name: title, hosts: [])
-        case .note: return .note(query: query, title: title, excerpt: text ?? "")
+        case .note: return .note(query: query, title: title, excerpt: text ?? "", noteID: noteID)
         }
     }
 }
@@ -198,11 +201,46 @@ public struct ThingTable: Sendable, Equatable {
     public var itemEntries: [Entry] { entries.filter { if case .item = $0.thing { true } else { false } } }
     /// The items' handles, in screen order, for the screen block.
     public var itemHandles: [String] { itemEntries.map(\.handle) }
+    /// Each notebook note's handle by its id, so an opened note's line can
+    /// point at the notebook's entry.
+    public var noteHandles: [UUID: String] {
+        var out: [UUID: String] = [:]
+        for entry in noteEntries { if case let .note(note) = entry.thing { out[note.id] = entry.handle } }
+        return out
+    }
 
-    /// One thing as the planner's listing gives it: its handle and what it is.
-    public static func line(_ entry: Entry, now: Date, calendar: Calendar = .current) -> String {
+    /// The handle of the thing on the screen, whatever kind it is: a note by
+    /// its id (else its title), a page by its address, a search by its
+    /// term, an answer by its query; nil for a grid or a card, which have
+    /// no thing of their own. The listing names the screen by it, so
+    /// "this" is one handle however the thing got into the listing.
+    public func screenHandle(for screen: Screen, noteID: UUID? = nil) -> String? {
+        func exchange(_ entry: Entry) -> Exchange? { if case let .exchange(x) = entry.thing { x } else { nil } }
+        switch screen.kind {
+        case .note:
+            if let noteID, let handle = noteHandles[noteID] { return handle }
+            return noteEntries.first { if case let .note(note) = $0.thing { note.title == screen.title } else { false } }?.handle
+        case .page:
+            guard let address = screen.address else { return nil }
+            if let page = exchangeEntries.last(where: { exchange($0).map { $0.kind == .page && $0.address == address.absoluteString && $0.own != true } ?? false }) { return page.handle }
+            guard QueryParser.isSearchResults(address), let term = QueryParser.searchTerm(in: address)?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+            return exchangeEntries.last { exchange($0).map { $0.kind == .search && $0.text == term && $0.own != true } ?? false }?.handle
+        case .answer:
+            return exchangeEntries.last { exchange($0).map { $0.kind == .answer && $0.query == screen.title } ?? false }?.handle
+        case .grid, .other:
+            return nil
+        }
+    }
+
+    /// One thing as the planner's listing gives it: its handle and what it
+    /// is; an opened note names the notebook's handle for the same note
+    /// when `noteHandles` has it.
+    public static func line(_ entry: Entry, now: Date, calendar: Calendar = .current, noteHandles: [UUID: String] = [:]) -> String {
         switch entry.thing {
         case let .exchange(exchange):
+            if exchange.kind == .note, let id = exchange.noteID, let handle = noteHandles[id] {
+                return "\(entry.handle): \(exchange.described) (\(handle))"
+            }
             return "\(entry.handle): \(exchange.described)"
         case let .memory(record):
             let label = record.kind.label

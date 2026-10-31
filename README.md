@@ -735,7 +735,11 @@ Every append, removal or replace first copies the text as it was to
 back the links the planner copied as titles: a line whose words after its
 mark are exactly a title linked in the note before becomes that link again
 (`NoteMarkdown.relinked`); a title linked to two addresses is left as
-written. A write leaves
+written. An opened note's exchange carries the note's id
+(`Exchange.noteID`, cleared for Jev as `own` is), as a saved answer's
+carries its memory's (`memoryID`), so a handle resolves to the same note
+or record whichever list it came from: the thing on screen, the session's
+history or the notebook. A write leaves
 the screen where it was: the bubble shows where it wrote ("Added to Watch
 List", "Made the note Trip", "Rewrote Shopping") over the lines themselves
 as the note draws them (a bullet as a bullet, a link as its tappable
@@ -1154,7 +1158,13 @@ chain) with the layer on screen always among them, so "this" is a thing
 the planner can point at, the five memories nearest the request in
 meaning (the newest, without the index; recall is its tool for anything
 beyond them), every note of the notebook, a line each, and last the
-screen as the user sees it, its links in view as `s` handles, with its
+screen as the user sees it, its links in view as `s` handles, the thing
+on it named by the handle it already has ("On screen, n1: my note …",
+"On screen, p1: the page …"; a note or an answer so named is not repeated,
+since its content stands under its handle, and an opened note's line
+points at the notebook's handle for it, "p2: Opened my note "X" (n1)";
+2026-10-31, after "reorganize these notes" with a note open named the
+screen thing, whose record carried no note id, and failed twice), with its
 picture as a second content part (see "Screen awareness"); nothing in
 the listing is judged or thinned by a second model, since reading what a
 request means is the planner's work. Every fact

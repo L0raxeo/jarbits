@@ -32,8 +32,15 @@ public struct Exchange: Codable, Sendable, Hashable {
     /// planning, which the user never saw; nil otherwise, so an exchange
     /// the user saw encodes exactly as it always did. Jev is never sent it.
     public var own: Bool?
+    /// The note an opened note was (kind `note`), so a handle for the thing
+    /// on screen resolves to the notebook's note as the notebook's own
+    /// handle does; nil for everything else. Jev is never sent it.
+    public var noteID: UUID?
+    /// The saved memory an answer shown from the store was, so its handle
+    /// brings the record back; nil for everything else. Jev is never sent it.
+    public var memoryID: UUID?
 
-    public init(query: String, kind: Kind, title: String? = nil, host: String? = nil, address: String? = nil, text: String? = nil, own: Bool? = nil) {
+    public init(query: String, kind: Kind, title: String? = nil, host: String? = nil, address: String? = nil, text: String? = nil, own: Bool? = nil, noteID: UUID? = nil, memoryID: UUID? = nil) {
         self.query = query
         self.kind = kind
         self.title = title
@@ -41,6 +48,8 @@ public struct Exchange: Codable, Sendable, Hashable {
         self.address = address
         self.text = text
         self.own = own
+        self.noteID = noteID
+        self.memoryID = memoryID
     }
 
     public static func answer(query: String, text: String) -> Exchange {
@@ -56,10 +65,13 @@ public struct Exchange: Codable, Sendable, Hashable {
     }
 
     /// The same exchange as Jev is sent it: without the mark of whose
-    /// screen it was on, so Jev's request reads as it always did.
+    /// screen it was on and without the device's ids, so Jev's request
+    /// reads as it always did.
     public var forJev: Exchange {
         var copy = self
         copy.own = nil
+        copy.noteID = nil
+        copy.memoryID = nil
         return copy
     }
 
@@ -71,8 +83,8 @@ public struct Exchange: Codable, Sendable, Hashable {
         Exchange(query: query, kind: .site, title: name, text: hosts.isEmpty ? nil : hosts.joined(separator: ", "))
     }
 
-    public static func note(query: String, title: String, excerpt: String) -> Exchange {
-        Exchange(query: query, kind: .note, title: title, text: excerpt.isEmpty ? nil : excerpt)
+    public static func note(query: String, title: String, excerpt: String, noteID: UUID? = nil) -> Exchange {
+        Exchange(query: query, kind: .note, title: title, text: excerpt.isEmpty ? nil : excerpt, noteID: noteID)
     }
 
     /// A conversation's turns as exchanges, oldest first.

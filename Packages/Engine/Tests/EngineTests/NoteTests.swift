@@ -66,7 +66,9 @@ import Testing
         #expect(ThingTable.line(table.entries[1], now: now) == "n2: My note \"Ideas\", edited today (empty)")
         let reference = Reference(.note(note))
         #expect(reference.kind == .note && reference.noteID == note.id && reference.text == "passport")
-        #expect(reference.asExchange(query: "q") == .note(query: "q", title: "Packing list", excerpt: "passport"))
+        #expect(reference.asExchange(query: "q") == .note(query: "q", title: "Packing list", excerpt: "passport", noteID: note.id))
+        #expect(Reference(.exchange(.note(query: "q", title: "Packing list", excerpt: "passport", noteID: note.id))).noteID == note.id, "a handle for the opened note resolves to the note")
+        #expect(Exchange.note(query: "q", title: "Packing list", excerpt: "passport", noteID: note.id).forJev == .note(query: "q", title: "Packing list", excerpt: "passport"), "Jev never sees the id")
         #expect(Exchange.note(query: "q", title: "Packing list", excerpt: "passport").described == "Opened my note \"Packing list\"")
         #expect(Exchange.note(query: "q", title: "Packing list", excerpt: "").summary == "my note \"Packing list\"")
     }
