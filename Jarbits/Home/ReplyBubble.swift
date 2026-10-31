@@ -176,8 +176,21 @@ struct ReplyBubble: View {
 
     @ViewBuilder
     private func reply(_ layer: Layer) -> some View {
-        if let summary = layer.summary {
-            // A write's confirmation: quieter than an answer; "Read on" shows the note.
+        if let summary = layer.summary, case let .note(note) = layer.plan {
+            // A write: where it wrote, then the lines themselves as the note
+            // draws them (a bullet, a checkbox, a link as its title); a new
+            // note or a rewrite shows the note's first lines. "Read on" opens the note.
+            VStack(alignment: .leading, spacing: 10) {
+                Text(summary)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                noteBody(layer.wrote ?? note.body)
+                foot(Text(note.title), readOn: true)
+            }
+        } else if let summary = layer.summary {
+            // A confirmation with nothing of its own to show: the line, and "Read on".
             VStack(alignment: .leading, spacing: 8) {
                 Text(summary)
                     .font(.subheadline.weight(.medium))
@@ -271,22 +284,28 @@ struct ReplyBubble: View {
     /// cap; "Read on" opens the note itself for typing.
     private func noteCard(_ note: Note) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(NoteMarkdown.attributed(from: note.body.isEmpty ? "(empty)" : note.body))
-                .font(.body)
-                .foregroundStyle(Palette.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
-                .frame(maxHeight: cap, alignment: .top)
-                .clipped()
-                .overlay(alignment: .bottom) {
-                    if cut {
-                        LinearGradient(colors: [.white.opacity(0), .white], startPoint: .top, endPoint: .bottom)
-                            .frame(height: 48)
-                            .allowsHitTesting(false)
-                    }
-                }
+            noteBody(note.body)
             foot(Text(note.title), readOn: true)
         }
+    }
+
+    /// Note text as the note card draws it, capped and faded at the foot
+    /// when cut: the whole note, or the lines a write put in.
+    private func noteBody(_ markdown: String) -> some View {
+        Text(NoteMarkdown.attributed(from: markdown.isEmpty ? "(empty)" : markdown))
+            .font(.body)
+            .foregroundStyle(Palette.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { textHeight = $0 }
+            .frame(maxHeight: cap, alignment: .top)
+            .clipped()
+            .overlay(alignment: .bottom) {
+                if cut {
+                    LinearGradient(colors: [.white.opacity(0), .white], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 48)
+                        .allowsHitTesting(false)
+                }
+            }
     }
 
     // MARK: A question

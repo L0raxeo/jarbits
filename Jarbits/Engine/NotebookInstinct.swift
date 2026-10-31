@@ -75,10 +75,9 @@ struct NotebookInstinct: InstinctRunner {
                 ? await session.notebook.insert(content, into: note.id, after: after)
                 : await session.notebook.replace(note.id, body: content, title: title)
             guard session.isCurrent(token), let changed else { return .nothing }
-            // The line in the bubble: the note, and what went in (the item's
-            // title, else the first words written, plain).
-            let what = itemReference?.title ?? Note.title(from: content)
-            session.showNote(changed, wrote: action == "add" ? "Added to \(changed.title): \(what)" : "Rewrote \(changed.title)", context: context)
+            // The bubble: where it wrote, over the lines themselves as the
+            // note draws them; a rewrite's preview is the note's first lines.
+            session.showNote(changed, wrote: action == "add" ? "Added to \(changed.title)" : "Rewrote \(changed.title)", lines: action == "add" ? content : nil, context: context)
             return InstinctOutcome(fact: nil, text: "\(action == "add" ? "added to" : "rewrote") my note \"\(changed.title)\"")
         case "delete":
             guard let note = found else {

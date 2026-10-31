@@ -876,7 +876,7 @@ final class JarbitsSession {
     /// itself one "Read on" away. A layer already showing this note takes
     /// the new text instead, so an edit by Jarbits to the note on screen
     /// shows at once, where the user is looking.
-    func showNote(_ note: Note, wrote summary: String? = nil, context: InstinctContext) {
+    func showNote(_ note: Note, wrote summary: String? = nil, lines: String? = nil, context: InstinctContext) {
         lastQuery = context.query
         if let shown = current, stage != .idle, case let .note(old) = shown.plan, old.id == note.id {
             shown.plan = .note(note)
@@ -889,6 +889,7 @@ final class JarbitsSession {
         }
         let layer = showReply(.note(note), context: context)
         layer.summary = summary
+        layer.wrote = lines
     }
 
     /// Several of his notes, in the grid.

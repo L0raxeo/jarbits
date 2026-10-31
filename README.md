@@ -434,9 +434,10 @@ right where the form has it. A drag stretches the body with the finger
 (layout, not interpretation):
 
 - a line: a one-liner, the time, a mark ("Remembered: I'm vegetarian",
-  quiet, gone after three seconds), a write to a note ("Added to Watch
-  List: …", the note on "Read on"), a limit the planner states;
-- a card: a narrative, a note asked for, what the planner said (`say`), or a question with
+  quiet, gone after three seconds), a limit the planner states;
+- a card: a narrative, a note asked for, a write to a note ("Added to
+  Watch List" over the lines written, as the note draws them; the note on
+  "Read on"), what the planner said (`say`), or a question with
   its one to three buttons or a line to type (`ask`, "What's your
   name?", "Delete my note …?", "Forget which?"); it grows to at most 40%
   of the screen, and past that the text is cut at the foot with "Read
@@ -709,9 +710,11 @@ notes · 3"), by `open` with several handles or the notebook's `all`. A delete a
 my note 'Packing list'?") and moves the file to `.trash/`, never gone.
 Every append or replace first copies the text as it was to
 `.versions/<id>/`, so any edit by Jarbits can be undone. A write leaves
-the screen where it was: the bubble shows a line naming the note and
-what went in ("Added to Watch List: Rick Steves' Europe: Lisbon", "Made
-the note Trip", "Rewrote Shopping"), and "Read on" opens the note. A
+the screen where it was: the bubble shows where it wrote ("Added to Watch
+List", "Made the note Trip", "Rewrote Shopping") over the lines themselves
+as the note draws them (a bullet as a bullet, a link as its tappable
+title; `Layer.wrote`), a new note or a rewrite showing the note's first
+lines, capped as any card, and "Read on" opens the note (2026-10-30). A
 note asked for shows in the bubble as a card, its marks drawn as the
 note card draws them, the editable note one "Read on" away; the grid of
 several notes stays a layer; a note already on screen that is written

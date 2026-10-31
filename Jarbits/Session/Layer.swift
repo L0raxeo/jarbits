@@ -67,10 +67,14 @@ final class Layer: Identifiable {
     /// A reply that only lingers in the bubble for a moment (a mark such as
     /// "Remembered: …"): not an exchange, not a thread, never promoted.
     var lingers = false
-    /// One line the bubble shows for this reply instead of its content: a
-    /// write's confirmation ("Added to Watch List: …"); "Read on" shows the
-    /// content itself.
+    /// The heading the bubble shows over a write's preview instead of the
+    /// whole note: where it wrote ("Added to Watch List", "Made the note
+    /// Trip", "Rewrote Shopping"); "Read on" shows the note itself.
     var summary: String?
+    /// The lines a write put into the note, in the note's own markup: the
+    /// preview under the heading, drawn as the note draws them. Nil for a
+    /// new note or a rewrite, whose preview is the note's first lines.
+    var wrote: String?
     /// The layer has something on screen: a card from the moment it opens,
     /// a page from its first commit. A page starting in a fresh host is not
     /// drawn until it commits; the home screen hides the layer meanwhile.
