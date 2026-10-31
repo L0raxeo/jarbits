@@ -581,6 +581,18 @@ final class JarbitsSession {
     /// How long a plan step may take to reach the screen.
     private static let performWait: Duration = .seconds(10)
 
+    /// What is on the user's screen as a thing `look` can read when it is
+    /// not a page: the note (fresh from the notebook) or the answer; nil
+    /// for a page, which its host reads, and for a grid.
+    func lookable() async -> Thing? {
+        guard let layer = askedOver ?? current else { return nil }
+        switch layer.plan {
+        case let .note(note): return await notebook.note(id: note.id).map { .note($0) } ?? .note(note)
+        case .answer, .time, .said, .memory: return layer.exchanges.last.map { .exchange($0.exchange) }
+        default: return nil
+        }
+    }
+
     /// A plan step that did something with no screen of its own becomes a
     /// memory of its own, so "what did you just do" finds it.
     func noteAction(name: String, arguments: JSONValue, result: String, query: String) {

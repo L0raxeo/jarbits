@@ -1066,9 +1066,9 @@ with the examples above (2026-10-30).
 
 A page on Jarbits's screen comes back in the step's result as a thing with
 a handle: `opened on my screen as p3: Searched "lehigh pizza hours" on my
-screen; look reads it (page: p3), open p3 shows it to Lorcan`. From then on
+screen; look reads it (thing: p3), open p3 shows it to Lorcan`. From then on
 `look` reads it (with no handle, `look` reads the newest page on Jarbits's
-screen from this plan, else the user's page), `open p3` brings it forward
+screen from this plan, else whatever is on the user's screen), `open p3` brings it forward
 to the user's screen as it is, already loaded (the same layer moves into
 the stack, its sound let go; nothing reloads), the notebook's `item` keeps
 it, and an answer's `about` names it. Pages Jarbits read for an answer are
@@ -1142,7 +1142,13 @@ with the question beside it, `the user answered "Keep" to "Delete the
 watchlist?" (options: Delete, Keep)`, since a bare word once read as a
 delete done; the rules say asking changes nothing on its own, 2026-10-31),
 `say` shows the planner's own text in the bubble as it is,
-`open` shows a thing by its handle, `look` reads more of an open page, and
+`open` shows a thing by its handle, `look` reads a thing in full by its
+handle (a page's text further down, links, outline or tables by its own
+script; a note's lines, links or headings; an answer's or a memory's text
+by paragraph or by turn, `Looking`; numbered, `from` continuing, the links
+as `s` handles; 2026-10-31, so that what the listing does not show is one
+look away and never a guess, at the cost of an extra round when the model
+reads what it already had), and
 `done` ends the plan. `say` is for what the planner already holds in full
 (the facts, the memories shown to it, earlier steps' results), including
 "I don't know that yet"; a question needing knowledge beyond that goes

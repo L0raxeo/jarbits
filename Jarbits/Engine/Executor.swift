@@ -213,22 +213,29 @@ final class Executor {
                         ended = .declined
                     }
                 } else if call.name == Planner.lookTool.name {
-                    // More of an open page than the screen block holds; the page's
-                    // script reads it and the links it finds get handles.
+                    // A thing read in full, by handle: a page by its own script
+                    // (the links it finds get handles), a note by its lines, an
+                    // answer or a memory by its text. Nothing in the listing is
+                    // more than one look away.
                     let what = call.arguments["what"]?.stringValue ?? "text"
                     let from = call.arguments["from"]?.intValue
-                    let handle = call.arguments["page"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+                    let handle = call.arguments["thing"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
                     var host: PageHost?
+                    var thing: Thing?
                     var refusal: String?
                     if handle.isEmpty {
-                        // The newest page on Jarbits's screen from this plan, else the user's.
+                        // The newest page on Jarbits's screen from this plan, else
+                        // whatever is on the user's screen: page, note or answer.
                         if let mine = deskPages.values.max(by: { $0.lastShown < $1.lastShown }) {
                             host = mine.page
                             mine.lastShown = .now
                             if host == nil { refusal = "the page on my screen is no longer loaded: search again, or open it to show it to the user" }
+                        } else if let open = session.pageHost(for: nil) {
+                            host = open
+                        } else if let shown = await session.lookable() {
+                            thing = shown
                         } else {
-                            host = session.pageHost(for: nil)
-                            if host == nil { refusal = "no page is open to look at" }
+                            refusal = "nothing is open to look at"
                         }
                     } else if let mine = deskPages[handle] {
                         host = mine.page
@@ -236,24 +243,50 @@ final class Executor {
                         if host == nil { refusal = "\(handle) is no longer loaded on my screen: search again, or open \(handle) to show it to the user" }
                     } else {
                         switch things[handle] {
-                        case .item?: refusal = "\(handle) is a link, not an open page: open it first, then look"
+                        case .item?: refusal = "\(handle) is a link, not an open thing: open it first, then look"
                         case let .exchange(exchange)? where exchange.kind == .page || exchange.kind == .search:
                             host = session.pageHost(for: exchange)
                             if host == nil { refusal = "that page is not open now: open \(handle), then look" }
+                        case let .exchange(exchange)? where exchange.kind == .note:
+                            if let id = exchange.noteID, let note = await session.notebook.note(id: id) { thing = .note(note) }
+                            else { refusal = exchange.noteID == nil ? "\(handle) is a grid of notes: open one of them to read it" : "that note is no longer in my notebook" }
+                        case let .exchange(exchange)? where exchange.kind == .answer:
+                            thing = .exchange(exchange)
+                        case let .note(note)?:
+                            // Fresh from the notebook: the listing's copy may be older than a step's write.
+                            thing = await session.notebook.note(id: note.id).map { .note($0) } ?? .note(note)
+                        case let .memory(record)?:
+                            if record.kind == .page || record.kind == .search || record.kind == .image {
+                                refusal = "\(handle) is not open now: open \(handle), then look"
+                            } else {
+                                thing = .memory(record)
+                            }
                         case nil: refusal = noSuchThing(handle)
-                        default: refusal = "\(handle) is not a page"
+                        default: refusal = "\(handle) is a grid: open one of its things to read it"
                         }
                     }
+                    guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                     if let refusal {
                         result = refusal
                         outcome = "failed: \(refusal)"
                         failures += 1
-                    } else {
-                        let looked = await host?.look(what: what, from: from)
+                    } else if let host {
+                        let looked = await host.look(what: what, from: from)
                         guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                         let handles = things.mint(items: looked?.items ?? [])
                         result = Planner.looked(what: what, text: looked?.text ?? "", handles: handles, in: things)
                         outcome = looked == nil ? "looked: no reply" : "looked: \(what), \(looked!.text.count) chars, \(handles.count) links"
+                    } else if let thing {
+                        let (lead, read, unit) = Self.read(thing, what: what, from: from)
+                        var text = read.text
+                        if let more = Looking.moreLine(read.more, unit: unit) { text += (text.isEmpty ? "" : "\n") + more }
+                        let handles = what == "links" ? things.mint(items: read.links) : []
+                        result = Planner.looked(what: what, text: what == "links" ? "" : text, handles: handles, in: things, lead: lead)
+                        outcome = "looked: \(what), \(text.count) chars, \(handles.count) links"
+                    } else {
+                        result = "nothing is open to look at"
+                        outcome = "failed: nothing open"
+                        failures += 1
                     }
                     answered = false
                 } else if let instinct = instincts.first(where: { $0.spec.id == call.name }) {
@@ -339,7 +372,7 @@ final class Executor {
                                 let handle = things.mint(exchange: exchange)
                                 deskPages[handle] = layer
                                 deskByKey[key] = handle
-                                result = "opened on my screen as \(handle): \(exchange.described); look reads it (page: \(handle)), open \(handle) shows it to \(session.persona.user)"
+                                result = "opened on my screen as \(handle): \(exchange.described); look reads it (thing: \(handle)), open \(handle) shows it to \(session.persona.user)"
                                 outcome = "read"
                                 #if DEBUG
                                 print("desk open \(handle) \"\(stepQuery)\" \(exchange.host ?? exchange.text ?? "")")
@@ -397,6 +430,28 @@ final class Executor {
             }
         }
         return finish(.budget, memories: memories.count)
+    }
+
+    /// A thing that is not a page, read: its lead line, what was read, and
+    /// the unit the rest is counted in.
+    private static func read(_ thing: Thing, what: String, from: Int?) -> (lead: String, read: Looking.Read, unit: String) {
+        switch thing {
+        case let .note(note):
+            switch what {
+            case "outline": return ("Headings of my note \"\(note.title)\":", Looking.Read(text: Looking.outline(of: note), links: [], more: 0), "lines")
+            case "tables": return ("My note \"\(note.title)\":", Looking.Read(text: "a note has no tables: read its text", links: [], more: 0), "lines")
+            case "links":
+                let read = Looking.lines(of: note, from: nil)
+                return (read.links.isEmpty ? "No links in my note \"\(note.title)\"." : "Links in my note \"\(note.title)\", in order:", read, "lines")
+            default: return ("Lines of my note \"\(note.title)\":", Looking.lines(of: note, from: from), "lines")
+            }
+        case let .memory(record):
+            return ("The \(record.kind.label) \"\(record.title)\":", Looking.text(of: record, from: from), "paragraphs")
+        case let .exchange(exchange):
+            return ("The answer to \"\(exchange.query)\":", Looking.paragraphs(of: exchange.text ?? "", from: from), "paragraphs")
+        case let .item(item):
+            return ("The link \"\(item.title)\":", Looking.Read(text: "", links: [], more: 0), "lines")
+        }
     }
 
     /// "Go ahead: …?" on the sheet, for a paid or destructive step.
