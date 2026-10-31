@@ -43,6 +43,9 @@ struct InstinctContext {
     var fact: FactSummary? = nil
     /// What was on screen as the query began: an answer about it reads it.
     var screen: Screen? = nil
+    /// The page this step opens goes to Jarbits's own screen, not the
+    /// user's: the planner's choice, carried out by the session.
+    var desk = false
 }
 
 /// What an instinct that shows nothing came to: how it touched the facts,

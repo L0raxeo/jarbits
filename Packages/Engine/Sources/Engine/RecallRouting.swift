@@ -57,6 +57,7 @@ public enum RecallRouting {
         line += " A \(describe(record.kind)) from \(when(record.date, now: now, calendar: calendar))"
         if let host = record.url?.host() { line += " (\(host))" }
         line += ": \"\(record.title)\"."
+        if record.own == true { line += " I read it on my own screen; the user did not see it." }
         if let text = record.text {
             let plain = text.replacingOccurrences(of: "==", with: "").replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "__", with: "")
             line += " It begins: \"\(String(plain.prefix(120)))\"."

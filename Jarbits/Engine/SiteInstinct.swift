@@ -36,6 +36,12 @@ struct SiteInstinct: InstinctRunner {
     /// it is learned instead.
     private func findSites(for name: String, context: InstinctContext, in session: JarbitsSession, token: UUID) async -> InstinctOutcome {
         let outcome = context.decision.rejectsSite ? "rejected" : "choices"
+        if context.desk {
+            // No choices card on Jarbits's screen, and no one there to tap one:
+            // the results page for the name, for Jarbits to read.
+            fellBackToResults(for: name, context: context, in: session, outcome: outcome, reason: "on my screen")
+            return .nothing
+        }
         guard let siteSearch = session.siteSearch else {
             fellBackToResults(for: name, context: context, in: session, outcome: outcome, reason: "no key")
             return .nothing

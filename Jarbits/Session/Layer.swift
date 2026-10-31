@@ -75,6 +75,16 @@ final class Layer: Identifiable {
     /// a page from its first commit. A page starting in a fresh host is not
     /// drawn until it commits; the home screen hides the layer meanwhile.
     var drawn = false
+    /// On Jarbits's own screen: a page a plan opened to read, which the user
+    /// never sees until it is brought forward. Never current, never in the
+    /// user's stack while this is set.
+    var desk = false
+    /// When the layer was made: the order the user's layers and Jarbits's
+    /// pages are listed in, as one session.
+    let created = Date.now
+    /// The pages Jarbits read on its own screen for this answer, oldest
+    /// first; the full view lists them, and a tap brings one forward.
+    var sources: [Layer] = []
 
     init(plan: CardPlan, query: String, decision: Pick? = nil) {
         self.plan = plan
@@ -109,6 +119,14 @@ final class Layer: Identifiable {
     }
 
     var isLive: Bool { page != nil }
+    /// The address a web layer stands at: the page's last report, else where
+    /// its notes left it, else where it was sent. Nil for a card.
+    var webAddress: URL? {
+        if let pageAddress { return pageAddress }
+        if let notes { return notes.address }
+        if case let .web(url) = plan { return url }
+        return nil
+    }
     /// Leaving would lose something: the page's video part way through, or
     /// a form typed into.
     var inUse: Bool { page?.inUse ?? false }

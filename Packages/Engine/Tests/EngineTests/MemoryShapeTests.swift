@@ -66,6 +66,12 @@ import Testing
         let json = String(decoding: try DecisionRecord.encoder.encode(record), as: UTF8.self)
         #expect(json.contains("\"parts\""))
         #expect(!json.contains("\"kind\""), "the flat keys are read, never written")
+        #expect(!json.contains("\"own\""), "a page the user saw carries no mark")
+        var read = record
+        read.own = true
+        let readBack = try roundTrip(read)
+        #expect(readBack.own == true)
+        #expect(String(decoding: try DecisionRecord.encoder.encode(read), as: UTF8.self).contains("\"own\":true"))
     }
 
     @Test func anUnknownPartIsDroppedAndTheRecordSurvives() throws {

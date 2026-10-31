@@ -75,8 +75,13 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
     /// Long-term: when it was promoted. Nil is short-term.
     public var kept: Date?
     public var version: Int
+    /// True when Jarbits read this on its own screen while planning and
+    /// the user never saw it; nil when the user saw it. Read by the planner
+    /// and recall's judge in their listings; nothing on the device filters
+    /// by it.
+    public var own: Bool?
 
-    public init(id: UUID = UUID(), date: Date = .now, title: String? = nil, query: String = "", parts: [MemoryPart], cameFrom: UUID? = nil, kept: Date? = nil) {
+    public init(id: UUID = UUID(), date: Date = .now, title: String? = nil, query: String = "", parts: [MemoryPart], cameFrom: UUID? = nil, kept: Date? = nil, own: Bool? = nil) {
         precondition(!parts.isEmpty, "a memory has at least its head")
         self.id = id
         self.date = date
@@ -86,15 +91,16 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         self.cameFrom = cameFrom
         self.kept = kept
         self.version = Self.currentVersion
+        self.own = own
     }
 
     /// The flat shape, as a factory: one part per kind, a conversation as
     /// one answer part per turn. What the session and the tests build with.
     /// The parts' ids derive from the record's, so two builds of the same
     /// flat record are equal.
-    public init(id: UUID = UUID(), date: Date = .now, kind: Kind, query: String, title: String? = nil, url: URL? = nil, text: String? = nil, turns: [AnswerTurn]? = nil, cameFrom: UUID? = nil, kept: Date? = nil) {
+    public init(id: UUID = UUID(), date: Date = .now, kind: Kind, query: String, title: String? = nil, url: URL? = nil, text: String? = nil, turns: [AnswerTurn]? = nil, cameFrom: UUID? = nil, kept: Date? = nil, own: Bool? = nil) {
         let parts = Self.parts(for: id, kind: kind, query: query, title: title, url: url, text: text, turns: turns)
-        self.init(id: id, date: date, title: title ?? query, query: query, parts: parts, cameFrom: cameFrom, kept: kept)
+        self.init(id: id, date: date, title: title ?? query, query: query, parts: parts, cameFrom: cameFrom, kept: kept, own: own)
     }
 
     /// Stands in for a page's address when the flat shape had none (a
@@ -213,7 +219,7 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
     // MARK: Both shapes on disk
 
     enum CodingKeys: String, CodingKey {
-        case id, date, title, query, parts, cameFrom, kept, version
+        case id, date, title, query, parts, cameFrom, kept, version, own
         // The flat shape, read only.
         case kind, url, text, turns
     }
@@ -225,6 +231,7 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         query = try c.decodeIfPresent(String.self, forKey: .query) ?? ""
         cameFrom = try c.decodeIfPresent(UUID.self, forKey: .cameFrom)
         kept = try c.decodeIfPresent(Date.self, forKey: .kept)
+        own = try c.decodeIfPresent(Bool.self, forKey: .own)
         version = Self.currentVersion
         if c.contains(.parts) {
             // A part this build cannot read is dropped; a record left with
@@ -257,6 +264,7 @@ public struct MemoryRecord: Codable, Sendable, Hashable, Identifiable {
         try c.encodeIfPresent(cameFrom, forKey: .cameFrom)
         try c.encodeIfPresent(kept, forKey: .kept)
         try c.encode(version, forKey: .version)
+        try c.encodeIfPresent(own, forKey: .own)
     }
 }
 

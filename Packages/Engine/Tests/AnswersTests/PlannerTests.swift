@@ -35,7 +35,24 @@ import Testing
         #expect(forget.description.contains("Asks the user itself"))
         #expect(forget.parameters["required"]?.arrayValue?.compactMap { $0.stringValue } == ["query"], "about is optional")
         let narrative = try #require(tools.first { $0.name == "narrative" })
-        #expect(narrative.description.contains("Puts its result on screen"))
+        #expect(narrative.description.contains("Puts its result on the user's screen"))
+        #expect(narrative.parameters["properties"]?["screen"] == nil, "an answer has no screen to choose: it goes to the bubble")
+        // The two screens: a page-opening tool says whose screen, Jarbits's by default.
+        let web = try #require(tools.first { $0.name == "web_results" })
+        #expect(web.description.contains("Opens its page on my screen, where only I read it; on the user's screen when screen is user"))
+        #expect(web.parameters["properties"]?["screen"]?["enum"]?.arrayValue?.compactMap { $0.stringValue } == ["mine", "user"])
+        #expect(web.parameters["required"]?.arrayValue?.compactMap { $0.stringValue } == ["query", "screen"], "every page step says whose screen")
+        #expect(Planner.screenField.description.contains("Every page step says which"))
+        for name in ["image", "video", "map", "stock", "site"] {
+            #expect(tools.first { $0.name == name }?.parameters["properties"]?["screen"] != nil, "\(name) opens a page")
+        }
+        for name in ["time", "notebook", "one_line", "recall", "remember"] {
+            #expect(tools.first { $0.name == name }?.parameters["properties"]?["screen"] == nil, "\(name) opens no page")
+        }
+        #expect(InstinctSpec.spec(for: .webResults).arguments.fields.isEmpty, "the screen field lives on the tool, never on the spec, so Jev's questions do not change")
+        #expect(open.description.contains("brought forward to the user's screen as it is, already loaded"))
+        #expect(Planner.lookTool.description.contains("Reads the page on my screen when a step of this plan opened one (the newest), else the page on the user's screen"))
+        #expect(Planner.sayTool.description.contains("(what I read on my screen included)"))
         let ask = try #require(tools.first { $0.name == "ask" })
         #expect(ask.parameters["required"]?.arrayValue?.compactMap { $0.stringValue } == ["question"])
         #expect(ask.parameters["properties"]?["options"]?["type"]?.stringValue == "array")
@@ -56,7 +73,8 @@ import Testing
         #expect(system.contains("call say with it"))
         #expect(system.contains("Never write an answer into a question"))
         #expect(system.contains("What Jarbits knows about Lorcan"))
-        #expect(system.contains("web_results, narrative, map, stock, one_line, image, site, video, time, notebook, say and open each put a result on screen, and a later one replaces the earlier: end on what Lorcan should see"))
+        #expect(system.contains("There are two screens. Lorcan has theirs, where everything they see goes: narrative, one_line, time, notebook, say and open put their result there, and a later one replaces the earlier: end on what Lorcan should see. I have a screen of my own, where I read: web_results, map, stock, image, site, video open their page there unless screen is user, and nothing on my screen is seen by Lorcan."))
+        #expect(system.contains("open brings it forward to Lorcan's screen as it is"))
         #expect(!system.contains("Show at most one thing"))
         #expect(system.contains("The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2)"))
         #expect(system.contains("never one you made up"))

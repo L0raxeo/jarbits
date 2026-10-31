@@ -1,5 +1,6 @@
 import Engine
 import SwiftUI
+import WebKit
 
 /// The whole screen: white, the clay above the middle, the keyboard hint at the
 /// bottom, and the result once there is one. Focus makes the clay a capsule you
@@ -147,6 +148,8 @@ struct HomeView: View {
                                     height: proxy.size.height + insets.top + insets.bottom)
 
                 ZStack {
+                    JarbitsScreen(window: window)
+
                     // The background takes taps and swipes only on the clay
                     // screen; under a result the page or the answer has them.
                     if session.stage == .idle {
@@ -518,6 +521,28 @@ private struct QuestionHaptic: ViewModifier {
     func body(content: Content) -> some View {
         content.sensoryFeedback(.impact(weight: .light), trigger: session.question?.id) { _, id in
             id != nil
+        }
+    }
+}
+
+/// Jarbits's own screen: every page it has open to read, the window's
+/// size, invisible and untouchable, so each lays out, loads and reports as
+/// a page on the user's screen would. Each page is mounted from creation
+/// to unload and never swapped mid-layout; a page brought forward leaves
+/// here and is mounted by the result view, already loaded.
+private struct JarbitsScreen: View {
+    @Environment(JarbitsSession.self) private var session
+    let window: CGSize
+
+    var body: some View {
+        ForEach(session.deskLive) { layer in
+            if let host = layer.page {
+                WebView(host.page)
+                    .frame(width: window.width, height: window.height)
+                    .opacity(0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
         }
     }
 }

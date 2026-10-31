@@ -445,7 +445,10 @@ right where the form has it. A drag stretches the body with the finger
   tap on the body, by a pull down on the card, or by a follow-up that continues the reply ("why?"
   after a narrative): the same layer object is put into the stack
   (`promoteReply`), its text and turns carried over, and from then on it
-  swipes like any other.
+  swipes like any other. Under the answer, above "Web results", the pages
+  Jarbits read on its own screen for it are listed ("Read: “…” (host)"),
+  and a tap brings that page forward as it is (`Layer.sources`,
+  `JarbitsSession.bringForward`).
 
 The one idea underneath: a reply is a `Layer` held in `reply` instead of
 pushed onto the stack. So its thread and exchanges reach Jev, the reader
@@ -965,6 +968,74 @@ What a look cannot read: links drawn as buttons with no address until
 tapped, content inside frames from another site, and content a page only
 loads as it is scrolled; the fallback for each is the picture and a tap.
 
+### Jarbits's screen and the user's
+
+There are two screens, and the planner holds the picture itself. The user
+has theirs: the stack of layers, the bubble over it. Jarbits has a screen
+of its own, where it reads: every page a plan opens to find something out
+(a Google results page, a page it follows, a second search) loads there,
+and the user's screen does not move. The user's screen changes only when
+the planner puts something on it: a page opened with `screen: user`
+("pull up youtube", "look up flights to lima"), a thing brought forward
+with `open`, or a reply in the bubble (`say`, an answer, a note card, a
+question). "When does Lehigh Pizza open" is a search on Jarbits's screen, a
+`look`, and a line in the bubble; "is this guy's advice on creatine legit"
+over a video is the same with the video left where it is. Nothing on the
+device decides which screen a page belongs on: every page-opening tool
+(`web_results`, `image`, `video`, `map`, `stock`, `site`) takes a `screen`
+field, `mine` or `user`, `mine` when left out, and the device puts the
+page where the planner said (`Planner.screenField`, declared on the tool
+beside `query` and never on the instinct's spec, so Jev's questions are
+unchanged). The system instruction states the two screens in one rule,
+with the examples above (2026-10-30).
+
+A page on Jarbits's screen comes back in the step's result as a thing with
+a handle: `opened on my screen as p3: Searched "lehigh pizza hours" on my
+screen; look reads it (page: p3), open p3 shows it to Lorcan`. From then on
+`look` reads it (with no handle, `look` reads the newest page on Jarbits's
+screen from this plan, else the user's page), `open p3` brings it forward
+to the user's screen as it is, already loaded (the same layer moves into
+the stack, its sound let go; nothing reloads), the notebook's `item` keeps
+it, and an answer's `about` names it. Pages Jarbits read for an answer are
+listed under the answer's full view, a tap bringing one forward.
+
+On the device (`JarbitsSession.desk`, `openOnDesk`, `performOnDesk`,
+`bringForward`): a page on Jarbits's screen is a `Layer` with `desk` set,
+never in `layers`, never current, never `askedOver`; it moves no stage,
+drops no early picture and takes no picture. A hidden `WebView` the size
+of the window hosts each live one (`JarbitsScreen` in `HomeView`,
+opacity 0, no hit testing, hidden from accessibility), so the page lays
+out, loads and reports as any page does; a page with no view at all has
+never existed in the app. Its sound and video are held
+(`PageHost.suspendMedia`, `WebPage.setAllMediaPlaybackSuspended`) from
+creation and after each commit, and let go when it is brought forward,
+after which the page follows its own rules as any page the user opened
+does; the iOS 26 `WebPage` configuration offers no "play on a tap". A
+step on Jarbits's screen waits for the page's first commit and the
+watcher's first address report (so a `look` right after finds the page's
+script in), ten seconds at most. The newest two stay live
+(`maxDeskLive`); the idle sweep and memory warnings cover them as they
+do the user's background pages. The screen persists across queries: a page
+read for one query is listed to the next ("show me that page" is `open`
+on it), and an unloaded one brought forward reloads to its notes.
+
+What the models see: a page or search read on Jarbits's screen is an
+exchange like any other, listed in time order with the user's layers and
+marked `on my screen` in the planner's listing (`Exchange.own`, nil for
+everything the user saw, so every existing request encodes as before);
+Jev is sent the exchange without the mark (`Exchange.forJev`), so routing
+reads exactly as it did. Its memory carries the same mark
+(`MemoryRecord.own`), shown to the planner (", read on my screen") and to
+recall's judge ("I read it on my own screen; the user did not see it"),
+and cleared once the user has seen the page themselves; nothing on the
+device filters by it. The answer models never saw the plan's pages before
+and do not now: the text any model reads from a page is the same on either
+screen, which is why answers' accuracy does not move. The one new decision
+the planner makes, whose screen, is checked by the plan eval set re-asked
+live, with cases for both sides and for `open` by handle. Console:
+`desk open p3 "query" host`, `desk open "query" host; desk live N`,
+`desk forward "title"`, `desk unload …`.
+
 **What leaves the phone with a query.** The visible text, the selection,
 the links in view, the page's own data and the rest of the page (capped as
 above) go to Gemini with the query, for the reading and, when the query is
@@ -988,9 +1059,11 @@ the console prints the probe's and the picture's times (2026-10-29).
 The planner (`Planner` in the Answers library) asks `gemini-3.1-flash-lite`,
 the extractor's model, at high thinking (accuracy over speed and cost,
 Lorcan 2026-10-29; `store: false`; prices in `GeminiPricing`), with every instinct as a tool,
-each taking a `query` and its own fields, plus three the executor answers
+each taking a `query` and its own fields (and, on the page-opening ones,
+`screen`: see "Jarbits's screen and the user's"), plus five the executor answers
 itself: `ask` puts one question in the bubble (up to three options, or a
-line to type), `say` shows the planner's own text in the bubble as it is, and
+line to type), `say` shows the planner's own text in the bubble as it is,
+`open` shows a thing by its handle, `look` reads more of an open page, and
 `done` ends the plan. `say` is for what the planner already holds in full
 (the facts, the memories shown to it, earlier steps' results), including
 "I don't know that yet"; a question needing knowledge beyond that goes
@@ -1018,22 +1091,25 @@ picture as a second content part (see "Screen awareness"); nothing in
 the listing is judged or thinned by a second model, since reading what a
 request means is the planner's work. Every fact
 goes in the system instruction, as it does for an answer. A later showing step replaces what the step before
-showed; the planner is told to end on what the user should see, and
-nothing refuses a second card.
+showed on the user's screen; the planner is told to end on what the user
+should see, and nothing refuses a second card. What the planner opens to
+read goes to a screen of its own: the next section.
 
 The executor runs each call in order through the same paths a single
 query takes: a showing instinct through the session, waiting until its
 layer is ready; an acting one through its `act`. A paid or destructive
 step is put to the user first ("Go ahead: …?") unless the instinct asks
-for itself, as `forget` does; the same call twice runs once; a second
-thing to show is refused, since a new layer would replace the first; an
+for itself, as `forget` does; the same call twice runs once (a page
+already open on Jarbits's screen answers with its handle); an
 answer in the bubble goes back to the model as the step's result, and a
 `remember` right after it keeps the fact as **chosen**. Each result goes
 back as a `function_result`, with every model step replayed verbatim, for
 at most six rounds within two minutes, each round within forty-five
 seconds. The
-plan ends on `done`; when nothing was shown or done, web results for the
-words; on a no in the bubble; when the rounds or the time run out; or when
+plan ends on `done`; when nothing was shown or done, the bubble's "I
+couldn't get through that one." with "Try again" and "Search instead"
+(`offerRetry`; a plan that only read on Jarbits's screen counts as
+nothing shown, and what it read stays listed for the next query); on a no in the bubble; when the rounds or the time run out; or when
 a newer query takes the screen, where it stands and never after a step
 with a side effect. The wave line stays up while the plan runs; a plan
 that only did something hands the screen back to where it stood, as
@@ -1161,7 +1237,10 @@ rest on a second warning within a minute. Leaving a layer pauses its
 media. An unloaded layer keeps notes (`PageNotes`: address, scroll, how
 far into its video) read from the watcher as the page goes, and a swipe
 back to it reloads to that spot (a YouTube watch page takes the time in
-its address). Each layer keeps its own answer stream, pictures, opened
+its address). The pages on Jarbits's own screen are a stack apart
+(`desk`): the newest two stay live (`maxDeskLive`), the same sweep and
+memory-warning rules apply, and one brought forward joins the user's
+stack as it is. Each layer keeps its own answer stream, pictures, opened
 site and memory chain, so a follow-up over a layer swiped back to
 continues that conversation and a page opened from it is memorised as
 coming from it. Nothing of this outlives the app.
@@ -1172,7 +1251,7 @@ coming from it. Nothing of this outlives the app.
 |---|---|
 | `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the screen as the models see it (`Screen`, `ScreenItem`: the text, the links as things, the one rule), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
 | `Jarbits/Engine/Engine.swift` | The cognitive engine's first stage: an address as typed, else one Jev request over the registry carrying the session's exchanges with the reading beside it, the extractor for every value the pick declares, and the instinct to run with what it needs; or the hand-off to the executor when the reasoning score says the query needs several steps. Also `JarbitsSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
-| `Jarbits/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat or a second thing to show, and sending every result back to the planner until `done` or the bounds. |
+| `Jarbits/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat, opening pages on Jarbits's own screen unless the planner said the user's, and sending every result back to the planner until `done` or the bounds. |
 | `Jarbits/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the memories and Jev's judge. |
 | `Jarbits/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |
 | `Jarbits/Engine/FactInstincts.swift` | The two instincts that show nothing: `remember` keeps a fact, `forget` judges which one the words mean and asks in the bubble. |

@@ -28,26 +28,39 @@ public struct Exchange: Codable, Sendable, Hashable {
     public var host: String?
     public var address: String?
     public var text: String?
+    /// True for a page or search Jarbits opened on its own screen while
+    /// planning, which the user never saw; nil otherwise, so an exchange
+    /// the user saw encodes exactly as it always did. Jev is never sent it.
+    public var own: Bool?
 
-    public init(query: String, kind: Kind, title: String? = nil, host: String? = nil, address: String? = nil, text: String? = nil) {
+    public init(query: String, kind: Kind, title: String? = nil, host: String? = nil, address: String? = nil, text: String? = nil, own: Bool? = nil) {
         self.query = query
         self.kind = kind
         self.title = title
         self.host = host
         self.address = address
         self.text = text
+        self.own = own
     }
 
     public static func answer(query: String, text: String) -> Exchange {
         Exchange(query: query, kind: .answer, text: text)
     }
 
-    public static func page(query: String, title: String, address: URL) -> Exchange {
-        Exchange(query: query, kind: .page, title: title, host: address.host(), address: address.absoluteString)
+    public static func page(query: String, title: String, address: URL, own: Bool? = nil) -> Exchange {
+        Exchange(query: query, kind: .page, title: title, host: address.host(), address: address.absoluteString, own: own)
     }
 
-    public static func search(query: String, term: String) -> Exchange {
-        Exchange(query: query, kind: .search, text: term)
+    public static func search(query: String, term: String, own: Bool? = nil) -> Exchange {
+        Exchange(query: query, kind: .search, text: term, own: own)
+    }
+
+    /// The same exchange as Jev is sent it: without the mark of whose
+    /// screen it was on, so Jev's request reads as it always did.
+    public var forJev: Exchange {
+        var copy = self
+        copy.own = nil
+        return copy
     }
 
     public static func recall(query: String, title: String?, titles: [String]) -> Exchange {

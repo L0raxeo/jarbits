@@ -40,6 +40,12 @@ import Testing
         let kept = PlanCase(query: "add this video to a watch list", calls: [.init(name: "notebook", arguments: ["item": "p1"])])
         #expect(PlanCheck.failures(kept, calls: [("notebook", ["text": "- {p1}", "title": "Watch List"])]).isEmpty)
         #expect(PlanCheck.failures(kept, calls: [("notebook", ["text": "- {p2}", "title": "Watch List"])]) == ["notebook.item: expected \"p1\", got nothing"])
+        // "<absent>" accepts the field left out: an alternative tool without it passes, the wrong value fails.
+        let screen = PlanCase(query: "when does lehigh pizza open", calls: [.init(name: "web_results|one_line", arguments: ["screen": "mine|<absent>"])])
+        #expect(PlanCheck.failures(screen, calls: [("web_results", ["query": "lehigh pizza hours"])]).isEmpty, "left out is mine")
+        #expect(PlanCheck.failures(screen, calls: [("web_results", ["screen": "mine"])]).isEmpty)
+        #expect(PlanCheck.failures(screen, calls: [("one_line", ["query": "q"])]).isEmpty)
+        #expect(PlanCheck.failures(screen, calls: [("web_results", ["screen": "user"])]) == ["web_results|one_line.screen: expected \"mine|<absent>\", got \"user\""])
     }
 
     @Test func theRequestListsThingsWithHandlesAndIsStable() throws {

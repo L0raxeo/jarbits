@@ -6,9 +6,10 @@ import Engine
 /// one through the instincts, the sheet and the session, and sends each
 /// result back for the next round, until the model calls done or the
 /// bounds run out. A paid or destructive step is put to the user first;
-/// the same call twice runs once; a second thing to show is refused, since
-/// a new layer would cancel the first; a newer query ends the plan where
-/// it stands. Nothing the model writes is shown.
+/// the same call twice runs once; a page the planner opens goes to
+/// Jarbits's own screen unless it said the user's, and comes back as a
+/// thing with a handle; a newer query ends the plan where it stands.
+/// Nothing the model writes is shown.
 @MainActor
 final class Executor {
     private let planner: Planner
@@ -76,6 +77,10 @@ final class Executor {
         var ran: Set<String> = []
         var shown = false
         var failures = 0
+        /// The pages this plan opened on Jarbits's own screen, by handle, and
+        /// the step that opened each: look reads them, open brings one forward.
+        var deskPages: [String: Layer] = [:]
+        var deskByKey: [String: String] = [:]
         /// The step before was an answered question: a remember next keeps a chosen fact.
         var answered = false
 
@@ -156,7 +161,15 @@ final class Executor {
                         let notes = found.compactMap { if case let .note(note) = $0 { note } else { nil } }
                         let records = found.compactMap { if case let .memory(record) = $0 { record } else { nil } }
                         if found.count == 1 {
-                            await session.open(Reference(found[0]), context: context)
+                            if let mine = deskPages[handles[0]] {
+                                // A page from Jarbits's screen, forward as it is.
+                                session.bringForward(mine, context: context)
+                                #if DEBUG
+                                print("desk forward \(handles[0])")
+                                #endif
+                            } else {
+                                await session.open(Reference(found[0]), context: context)
+                            }
                             result = "shown on screen"
                         } else if notes.count == found.count {
                             session.showNotes(notes, title: "My notes", context: context)
@@ -198,13 +211,24 @@ final class Executor {
                     var host: PageHost?
                     var refusal: String?
                     if handle.isEmpty {
-                        host = session.pageHost(for: nil)
-                        if host == nil { refusal = "no page is on screen to look at" }
+                        // The newest page on Jarbits's screen from this plan, else the user's.
+                        if let mine = deskPages.values.max(by: { $0.lastShown < $1.lastShown }) {
+                            host = mine.page
+                            mine.lastShown = .now
+                            if host == nil { refusal = "the page on my screen is no longer loaded: search again, or open it to show it to the user" }
+                        } else {
+                            host = session.pageHost(for: nil)
+                            if host == nil { refusal = "no page is open to look at" }
+                        }
+                    } else if let mine = deskPages[handle] {
+                        host = mine.page
+                        mine.lastShown = .now
+                        if host == nil { refusal = "\(handle) is no longer loaded on my screen: search again, or open \(handle) to show it to the user" }
                     } else {
                         switch things[handle] {
                         case .item?: refusal = "\(handle) is a link, not an open page: open it first, then look"
-                        case let .exchange(exchange)? where exchange.kind == .page:
-                            host = session.pageHost(for: exchange.address.flatMap(URL.init(string:)))
+                        case let .exchange(exchange)? where exchange.kind == .page || exchange.kind == .search:
+                            host = session.pageHost(for: exchange)
                             if host == nil { refusal = "that page is not open now: open \(handle), then look" }
                         case nil: refusal = noSuchThing(handle)
                         default: refusal = "\(handle) is not a page"
@@ -225,8 +249,10 @@ final class Executor {
                 } else if let instinct = instincts.first(where: { $0.spec.id == call.name }) {
                     let spec = instinct.spec
                     let key = ReasoningPolicy.stepKey(name: call.name, arguments: call.arguments)
-                    var values = ArgumentSchema(fields: [Planner.queryField] + spec.arguments.fields).validate(call.arguments.objectValue ?? [:])
+                    var values = ArgumentSchema(fields: Planner.fields(for: spec)).validate(call.arguments.objectValue ?? [:])
                     let stepQuery = values["query"]?.stringValue ?? query
+                    // A page opens on Jarbits's own screen unless the planner said the user's.
+                    let onDesk = Planner.opensPage(spec) && values[Planner.screenField.name]?.stringValue != "user"
                     if spec.instinct == .remember, answered { values[RememberInstinct.sourceField] = .string(Fact.Source.chosen.rawValue) }
                     answered = false
                     // A thing field names a handle, or several separated by commas;
@@ -265,7 +291,7 @@ final class Executor {
                         outcome = "failed: no such thing"
                         failures += 1
                     } else if ran.contains(key) {
-                        result = "already done"
+                        result = deskByKey[key].map { "already done: it is on my screen as \($0)" } ?? "already done"
                         outcome = "already ran"
                     } else if ReasoningPolicy.needsConfirmation(spec),
                               !(await confirmed(spec, stepQuery, token: token)) {
@@ -279,12 +305,13 @@ final class Executor {
                             query: stepQuery,
                             decision: Pick(instinct: spec.instinct, suggested: nil, confidence: 1, source: .plan),
                             opened: nil, canAnswer: session.canAnswer, thread: [], earlier: exchanges,
-                            arguments: values.filter { $0.key != Planner.queryField.name }
+                            arguments: values.filter { $0.key != Planner.queryField.name && $0.key != Planner.screenField.name }
                         )
                         context.things = resolved
                         context.manyThings = resolvedMany
                         context.namedThings = named
                         context.screen = screen   // an answer the plan asks for may be about what is on screen
+                        context.desk = onDesk
                         if spec.instinct == .recall {
                             // In a plan the recall finds; what it found gets handles for the next step.
                             context.lookup = true
@@ -293,6 +320,25 @@ final class Executor {
                             let handles = things.mint(act.found)
                             result = Planner.found(handles, in: things, now: now)
                             outcome = act.found.isEmpty ? "found nothing" : "found \(act.found.count)"
+                        } else if onDesk {
+                            // On Jarbits's screen: nothing the user sees moves; the page
+                            // comes back as a thing, for look, open, item or about.
+                            let (layer, reason) = await session.performOnDesk(instinct, context: context, token: token)
+                            guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
+                            if let layer, let exchange = layer.exchanges.first?.exchange {
+                                let handle = things.mint(exchange: exchange)
+                                deskPages[handle] = layer
+                                deskByKey[key] = handle
+                                result = "opened on my screen as \(handle): \(exchange.described); look reads it (page: \(handle)), open \(handle) shows it to \(session.persona.user)"
+                                outcome = "read"
+                                #if DEBUG
+                                print("desk open \(handle) \"\(stepQuery)\" \(exchange.host ?? exchange.text ?? "")")
+                                #endif
+                            } else {
+                                result = "could not: \(reason ?? "nothing opened")"
+                                outcome = "failed: \(reason ?? "nothing opened")"
+                                failures += 1
+                            }
                         } else if spec.showsLayer {
                             let (didShow, reason) = await session.perform(instinct, context: context, token: token)
                             guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }

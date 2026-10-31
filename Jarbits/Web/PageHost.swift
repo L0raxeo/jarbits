@@ -462,6 +462,14 @@ final class PageHost {
         await page.pauseAllMediaPlayback()
     }
 
+    /// Every sound and video on the page held, or let go: held while the
+    /// page is on Jarbits's own screen, where no one can see what plays;
+    /// let go when it is brought forward. The page's own rules then apply,
+    /// as for any page the user opened.
+    func suspendMedia(_ on: Bool) async {
+        await page.setAllMediaPlaybackSuspended(on)
+    }
+
     // MARK: Navigation
 
     var canGoBack: Bool { !page.backForwardList.backList.isEmpty }

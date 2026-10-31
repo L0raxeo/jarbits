@@ -42,4 +42,14 @@ import Testing
         let bare = try JSONDecoder().decode(Exchange.self, from: Data(#"{"query":"q","kind":"search"}"#.utf8))
         #expect(bare == Exchange(query: "q", kind: .search))
     }
+
+    @Test func aPageReadOnJarbitsScreenIsMarkedAndJevNeverSeesTheMark() throws {
+        let own = Exchange.page(query: "q", title: "T", address: URL(string: "https://a.b/c")!, own: true)
+        #expect(try keys(own) == ["query", "kind", "title", "host", "address", "own"])
+        #expect(try keys(own.forJev) == ["query", "kind", "title", "host", "address"], "stripped before the state is sent")
+        #expect(own.forJev.summary == own.summary)
+        let request = EngineRequest.request(for: "and the hours?", exchanges: [own])
+        #expect(request.state.exchanges?.first?.own == nil)
+        #expect(request.state.exchanges?.first?.title == "T")
+    }
 }

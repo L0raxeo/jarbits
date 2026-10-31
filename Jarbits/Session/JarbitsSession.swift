@@ -43,6 +43,8 @@ final class JarbitsSession {
 
     /// Live pages kept: the current layer and the newest three others.
     static let maxLive = 4
+    /// Live pages kept on Jarbits's own screen: the newest two.
+    static let maxDeskLive = 2
     /// A background page untouched for this long is unloaded.
     static let idleWindow: TimeInterval = 30 * 60
     /// How often background pages are looked over for idleness.
@@ -110,13 +112,46 @@ final class JarbitsSession {
     private(set) var layers: [Layer] = []
     private(set) var index = 0
     var current: Layer? { layers.indices.contains(index) ? layers[index] : nil }
+    /// Jarbits's own screen: the pages a plan opened to read, oldest first.
+    /// Never in `layers`, never current, never drawn for the user; a hidden
+    /// view hosts each live one, so it lays out and reports as any page
+    /// does. Kept across queries: a page read for one query is a thing the
+    /// next can name ("show me that page") and bring forward.
+    private(set) var desk: [Layer] = []
+    var deskLive: [Layer] { desk.filter(\.isLive) }
+    /// The pages Jarbits opened on its screen for the query in flight; the
+    /// answer that follows lists them under "Read on".
+    private var readThisQuery: [Layer] = []
     /// The host of an open page, for the planner's look: the page on
     /// screen when `address` is nil or is its address, else the newest live
-    /// layer that ended on that address; nil when no such page is open.
+    /// layer, on Jarbits's screen or the user's, that ended on that
+    /// address; nil when no such page is open.
     func pageHost(for address: URL?) -> PageHost? {
         if let shown = askedOver ?? current, let host = shown.page, address == nil || shown.pageAddress == address { return host }
         guard let address else { return nil }
-        return layers.reversed().first { $0.page != nil && $0.pageAddress == address }?.page
+        return (layers + desk).reversed().first { $0.page != nil && $0.pageAddress == address }?.page
+    }
+    /// The live page an exchange stands for, on either screen.
+    func pageHost(for exchange: Exchange) -> PageHost? {
+        layer(for: Reference(.exchange(exchange)))?.page
+    }
+    /// The layer, on Jarbits's screen first and then the user's, newest
+    /// first, that stands at the thing a reference names: a page by its
+    /// address, a search by its term. Nil when none does.
+    func layer(for reference: Reference) -> Layer? {
+        (desk.reversed() + layers.reversed()).first { layer in
+            guard layer.isWeb, let address = layer.webAddress else { return false }
+            switch reference.kind {
+            case .page:
+                return reference.address.map { MemoryRecord.canonical($0) == MemoryRecord.canonical(address) } ?? false
+            case .search:
+                guard QueryParser.isSearchResults(address) else { return false }
+                let term = (reference.term ?? reference.title).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return QueryParser.searchTerm(in: address)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == term
+            default:
+                return false
+            }
+        }
     }
     /// The query most recently sent, in flight or shown; a newer one wins.
     private(set) var lastQuery = ""
@@ -286,6 +321,7 @@ final class JarbitsSession {
         let screenRead: Task<Screen?, Never>? = shown.map { layer in Task { await layer.screen(picture: early) } }
         lastQuery = trimmed
         askedOver = shown
+        readThisQuery = []
         stage = .routing
         let token = UUID()
         requestToken = token
@@ -451,10 +487,13 @@ final class JarbitsSession {
         }
     }
 
-    /// This session's exchanges up to the layer on screen, oldest first,
-    /// for the engine: the layers ahead are history a new query drops.
+    /// This session's exchanges up to the layer on screen, and the pages
+    /// Jarbits read on its own screen, in the order they came, oldest
+    /// first, for the engine: the layers ahead are history a new query
+    /// drops. A page read on Jarbits's screen is marked as its, so the
+    /// planner tells what the user saw from what it read.
     var exchanges: [SessionExchange] {
-        let stacked = layers.prefix(index + 1).flatMap(\.exchanges)
+        let stacked = (Array(layers.prefix(index + 1)) + desk).sorted { $0.created < $1.created }.flatMap(\.exchanges)
         guard let reply, !reply.lingers else { return stacked }
         return stacked + reply.exchanges
     }
@@ -655,7 +694,9 @@ final class JarbitsSession {
 
     /// A new web layer for `url`, opened by an instinct for the query it
     /// ran on; recorded at once unless the instinct records its own line.
+    /// On Jarbits's own screen when the plan said so.
     func openPage(_ url: URL, context: InstinctContext, recording: Bool = true) {
+        if context.desk { openOnDesk(url, context: context, recording: recording); return }
         let layer = Layer(plan: .web(url), query: context.query, decision: context.decision)
         layer.extraction = context.extraction
         layer.fact = context.fact
@@ -715,6 +756,12 @@ final class JarbitsSession {
     /// plan goes on.
     func open(_ reference: Reference, context: InstinctContext) async {
         lastQuery = context.query
+        // A page or search Jarbits has open on its own screen comes forward
+        // as it is, already loaded, instead of loading again.
+        if reference.kind == .page || reference.kind == .search, let mine = layer(for: reference), mine.desk {
+            bringForward(mine, context: context)
+            return
+        }
         switch reference.kind {
         case .page where reference.address != nil:
             openPage(reference.address!, context: context)
@@ -799,6 +846,7 @@ final class JarbitsSession {
     func showSaid(_ text: String, context: InstinctContext) {
         lastQuery = context.query   // the capsule shows the user's words, not the planner's
         let layer = showReply(.said(query: context.query, text: text), context: context)
+        layer.sources = readThisQuery
         remember(MemoryRecord(kind: .narrative, query: context.query, text: text), in: layer)
     }
 
@@ -833,6 +881,7 @@ final class JarbitsSession {
             reply?.answer?.cancel()
             reply = layer
         }
+        layer.sources = readThisQuery   // what Jarbits read on its screen for this answer
         layer.extraction = context.extraction
         layer.fact = context.fact
         layer.reading = context.reading
@@ -841,8 +890,10 @@ final class JarbitsSession {
         layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: factTexts, persona: persona, screen: context.screen)
     }
 
-    /// A site the book knew opens, in a new layer, as opened by name.
+    /// A site the book knew opens, in a new layer, as opened by name; on
+    /// Jarbits's own screen when the plan said so, as a plain page.
     func openSite(_ name: String, url: URL, context: InstinctContext) {
+        if context.desk { openOnDesk(url, context: context, recording: false); return }
         let layer = Layer(plan: .web(url), query: context.query, decision: context.decision)
         layer.reading = context.reading
         layer.openedSite = OpenedSite(name: Words.key(name), host: url.host() ?? "")
@@ -851,8 +902,10 @@ final class JarbitsSession {
     }
 
     /// The Google results page for a name no site could be found for; the
-    /// first site tapped off it is learned as the name.
+    /// first site tapped off it is learned as the name. On Jarbits's own
+    /// screen nothing is learned: no one taps there.
     func openResultsForSite(_ name: String, context: InstinctContext) {
+        if context.desk { openOnDesk(QueryParser.searchURL(for: name), context: context, recording: false); return }
         let layer = Layer(plan: .web(QueryParser.searchURL(for: name)), query: context.query, decision: context.decision)
         layer.reading = context.reading
         layer.learningSite = name
@@ -863,6 +916,107 @@ final class JarbitsSession {
     /// The log line for what an instinct ran on, with what it came to.
     func record(_ context: InstinctContext, recall: RecallSummary? = nil, site: SiteSummary? = nil) {
         record(context.decision, query: context.query, recall: recall, site: site, extraction: context.extraction, fact: context.fact, reading: context.reading)
+    }
+
+    // MARK: Jarbits's screen
+
+    /// A page for Jarbits to read, on its own screen: a layer that is never
+    /// the user's. Nothing of theirs moves: not `layers`, `index`, the
+    /// reply, `askedOver`, the stage or the early picture. The page's sound
+    /// is held until it is brought forward. Recorded unless the instinct
+    /// records its own line.
+    @discardableResult
+    func openOnDesk(_ url: URL, context: InstinctContext, recording: Bool = true) -> Layer {
+        let layer = openOnDesk(url, query: context.query, decision: context.decision)
+        layer.extraction = context.extraction
+        layer.fact = context.fact
+        layer.reading = context.reading
+        if recording { record(context) }
+        return layer
+    }
+
+    private func openOnDesk(_ url: URL, query: String, decision: Pick?) -> Layer {
+        let layer = Layer(plan: .web(url), query: query, decision: decision)
+        layer.desk = true
+        // Memories written from this page follow the one on the user's screen.
+        layer.currentMemory = (askedOver ?? current)?.currentMemory
+        layer.queryForNextPage = query
+        desk.append(layer)
+        readThisQuery.append(layer)
+        let host = makeHost(for: layer)
+        layer.page = host
+        Task { await host.suspendMedia(true) }
+        host.load(url)
+        enforceDeskLive()
+        #if DEBUG
+        print("desk open \"\(query)\" \(url.host() ?? "-"); desk live \(deskLive.count)")
+        #endif
+        return layer
+    }
+
+    /// Runs a page step on Jarbits's screen and waits for the page: its
+    /// first commit (the host's commit timeout at the latest) and the
+    /// watcher's first address report, which means the page's script is in
+    /// and a look will answer; bounded by `deskWait`, after which the page
+    /// is handed over as it stands. Nil when the instinct opened nothing there.
+    func performOnDesk(_ instinct: any InstinctRunner, context: InstinctContext, token: UUID) async -> (layer: Layer?, failed: String?) {
+        guard token == requestToken else { return (nil, nil) }
+        let before = desk.count
+        let outcome = await instinct.run(context, in: self, token: token)
+        if let reason = outcome.failed { return (nil, reason) }
+        guard desk.count > before, let layer = desk.last else { return (nil, "opened nothing") }
+        let clock = ContinuousClock()
+        let start = clock.now
+        while clock.now - start < Self.deskWait {
+            if layer.drawn, layer.pageAddress != nil { break }
+            guard token == requestToken else { return (nil, nil) }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return (layer, nil)
+    }
+
+    /// How long a page on Jarbits's screen may take to be readable.
+    private static let deskWait: Duration = .seconds(10)
+
+    /// A page from Jarbits's screen onto the user's, as it is: the same
+    /// layer moves into the stack with its page loaded, and its sound is
+    /// let go. An unloaded one reloads to where its notes say. `byQuery`
+    /// is false for the user's own tap under an answer.
+    func bringForward(_ layer: Layer, context: InstinctContext? = nil, byQuery: Bool = true) {
+        if let at = layers.firstIndex(where: { $0 === layer }) {
+            if at != index { move(to: at) }
+            return
+        }
+        desk.removeAll { $0 === layer }
+        layer.desk = false
+        if let host = layer.page { Task { await host.suspendMedia(false) } }
+        lastQuery = context?.query ?? layer.query
+        #if DEBUG
+        print("desk forward \"\(layer.pageTitle ?? layer.query)\"")
+        #endif
+        open(layer, byQuery: byQuery)
+        if case let .web(url) = layer.plan, layer.page == nil {
+            let notes = layer.notes ?? PageNotes(address: url)
+            show(notes.reloadAddress, in: layer, restoring: notes, byQuery: byQuery)
+        } else if byQuery {
+            // Drawn already: ready; still loading: its first commit ends the loading.
+            stage = layer.drawn ? .ready : .loading
+        } else {
+            showedByUser()
+        }
+        if let context { record(context) }
+    }
+
+    /// Live pages on Jarbits's screen back under `maxDeskLive`: the newest
+    /// never goes; of the rest, the oldest read first.
+    private func enforceDeskLive() {
+        var excess = deskLive.count - Self.maxDeskLive
+        guard excess > 0 else { return }
+        let older = desk.filter { $0.isLive && $0 !== desk.last }.sorted { $0.lastShown < $1.lastShown }
+        for layer in older where excess > 0 {
+            unload(layer)
+            excess -= 1
+        }
     }
 
     /// `layer` shows the page at `url`, in its live page or a new one; for
@@ -908,21 +1062,32 @@ final class JarbitsSession {
             guard let self, let layer else { return }
             // A tapped link: the old page is still on screen.
             takePicture(of: layer, reason: "leave")
-            dropEarlyPicture()
+            if !layer.desk { dropEarlyPicture() }   // a page on Jarbits's screen moves nothing of the user's
         }
         host.onRest = { [weak self, weak layer] in
             guard let self, let layer else { return }
             takePicture(of: layer, reason: "rest")
-            dropEarlyPicture()   // a scroll moved the page
+            if !layer.desk { dropEarlyPicture() }   // a scroll moved the page
         }
         host.onAddress = { [weak self, weak layer] url, title in
             guard let self, let layer else { return }
             addressChanged(to: url, title: title, in: layer)
-            dropEarlyPicture()
+            if !layer.desk { dropEarlyPicture() }
         }
-        host.onNewWindow = { [weak self] url in
-            // A link the page wanted in a new window: a layer of its own, the user's.
-            self?.open(url)
+        host.onNewWindow = { [weak self, weak layer] url in
+            // A link the page wanted in a new window: a layer of its own, on
+            // the screen the page is on.
+            guard let self else { return }
+            if let layer, layer.desk { _ = openOnDesk(url, query: layer.query, decision: layer.decision) } else { open(url) }
+        }
+        if layer.desk {
+            // Held again on each document: the page may begin a new one.
+            host.onCommitted = { [weak self, weak layer, weak host] in
+                guard let self, let layer else { return }
+                layer.drawn = true
+                _ = self
+                if let host, layer.desk { Task { await host.suspendMedia(true) } }
+            }
         }
         return host
     }
@@ -1008,7 +1173,7 @@ final class JarbitsSession {
         guard let host = layer.page else { return }
         layer.page = nil
         #if DEBUG
-        print("layer unload \(layer.plan.cardID) \"\(layer.query)\"\(host.inUse ? " (in use)" : "")")
+        print("\(layer.desk ? "desk" : "layer") unload \(layer.plan.cardID) \"\(layer.query)\"\(host.inUse ? " (in use)" : "")")
         #endif
         Task {
             let notes = await host.notes()
@@ -1018,10 +1183,11 @@ final class JarbitsSession {
         }
     }
 
-    /// Background pages idle past `idleWindow` go, unless in use.
+    /// Background pages idle past `idleWindow` go, unless in use; the
+    /// pages on Jarbits's screen too.
     private func sweepIdle() {
         let now = Date.now
-        for layer in layers where layer.isLive && layer !== current && !layer.inUse && now.timeIntervalSince(layer.lastShown) > Self.idleWindow {
+        for layer in layers + desk where layer.isLive && layer !== current && !layer.inUse && now.timeIntervalSince(layer.lastShown) > Self.idleWindow {
             unload(layer)
         }
     }
@@ -1032,7 +1198,7 @@ final class JarbitsSession {
         let now = Date.now
         let again = lastMemoryWarning.map { now.timeIntervalSince($0) < 60 } ?? false
         lastMemoryWarning = now
-        for layer in layers where layer.isLive && layer !== current && (again || !layer.inUse) {
+        for layer in layers + desk where layer.isLive && layer !== current && (again || !layer.inUse) {
             unload(layer)
         }
     }
@@ -1203,8 +1369,10 @@ final class JarbitsSession {
     @discardableResult
     private func remember(_ record: MemoryRecord, in layer: Layer) -> Task<UUID?, Never> {
         let from = layer.currentMemory
+        let own = layer.desk
         let task = Task { [memory] () -> UUID? in
             var record = record
+            if own { record.own = true }   // read on Jarbits's screen, unseen by the user
             if record.cameFrom == nil { record.cameFrom = await from?.value }
             #if DEBUG
             print("memory \(record.kind.rawValue) \"\(record.title)\" \(record.url?.absoluteString ?? "") for \"\(record.query)\"" + (record.cameFrom.map { " ← \($0.uuidString.prefix(8))" } ?? ""))

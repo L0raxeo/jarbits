@@ -7,8 +7,9 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     public struct Step: Codable, Sendable, Equatable {
         public var name: String
         public var arguments: JSONValue
-        /// `shown`, `ran`, `asked`, `dismissed`, `done`, `declined`,
-        /// `already ran`, `unknown`, `skipped: …` or `failed: …`.
+        /// `shown`, `read` (a page opened on Jarbits's own screen), `ran`,
+        /// `asked`, `dismissed`, `done`, `declined`, `already ran`,
+        /// `unknown`, `skipped: …` or `failed: …`.
         public var outcome: String
         public var latencyMs: Int
 
@@ -65,4 +66,6 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     public var shownSomething: Bool { steps.contains { $0.outcome == "shown" } }
     /// A step did something with no screen of its own.
     public var didSomething: Bool { steps.contains { $0.outcome == "ran" } }
+    /// A step opened a page on Jarbits's own screen, unseen by the user.
+    public var readSomething: Bool { steps.contains { $0.outcome == "read" } }
 }

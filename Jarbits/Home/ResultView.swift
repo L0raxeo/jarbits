@@ -92,13 +92,13 @@ struct ResultView: View {
             if let answer = layer.answer {
                 AnswerView(
                     spans: answer.styledSpans, stoppedEarly: answer.stoppedEarly, format: format, clayY: clayY, barCompact: $barCompact,
-                    history: history, query: query, failed: answer.failedBeforeText, needsLiveData: answer.needsLiveData
+                    history: history, query: query, failed: answer.failedBeforeText, needsLiveData: answer.needsLiveData, sources: layer.sources
                 )
             }
         case let .time(_, text):
             AnswerView(spans: AnswerMarkup.styled(text, for: .oneLine), stoppedEarly: false, format: .oneLine, clayY: clayY, barCompact: $barCompact)
         case let .said(_, text):
-            AnswerView(spans: AnswerMarkup.styled(text, for: .narrative), stoppedEarly: false, format: .narrative, clayY: clayY, barCompact: $barCompact)
+            AnswerView(spans: AnswerMarkup.styled(text, for: .narrative), stoppedEarly: false, format: .narrative, clayY: clayY, barCompact: $barCompact, sources: layer.sources)
         case let .memory(record):
             // A remembered conversation shows its earlier turns and ends on its last.
             let turns = record.turns ?? []
@@ -253,6 +253,9 @@ private struct AnswerView: View {
     var failed: Bool = false
     /// The turn needed live data the model does not have.
     var needsLiveData: Bool = false
+    /// The pages Jarbits read on its own screen for this answer: listed in
+    /// the footer, a tap brings one forward.
+    var sources: [Layer] = []
 
     private let ink = Palette.ink
     private let quiet = Palette.quiet
@@ -353,6 +356,14 @@ private struct AnswerView: View {
                 Text("From \(recalledOn.formatted(date: .abbreviated, time: .omitted))")
                     .font(.footnote)
                     .foregroundStyle(quiet)
+            }
+            ForEach(sources) { source in
+                Button("Read: \u{201C}\(source.pageTitle ?? source.webAddress.map { QueryParser.displayText(for: $0) } ?? source.query)\u{201D}\(source.webAddress?.host().map { " (\($0))" } ?? "")") {
+                    session.bringForward(source, byQuery: false)
+                }
+                .buttonStyle(.plain)
+                .font(.subheadline)
+                .foregroundStyle(quiet)
             }
             Button("Web results") { session.showWebResults() }
                 .buttonStyle(.plain)

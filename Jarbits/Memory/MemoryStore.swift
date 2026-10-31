@@ -72,6 +72,8 @@ actor MemoryStore {
             all[i].date = record.date
             all[i].title = record.title
             if record.parts.count >= all[i].parts.count { all[i].parts = record.parts }
+            // Jarbits's own only while every sighting was its: once the user saw it, theirs.
+            all[i].own = (all[i].own == true && record.own == true) ? true : nil
             loaded = all
             rewrite(all)
             let merged = all[i]

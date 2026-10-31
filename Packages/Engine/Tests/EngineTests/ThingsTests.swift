@@ -20,6 +20,16 @@ import Testing
         #expect(ThingTable.line(table.entries[1], now: now) == "p2: Searched \"steve jobs\"")
         #expect(ThingTable.line(table.entries[2], now: now) == "m1: A page from yesterday (www.hennesseyperformance.com): \"Hennessey Performance\"")
         #expect(ThingTable.line(table.entries[3], now: now) == "m2: An answer from today: \"what is a venom f5\"")
+        // A page a step opened on Jarbits's own screen: the next p, listed as read there.
+        let own = Exchange.search(query: "lehigh pizza hours", term: "lehigh pizza hours", own: true)
+        #expect(table.mint(exchange: own) == "p3")
+        #expect(table.mint(exchange: own) == "p3", "the same exchange keeps its handle")
+        #expect(table.mint(exchange: search) == "p2", "one the plan began with too")
+        #expect(ThingTable.line(table.entries[4], now: now) == "p3: Searched \"lehigh pizza hours\" on my screen")
+        let ownPage = Exchange.page(query: "q", title: "Lehigh Pizza", address: URL(string: "https://www.lehighpizza.com/hours")!, own: true)
+        #expect(ownPage.described == "Read \"Lehigh Pizza\" (www.lehighpizza.com) on my screen")
+        let read = MemoryRecord(date: now, kind: .page, query: "", title: "Lehigh Pizza", url: URL(string: "https://www.lehighpizza.com/hours"), own: true)
+        #expect(ThingTable.line(.init(handle: "m9", thing: .memory(read)), now: now) == "m9: A page from today (www.lehighpizza.com): \"Lehigh Pizza\", read on my screen")
     }
 
     @Test func aReferenceKnowsWhatEachThingIs() {

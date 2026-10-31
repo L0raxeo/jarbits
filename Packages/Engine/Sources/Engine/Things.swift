@@ -89,18 +89,21 @@ public struct Reference: Sendable, Equatable {
 extension Exchange {
     /// One exchange as a line of a model's context: what was done and got.
     public var described: String {
+        // A page or search read on Jarbits's own screen says so: the user
+        // never saw it, and the planner tells the two apart by this.
+        let where_ = own == true ? " on my screen" : ""
         switch kind {
-        case .answer: "Asked \"\(query)\" and got: \(text ?? "")"
+        case .answer: return "Asked \"\(query)\" and got: \(text ?? "")"
         case .page:
-            if let title, let host { "Read \"\(title)\" (\(host))" }
-            else if let title { "Read \"\(title)\"" }
-            else { "Read a page for \"\(query)\"" }
-        case .search: "Searched \"\(text ?? query)\""
-        case .recall: "Looked through earlier memories for \"\(query)\""
+            if let title, let host { return "Read \"\(title)\" (\(host))" + where_ }
+            else if let title { return "Read \"\(title)\"" + where_ }
+            else { return "Read a page for \"\(query)\"" + where_ }
+        case .search: return "Searched \"\(text ?? query)\"" + where_
+        case .recall: return "Looked through earlier memories for \"\(query)\""
         case .site:
-            if let text { "Chose among sites for \"\(title ?? query)\": \(text)" }
-            else { "Chose among sites for \"\(title ?? query)\"" }
-        case .note: "Opened my note \"\(title ?? query)\""
+            if let text { return "Chose among sites for \"\(title ?? query)\": \(text)" }
+            else { return "Chose among sites for \"\(title ?? query)\"" }
+        case .note: return "Opened my note \"\(title ?? query)\""
         }
     }
 }
@@ -123,13 +126,25 @@ public struct ThingTable: Sendable, Equatable {
     private var itemsMinted = 0
 
     public init(exchanges: [Exchange] = [], memories: [MemoryRecord] = [], notes: [Note] = [], items: [ScreenItem] = []) {
-        for exchange in exchanges {
-            exchangesMinted += 1
-            entries.append(Entry(handle: "p\(exchangesMinted)", thing: .exchange(exchange)))
-        }
+        for exchange in exchanges { _ = mint(exchange: exchange) }
         _ = mint(memories)
         _ = mint(notes: notes)
         _ = mint(items: items)
+    }
+
+    /// A handle for an exchange: the ones the plan began with, and a page
+    /// a step opened on Jarbits's own screen, which the planner then names
+    /// to look at, keep, or bring forward. An exchange already listed keeps
+    /// its handle.
+    @discardableResult
+    public mutating func mint(exchange: Exchange) -> String {
+        if let existing = entries.first(where: { if case let .exchange(known) = $0.thing { known == exchange } else { false } }) {
+            return existing.handle
+        }
+        exchangesMinted += 1
+        let handle = "p\(exchangesMinted)"
+        entries.append(Entry(handle: handle, thing: .exchange(exchange)))
+        return handle
     }
 
     /// Handles for the links in view, in their order on the screen.
@@ -195,6 +210,7 @@ public struct ThingTable: Sendable, Equatable {
             var line = "\(entry.handle): \(article) \(label) from \(RecallRouting.when(record.date, now: now, calendar: calendar))"
             if let host = record.url?.host() { line += " (\(host))" }
             line += ": \"\(record.title)\""
+            if record.own == true { line += ", read on my screen" }
             return line
         case let .note(note):
             // The note whole, its lines numbered, under its heading line: the

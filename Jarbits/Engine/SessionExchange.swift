@@ -45,10 +45,11 @@ extension Layer {
             let address = pageAddress ?? notes?.address ?? url
             if QueryParser.isSearchResults(address) {
                 let term = QueryParser.searchTerm(in: address)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                return [SessionExchange(exchange: .search(query: query, term: term?.isEmpty == false ? term! : query), turn: nil, layerID: id)]
+                return [SessionExchange(exchange: .search(query: query, term: term?.isEmpty == false ? term! : query, own: desk ? true : nil), turn: nil, layerID: id)]
             }
             let title = pageTitle ?? QueryParser.displayText(for: address)
-            return [SessionExchange(exchange: .page(query: query, title: title, address: address), turn: nil, layerID: id)]
+            // A page on Jarbits's own screen is marked as its: the user never saw it.
+            return [SessionExchange(exchange: .page(query: query, title: title, address: address, own: desk ? true : nil), turn: nil, layerID: id)]
         case .answer, .time, .said, .memory:
             return thread.map { SessionExchange(exchange: .answer(query: $0.query, text: $0.answer), turn: $0, layerID: id) }
         case let .recallPicker(records, title):

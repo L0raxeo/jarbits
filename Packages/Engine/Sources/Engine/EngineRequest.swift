@@ -310,7 +310,7 @@ public enum EngineRequest {
     ) -> SystemOneRequest {
         let sent = Array(exchanges.suffix(maxExchanges))
         var state = RouteState(query: query, locale: locale.identifier)
-        if !sent.isEmpty { state.exchanges = sent }
+        if !sent.isEmpty { state.exchanges = sent.map(\.forJev) }
         if let opened {
             state.openedSiteName = opened.name
             state.openedSiteHost = opened.host
