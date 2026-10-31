@@ -452,7 +452,7 @@ case "sites":
         print("brave failed: \(error)")
     }
 case "plans":
-    let usage = "usage: report plans [cases.jsonl] [--out <results.jsonl>] [--no-network]"
+    let usage = "usage: report plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>]"
     let packageRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()   // main.swift → ReportCLI/
         .deletingLastPathComponent()   // → Sources/
@@ -460,6 +460,9 @@ case "plans":
     var file = packageRoot.appending(path: "Evals/plans.jsonl")
     var out = packageRoot.appending(path: ".evalcache/plans.jsonl")
     var network = true
+    // Another model, to measure against the planner's (the request carries
+    // the model, so the cache keeps the two apart).
+    var model = Planner.model
     var rest = Array(arguments.dropFirst())
     while let argument = rest.first {
         rest.removeFirst()
@@ -468,6 +471,10 @@ case "plans":
             guard let next = rest.first else { fail(usage) }
             rest.removeFirst()
             out = URL(fileURLWithPath: next)
+        case "--model":
+            guard let next = rest.first else { fail(usage) }
+            rest.removeFirst()
+            model = next
         case "--no-network": network = false
         default:
             guard !argument.hasPrefix("--") else { fail(usage) }
@@ -482,7 +489,7 @@ case "plans":
     }
     var client: GeminiClient?
     if network, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty {
-        client = GeminiClient(apiKey: key, model: Planner.model, totalTimeout: ReasoningPolicy.roundTimeout)
+        client = GeminiClient(apiKey: key, model: model, totalTimeout: ReasoningPolicy.roundTimeout)
     }
     let runner = PlanRunner(client: client, cache: PlanCache(directory: packageRoot.appending(path: ".evalcache/plans")))
     let results = await runner.run(cases)
@@ -490,7 +497,7 @@ case "plans":
         try? FileManager.default.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: out, options: .atomic)
     }
-    print(PlanReport.text(results: results, file: file.lastPathComponent, model: Planner.model), terminator: "")
+    print(PlanReport.text(results: results, file: file.lastPathComponent, model: model), terminator: "")
     exit(results.contains { $0.status == .fail } ? 1 : 0)
 case "facts":
     let usage = "usage: report facts [cases.jsonl] [--out <results.jsonl>] [--no-network]"
