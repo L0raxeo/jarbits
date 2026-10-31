@@ -77,10 +77,30 @@ actor Notebook {
         return note
     }
 
-    /// The whole text, and the title when given; the text before is kept as a version.
+    /// Lines taken out by number, as the planner's listing counts them;
+    /// every other line stays as it was (`NoteMarkdown.removing`); the text
+    /// before is kept as a version.
+    @discardableResult
+    func remove(_ lines: [Int], from id: UUID) -> Note? {
+        guard var note = note(id: id), !lines.isEmpty else { return nil }
+        let body = NoteMarkdown.removing(lines: lines, from: note.body)
+        guard body != note.body else { return note }
+        keepVersion(of: note)
+        note.body = body
+        note.edited = .now
+        write(note)
+        replaceLoaded(note)
+        return note
+    }
+
+    /// The whole text, and the title when given; a link the new text names
+    /// by its title alone is written back (`NoteMarkdown.relinked`), since
+    /// the planner's listing shows a kept page as its title; the text
+    /// before is kept as a version.
     @discardableResult
     func replace(_ id: UUID, body: String, title: String? = nil) -> Note? {
         guard var note = note(id: id) else { return nil }
+        let body = NoteMarkdown.relinked(body, from: note.body)
         guard body != note.body || (title != nil && title != note.title) else { return note }
         keepVersion(of: note)
         note.body = body

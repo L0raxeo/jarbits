@@ -33,6 +33,7 @@ struct NotebookInstinct: InstinctRunner {
         for (handle, reference) in zip(handles, itemReferences) { filled[handle.lowercased()] = Self.line(for: reference) }
         let content = Self.content(text: text, items: itemReferences.map(Self.line(for:)), named: filled)
         let after = context.arguments["after"]?.intValue
+        let removing = NoteMarkdown.lineNumbers(context.arguments["remove"]?.stringValue ?? "")
 
         // The whole notebook: every note in the grid, newest first.
         if context.arguments["all"]?.boolValue == true, action == "open" || action == "add" && content.isEmpty {
@@ -64,6 +65,17 @@ struct NotebookInstinct: InstinctRunner {
 
         switch action {
         case "add", "replace":
+            if let note = found, !removing.isEmpty {
+                // Lines out by number, the rest untouched; anything also
+                // written goes in after, as the action says.
+                let fewer = await session.notebook.remove(removing, from: note.id)
+                guard session.isCurrent(token), let fewer else { return .nothing }
+                let count = removing.count == 1 ? "a line" : "\(removing.count) lines"
+                if content.isEmpty {
+                    session.showNote(fewer, wrote: "Took \(count) out of \(fewer.title)", context: context)
+                    return InstinctOutcome(fact: nil, text: "took \(count) out of my note \"\(fewer.title)\"")
+                }
+            }
             guard let note = found else {
                 // No listed note was it: a note by that name is made.
                 let note = await session.notebook.create(title: title ?? topic, body: content)

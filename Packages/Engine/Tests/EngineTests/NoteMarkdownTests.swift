@@ -90,4 +90,26 @@ import Testing
         #expect(NoteMarkdown.insert("2. book the cab", into: "1. pack\n2. fly", after: 1) == "1. pack\n2. book the cab\n3. fly", "a numbered run is counted again")
         #expect(NoteMarkdown.renumbered("1. a\n5. b\n\ntext\n7. c\n8) d") == "1. a\n2. b\n\ntext\n1. c\n2) d")
     }
+
+    @Test func linesComeOutByNumberAndTheRestStaysAsItWas() {
+        #expect(NoteMarkdown.lineNumbers("2, 4-6") == [2, 4, 5, 6])
+        #expect(NoteMarkdown.lineNumbers("lines 3 and 1, 3") == [1, 3], "words ignored, each once, sorted")
+        #expect(NoteMarkdown.lineNumbers("0 to 2") == [1, 2], "from 1")
+        #expect(NoteMarkdown.lineNumbers("none") == [])
+        let watch = "- [Framework 13 Pro review](https://m.youtube.com/watch?v=fw13)\n- [Cooking pasta](https://m.youtube.com/watch?v=pasta)\n- [Midterms explained](https://m.youtube.com/watch?v=mid)\n- [Tech news](https://m.youtube.com/watch?v=news)"
+        #expect(NoteMarkdown.removing(lines: [2, 4], from: watch) == "- [Framework 13 Pro review](https://m.youtube.com/watch?v=fw13)\n- [Midterms explained](https://m.youtube.com/watch?v=mid)", "the kept lines keep their links")
+        #expect(NoteMarkdown.removing(lines: [9], from: watch) == watch, "past the end: nothing")
+        #expect(NoteMarkdown.removing(lines: [2], from: "1. pack\n2. fly\n3. land") == "1. pack\n2. land", "a numbered run counted again")
+        #expect(NoteMarkdown.removing(lines: [2], from: "## A\n- a\n\n## B\n- b") == "## A\n\n## B\n- b", "a blank line stays single")
+        #expect(NoteMarkdown.removing(lines: [1, 2], from: "- a\n- b\n\n- c") == "- c", "blank lines left at the top go")
+    }
+
+    @Test func aRewriteKeepsTheLinksItCopiedAsTitles() {
+        let old = "- [Framework 13 Pro review](https://m.youtube.com/watch?v=fw13)\n- [Cooking pasta](https://m.youtube.com/watch?v=pasta)\nSee [Midterms explained](https://m.youtube.com/watch?v=mid) later."
+        #expect(NoteMarkdown.relinked("1. Framework 13 Pro review\n2. Midterms explained", from: old) == "1. [Framework 13 Pro review](https://m.youtube.com/watch?v=fw13)\n2. [Midterms explained](https://m.youtube.com/watch?v=mid)", "a list line and a title from prose, in new marks")
+        #expect(NoteMarkdown.relinked("- [Framework 13 Pro review](https://other.example/x)\n- new words", from: old) == "- [Framework 13 Pro review](https://other.example/x)\n- new words", "a line that links already, and new words, stay as written")
+        let twice = "- [Same](https://a.example)\n- [Same](https://b.example)"
+        #expect(NoteMarkdown.relinked("- Same", from: twice) == "- Same", "a title with two addresses is left alone")
+        #expect(NoteMarkdown.relinked("- milk", from: "- eggs") == "- milk", "no links before: as written")
+    }
 }

@@ -686,8 +686,16 @@ reads in the request (`action`: `new`, `add`, `replace`, `open`,
 `delete`), whether the whole notebook is asked for (`all`, a yes/no Jev
 reads too: "pull up all the notes in your notebook" shows the grid of
 every note, newest first, "My notes · N", or "My notebook is empty."),
-two things by handle, and `topic`, `title` and `text` as values the
-extractor reads. The two things: `note` is the note to act on, `item` is
+two things by handle, `topic`, `title` and `text` as values the
+extractor reads, and, on the planner's tool alone, `remove`: the numbers
+of the lines to take out, as the listing counts them ("2, 4-6"), every
+other line kept byte for byte, links included (`Notebook.remove`,
+`NoteMarkdown.removing`; 2026-10-31, after "remove every video except
+two" was done as a rewrite from the listing, which shows a kept page as
+its title, and the two kept videos lost their links). It is not in
+Jev's `action` choice, whose options are routing questions that stay as
+they are, which is why it is a field beside the action rather than an
+action. The two things: `note` is the note to act on, `item` is
 a page or answer to put into it, whose title and link go in as a link
 line. "Add this to my watchlist" on a video is `notebook(add, note: n1,
 item: p1)`; "add milk to my shopping list" is `notebook(add, note: n1,
@@ -722,8 +730,12 @@ and a numbered run the lines land in is counted again from 1. Several notes show
 (`NotesGridView`, the recall grid's layout, headed in his voice: "My
 notes · 3"), by `open` with several handles or the notebook's `all`. A delete asks in the bubble ("Delete
 my note 'Packing list'?") and moves the file to `.trash/`, never gone.
-Every append or replace first copies the text as it was to
-`.versions/<id>/`, so any edit by Jarbits can be undone. A write leaves
+Every append, removal or replace first copies the text as it was to
+`.versions/<id>/`, so any edit by Jarbits can be undone. A replace writes
+back the links the planner copied as titles: a line whose words after its
+mark are exactly a title linked in the note before becomes that link again
+(`NoteMarkdown.relinked`); a title linked to two addresses is left as
+written. A write leaves
 the screen where it was: the bubble shows where it wrote ("Added to Watch
 List", "Made the note Trip", "Rewrote Shopping") over the lines themselves
 as the note draws them (a bullet as a bullet, a link as its tappable

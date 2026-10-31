@@ -119,6 +119,60 @@ public enum NoteMarkdown {
         return renumbered(lines.joined(separator: "\n"))
     }
 
+    /// Line numbers as the planner writes them: "2, 4-6" is [2, 4, 5, 6];
+    /// words and anything else are ignored; sorted, each once, from 1.
+    public static func lineNumbers(_ text: String) -> [Int] {
+        var out = Set<Int>()
+        for match in text.matches(of: /(\d+)\s*(?:-|–|to)\s*(\d+)|(\d+)/) {
+            if let a = match.1.flatMap({ Int($0) }), let b = match.2.flatMap({ Int($0) }) {
+                for n in min(a, b)...max(a, b) { out.insert(n) }
+            } else if let n = match.3.flatMap({ Int($0) }) {
+                out.insert(n)
+            }
+        }
+        return out.filter { $0 >= 1 }.sorted()
+    }
+
+    /// The body with those lines (1-based, as `Note.numberedLines` counts
+    /// them) taken out and every other line kept byte for byte; a number
+    /// past the end is ignored, a run of blank lines left behind becomes
+    /// one, and a numbered run is counted again.
+    public static func removing(lines: [Int], from body: String) -> String {
+        let gone = Set(lines)
+        let kept = body.trimmingCharacters(in: .newlines).split(separator: "\n", omittingEmptySubsequences: false)
+            .enumerated().filter { !gone.contains($0.offset + 1) }.map { String($0.element) }
+        var out: [String] = []
+        for line in kept {
+            if line.trimmingCharacters(in: .whitespaces).isEmpty, out.last?.trimmingCharacters(in: .whitespaces).isEmpty ?? true { continue }
+            out.append(line)
+        }
+        while out.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { out.removeLast() }
+        return renumbered(out.joined(separator: "\n"))
+    }
+
+    /// A rewritten body with the links the model copied as titles written
+    /// back: the planner's listing shows a kept page as its title, so a
+    /// line of `body` whose words after its mark are exactly a title linked
+    /// in `old`, and that carries no link itself, becomes that link again.
+    /// A title linked to two addresses in `old` is left as written.
+    /// Everything else is byte for byte as written.
+    public static func relinked(_ body: String, from old: String) -> String {
+        var links: [String: URL?] = [:]
+        for match in old.matches(of: /\[([^\]]*)\]\(([^)]*)\)/) {
+            let title = String(match.1)
+            let url = URL(string: String(match.2))
+            if let known = links[title] { links[title] = known?.absoluteString == url?.absoluteString ? known : nil } else { links[title] = url }
+        }
+        guard !links.isEmpty else { return body }
+        return body.split(separator: "\n", omittingEmptySubsequences: false).map { raw -> String in
+            let line = String(raw)
+            let (_, rest) = split(line)
+            let words = rest.trimmingCharacters(in: .whitespaces)
+            guard let url = links[words] ?? nil, !line.contains("](") else { return line }
+            return line.replacingOccurrences(of: words, with: "[\(words)](\(url.absoluteString))")
+        }.joined(separator: "\n")
+    }
+
     /// Every contiguous run of numbered lines counted from 1 in order;
     /// nothing else is touched.
     public static func renumbered(_ body: String) -> String {
