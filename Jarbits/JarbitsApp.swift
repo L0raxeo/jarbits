@@ -7,7 +7,8 @@ struct JarbitsApp: App {
         answerClient: JarbitsSession.makeAnswerClient(),
         recall: JarbitsSession.makeRecallResolver(),
         siteSearch: JarbitsSession.makeSiteSearch(),
-        factResolver: JarbitsSession.makeFactResolver()
+        factResolver: JarbitsSession.makeFactResolver(),
+        factReader: JarbitsSession.makeFactReader()
     )
 
     var body: some Scene {

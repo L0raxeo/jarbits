@@ -114,16 +114,9 @@ struct Engine {
                 extraction = ExtractionSummary(model: "", latencyMs: 0, outcome: .failed("no key"))
             }
         }
-        // A lasting fact the words state on the way to something else
-        // ("I'm allergic to peanuts, what can I snack on"): Jev's remember
-        // question says so, a model distils it, the session keeps it beside
-        // the pick. The remember and forget instincts handle their own.
-        var inferred: Fact?
-        if decision.statesFact, decision.instinct != .remember, decision.instinct != .forget, let extractor {
-            let (text, summary) = await extractor.distill(query: query, exchanges: chained.map(\.exchange), persona: persona)
-            if let text { inferred = Fact(text: text, source: .inferred, madeBy: query) }
-            if extraction == nil { extraction = summary }
-        }
+        // A lasting fact the words state on the way to something else is
+        // the fact reader's, which the session runs beside every query; the
+        // pick waits on nothing here. The remember instinct reads its own.
         // A continuation grows the current answer: its own turns go as the
         // thread, so only exchanges from other layers are context there.
         let earlier = chained.filter { !(decision.continuesThread && $0.layerID == current?.id) }.map(\.exchange)
@@ -160,7 +153,7 @@ struct Engine {
         )
         context.things = things
         context.screen = screen
-        return EngineResult(query: query, decision: decision, extraction: extraction, reading: reading, instinct: instinct(for: format), context: context, inferred: inferred, screen: screen)
+        return EngineResult(query: query, decision: decision, extraction: extraction, reading: reading, instinct: instinct(for: format), context: context, screen: screen)
     }
 
     func instinct(for format: Instinct) -> any InstinctRunner {
@@ -181,7 +174,6 @@ struct EngineResult {
     /// The instinct to run, with what it needs; nil for a query to plan.
     var instinct: (any InstinctRunner)? = nil
     var context: InstinctContext? = nil
-    var inferred: Fact? = nil
     /// The query goes to advanced reasoning, with these exchanges as what it depends on.
     var reasoning = false
     var chained: [Exchange] = []
@@ -195,6 +187,12 @@ extension JarbitsSession {
     /// Jev when a key is configured; without one, addresses load and the
     /// rest is web results. Gemini reads beside Jev, reads a pick's
     /// free-form values and plans, when its key is configured.
+    /// Reads every lasting fact a query states, beside the query, when a
+    /// Gemini key is configured; nil keeps only what remember is told.
+    static func makeFactReader() -> FactReader? {
+        Secrets.geminiAPIKey.map { FactReader(client: GeminiClient(apiKey: $0)) }
+    }
+
     static func makeEngine() -> Engine {
         let router = Secrets.typeSafeAPIKey.map { Picker(client: JevClient(apiKey: $0)) }
         let reader = Secrets.geminiAPIKey.map { QueryReader(client: GeminiClient(apiKey: $0)) }

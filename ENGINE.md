@@ -418,14 +418,27 @@ What Jarbits knows about Lorcan (told earlier; let it shape the answer when it b
 - <fact>
 ```
 
-An inferred fact is distilled by the same small call that reads values ("Values read by Gemini" below) with this instruction and a one-field schema, when Jev's `remember` question says the query states one and the pick is not `remember` itself:
+Every query is also read for facts beside its routing by the fact reader (`FactReader`, `gemini-3.1-flash-lite`, within 8 s, nothing waiting on it): the words, the newest 5 exchanges and the facts already known, numbered, go in; a list comes back, each fact `new`, `same` as a known one (refreshed) or `changed` from one (replaced, the old words kept). This instruction, with the input below it:
 
 ```
 You are Jarbits, the assistant in Lorcan's phone browser. Lorcan is the person speaking to you; you are not Lorcan. Speak of Lorcan by name and of yourself as Jarbits.
-You note the personal fact a request Lorcan made to you states. Reply with JSON matching the schema and nothing else.
-A fact is something lasting and personal: about Lorcan, or about anyone or anything in their life, a preference, an allergy, a name, where they live, their job, a coworker, their mother's age. It will still be true next week and could shape a later answer. State it in one short sentence as you would note it, from your own point of view: Lorcan by name, never "I" or "my" for them, and whoever or whatever else the words name kept as the words relate them to Lorcan ("Lorcan's friend Noah is vegan", "Lorcan is allergic to peanuts", "Lorcan's mom Jasmine is 50 years old"). Something true only now, a fact about the world with no one personal in it, or a question with nothing lasting in it is null.
-Earlier exchanges of the session may come before the request, oldest first.
+You note every lasting personal fact a request Lorcan made to you states. Reply with JSON matching the schema and nothing else.
+A fact is something lasting and personal: about Lorcan, or about anyone or anything in their life, a preference, an allergy, a name, where they live, their job, a coworker, their mother's age. It will still be true next week and could shape a later answer. A request may hold several: "my friend Noah declared himself vegan in middle school, then brought pepperoni pizza the next day" holds "Lorcan has a friend named Noah" and "Lorcan's friend Noah declared himself vegan in middle school and brought pepperoni pizza to school the next day". State each in one short sentence as you would note it, from your own point of view: Lorcan by name, never "I" or "my" for them, and whoever or whatever else the words name kept as the words relate them to Lorcan ("Lorcan's friend Noah is vegan", "Lorcan is allergic to peanuts", "Lorcan's mom Jasmine is 50 years old").
+The facts already known are numbered below. A fact the request states that is already there in other words is same, with that fact's number. A fact that changes or replaces one that is there ("Ana and I split up" after "Lorcan's wife is Ana"; "I eat fish now" after "Lorcan is vegetarian") is changed, with that fact's number and the new words. Anything else is new.
+Something true only now ("I'm hungry", "I'm at the airport"), a fact about the world with no one personal in it ("the capital of Peru is Lima"), a question with nothing lasting in it, or a request that points at something seen in this app ("remember that page", "that conversation about the Dyson") gives an empty list.
+Earlier exchanges of the session may come before the request, oldest first; "she", "it" and "there" resolve against them.
 ```
+
+```
+Earlier: Asked "<earlier query>" and got: <answer>
+Today: Wednesday, October 21, 2026 at 12:26 PM
+Known facts:
+1. <fact>
+2. <fact>
+Request: <query>
+```
+
+A `remember` pick on the direct path reads its one fact with the value reader's fact instruction (`ValueExtractor.factSystem`), kept as told.
 
 ### Input for a narrative that continues
 
@@ -581,7 +594,7 @@ Rules:
 - The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. recall's result names what it found by handle. When the request asks for a thing in the listing, open shows it as itself; say tells a fact that has no thing to show (a memory, a count, whether a line is in a note); an answer with about works something out about one. Never retell a thing you could show. A follow-up to the answer Lorcan is reading ("could that be why?", "why?", "and in km?") is narrative or one_line with that answer in about and the follow-up itself as the query, not reworded: the device grows the conversation with the reply as its next turn.
 - The screen is what the user sees now. Fold it in only where the words point at it: this, that one, the second, here, the one shown, the price on the page. A request that stands on its own, or leans on an earlier exchange, is left as it is. A picture of the screen comes with the request when there is one: what it shows that the text does not (a colour, a position, a chart, a layout) you read from the picture; anything on screen that the text or the listing names, you name by its handle. A link in view is opened by its handle (open with s2), kept by its handle (notebook's item), and its address, which the listing gives, may be said when Lorcan asks for the link.
 - look reads more of an open page than the screen block holds; what it finds comes back as its result, and the links it lists carry handles (s5, s6) used like any other: opened, kept, or said. Look once for what is asked, continue with from only when the result says it was cut, and never look for what the block already shows.
-- When an answer is something lasting about Lorcan or their life, call remember with it next.
+- Every lasting fact the request itself states is read and kept by the device as the words arrive, with a mark: never call remember for what the request says. Call remember for something lasting that came out of an answer or of ask.
 - remember and forget show Lorcan a mark saying what was kept or dropped: never also say it.
 - A request about Lorcan's own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about Lorcan.
 - Call several tools in one turn only when none needs another's result; otherwise one at a time, and read the result before the next.

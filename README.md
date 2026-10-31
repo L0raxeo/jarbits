@@ -788,28 +788,42 @@ file leaves the phone except inside a Gemini request, which keeps nothing
 A fact comes to be known three ways (`Fact.source`):
 - **told**: "remember that I'm allergic to peanuts", "keep in mind I'm
   vegetarian", "note that I don't eat pork". Jev picks the `remember`
-  instinct; the fact is what the fact reader (`ValueExtractor.distill`,
-  the same call that notes a fact on any other pick) reads out of the
-  words, as Jarbits notes it, naming the user and whoever else it is
-  about ("Lorcan's friend Bob is vegan.").
-  A plain statement with nothing asked ("I live in austin now") is a
-  remember too.
-- **inferred**: the query states something lasting on the way to asking
-  something else ("I'm allergic to peanuts, what can I snack on"). Every
-  request carries a `remember` question (ENGINE.md); at or above
-  `EngineRequest.rememberThreshold` (0.5) on any other pick, the pick runs
-  as usual and the same small call distils the fact into one sentence as
-  Jarbits notes it, which is kept quietly. The query waits for that call
-  (about a second) before the pick runs.
+  instinct; the fact is what the one-sentence fact reader
+  (`ValueExtractor.distill`) reads out of the words, as Jarbits notes it,
+  naming the user and whoever else it is about ("Lorcan's friend Bob is
+  vegan.").
+- **inferred**: everything else the words state that is lasting and
+  personal, read by the fact reader (`FactReader`) that runs beside every
+  query, on both paths, with nothing waiting on it (2026-10-30). The words,
+  the newest five exchanges and the facts Jarbits already holds, numbered,
+  go to `gemini-3.1-flash-lite`; a list comes back, each fact `new`, `same`
+  as a known one (its date moves on, no mark), or `changed` from one (the
+  old words replaced and kept as `Fact.previous`). A story told plainly
+  yields its facts ("Lorcan has a friend named Noah", and what Noah did);
+  "I'm hungry", "the capital of Peru is Lima" and "remember that page"
+  yield none. The reader interprets; the device writes what it said, and
+  nothing on the device decides what is a fact or the same fact. Before
+  this, a fact was inferred only when Jev's `remember` question said so, as
+  one sentence, on the direct path alone, and the pick waited for it; the
+  planner path kept only what the planner chose to `remember`, so the Noah
+  story was one sentence and "has a friend named Noah" was never a fact.
+  Jev's question stays as it was, for the `remember` pick and the log. One
+  small metered call per query, about 600 tokens in and 60 out, roughly
+  $0.00024 a query (Lorcan's yes, 2026-10-30).
 - **chosen**: the answer to a question a plan put in the bubble, when the
   plan keeps it (a `remember` step right after an `ask`; see "Advanced
-  reasoning").
+  reasoning"). The planner is told that what the request itself states is
+  read by the device, so its `remember` is for what came out of an answer
+  or an ask.
 
 Keeping a fact shows one quiet line for three seconds, "Remembered: Lorcan
-is vegetarian", above the capsule over a result or under the clay on the idle
-screen (`RememberedMark`): the only sign that something was kept, so a
-wrong note can be seen and undone. The same words again (case and
-punctuation aside) refresh the fact rather than repeat it.
+is vegetarian" (or "Updated: …" for a changed one; several kept at once are
+joined with " · "): in the bubble when nothing is there to read, else at
+the foot of the reply that is up, so the reply stays where the user is
+reading it (`RememberedMark`, `JarbitsSession.replyFoot`). It is the only
+sign that something was kept, so a wrong note can be seen and undone. The
+same words again (case and punctuation aside) refresh the fact rather than
+repeat it; the reader's `same` does the same for other words.
 
 "Forget that", "forget that I'm vegetarian", "stop remembering my peanut
 allergy" is the `forget` instinct, the first destructive one: the facts
@@ -826,8 +840,11 @@ forgotten unasked.
 Neither instinct shows a layer: the screen stays where it was (the idle
 clay, or the result under the capsule), and the sheet rises over it when
 one is needed. The decision log carries `fact` on the query's line
-(remembered by source, forgotten, declined, or none), and `report
-decisions` summarises them. The facts live in
+(remembered by source, forgotten, declined, or none), and the reader
+writes a line of its own per query (`read`: how many new, restated and
+changed, with its latency); `report decisions` summarises both. The
+reader's own set is `Evals/facts.jsonl`, run by `report facts` (cached
+under `.evalcache/facts/` by the request body, like the planner's). The facts live in
 `Application Support/Browser/facts.jsonl` (`FactStore`, in the package so
 it is tested against a file of its own); Debug builds' "Clear memory"
 empties it with the rest.

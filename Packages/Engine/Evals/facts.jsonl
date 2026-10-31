@@ -1,0 +1,12 @@
+{"query": "I have this friend Noah who back in middle school declared himself to be vegan, and then came back the next day with pepperoni pizza", "expect": [{"kind": "new", "contains": ["Noah", "friend"]}, {"kind": "new", "contains": ["vegan"]}], "allowMore": true, "note": "a story told plainly holds two facts: the friend, and what he did"}
+{"query": "There was this one time when I was a kid, back in middle school, my friend Noah, he came to school and declared he was vegan. And then the next day he came into school with pepperoni pizza. Can you remember the story for later? Thanks.", "expect": [{"kind": "new", "contains": ["Noah", "friend"]}, {"kind": "new", "contains": ["vegan"]}], "allowMore": true, "note": "the same story with an ask to remember: the facts are the same"}
+{"query": "I'm allergic to peanuts, what can I snack on", "expect": [{"kind": "new", "contains": ["peanut"]}], "note": "a fact stated on the way to a question"}
+{"query": "I'm hungry, what's nearby", "expect": [], "note": "true only now: nothing lasting"}
+{"query": "the capital of peru is lima", "expect": [], "note": "a fact about the world with no one personal in it"}
+{"query": "remember that page about the dyson", "expect": [], "note": "points at something seen in this app: a recall, not a fact"}
+{"query": "what time is it in tokyo", "expect": [], "note": "a question with nothing lasting in it"}
+{"query": "I'm vegetarian", "known": ["Lorcan is vegetarian."], "expect": [{"kind": "same", "of": 1}], "note": "a known fact in other words: same, refreshed, no mark"}
+{"query": "actually I eat fish now", "known": ["Lorcan is vegetarian."], "expect": [{"kind": "changed", "of": 1}], "note": "a known fact changed: the old words replaced (\"Lorcan is pescatarian\" is right, so the words are not pinned)"}
+{"query": "my mom Jasmine turned 50 today", "known": ["Lorcan's mom is Jasmine."], "expect": [{"kind": "new", "contains": ["50"]}], "allowMore": true, "note": "a new fact beside a known one about the same person"}
+{"query": "she lives in austin now", "exchanges": [{"query": "my sister Ana is visiting next week", "kind": "answer", "text": "That sounds lovely. Anything you want to plan for her visit?"}], "expect": [{"kind": "new", "contains": ["Ana", "Austin"]}], "allowMore": true, "note": "she resolves against the earlier exchange"}
+{"query": "my wife Ana and I split up last month", "known": ["Lorcan's wife is Ana."], "expect": [{"kind": "changed", "of": 1}], "allowMore": true, "note": "a change to a known fact about a person"}

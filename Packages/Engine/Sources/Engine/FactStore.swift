@@ -72,6 +72,37 @@ public actor FactStore {
         return fact
     }
 
+    /// The fact stated again in other words: its date moves on, nothing
+    /// else. Nil when the id is gone.
+    @discardableResult
+    public func refresh(_ id: UUID, date: Date = .now) -> Fact? {
+        var all = facts()
+        guard let i = all.firstIndex(where: { $0.id == id }) else { return nil }
+        all[i].date = date
+        loaded = all
+        rewrite(all)
+        return all[i]
+    }
+
+    /// The fact changed by a later query: the same fact, its words replaced,
+    /// the old words kept as `previous`, read from `madeBy`. Nil when the
+    /// id is gone, so the caller adds the new words instead.
+    @discardableResult
+    public func replace(_ id: UUID, with text: String, madeBy: String, date: Date = .now) -> Fact? {
+        var all = facts()
+        guard let i = all.firstIndex(where: { $0.id == id }) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return all[i] }
+        all[i].previous = all[i].text
+        all[i].text = trimmed
+        all[i].source = .inferred
+        all[i].madeBy = madeBy
+        all[i].date = date
+        loaded = all
+        rewrite(all)
+        return all[i]
+    }
+
     public func forget(_ id: UUID) {
         var all = facts()
         guard let i = all.firstIndex(where: { $0.id == id }) else { return }

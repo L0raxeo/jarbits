@@ -228,6 +228,15 @@ final class JarbitsSession {
     private var askedName = false
     /// Jev judging which fact a forget means; nil offers the shortlist in word order.
     let factResolver: FactResolver?
+    /// Reads every lasting fact a query states, beside the query; nil
+    /// without a Gemini key.
+    let factReader: FactReader?
+    /// The facts as kept, beside their texts: what the reader is shown, and
+    /// what a same or changed finding points back at.
+    private(set) var knownFacts: [Fact] = []
+    /// A mark shown at the foot of a reply that is up, for a moment, so the
+    /// reply stays: "Remembered: …". Nil otherwise; see `note(_:)`.
+    private(set) var replyFoot: FactMark?
     /// Clears the mark in the bubble after `FactMark.linger`.
     private var markTask: Task<Void, Never>?
     /// Where the screen last stood, the idle circle or a drawn layer, the
@@ -245,7 +254,7 @@ final class JarbitsSession {
     /// A Gemini key is configured, so an answer can be shown.
     var canAnswer: Bool { answerClient != nil }
 
-    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared) {
+    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared) {
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
@@ -256,13 +265,15 @@ final class JarbitsSession {
         self.notebook = notebook
         self.facts = facts
         self.factResolver = factResolver
+        self.factReader = factReader
         self.engine = engine
         self.log = log
         self.answerClient = answerClient
         Task { [weak self] in
-            let texts = await facts.all().map(\.text)
+            let all = await facts.all()
             let name = await facts.userName()
-            self?.factTexts = texts
+            self?.knownFacts = all
+            self?.factTexts = all.map(\.text)
             self?.userName = name
             self?.nameLoaded = true
         }
@@ -325,8 +336,12 @@ final class JarbitsSession {
         stage = .routing
         let token = UUID()
         requestToken = token
+        let routing = Task { await engine.route(trimmed, exchanges: exchanges, current: newest, opened: opened, persona: persona, screen: screenRead) }
+        // The fact reader beside the route: every lasting fact the words
+        // state, read whatever the query becomes, applied when it is back.
+        startFactReading(query: trimmed, exchanges: exchanges.suffix(FactReader.exchangesGiven).map(\.exchange), routing: routing)
         Task {
-            let result = await engine.route(trimmed, exchanges: exchanges, current: newest, opened: opened, persona: persona, screen: screenRead)
+            let result = await routing.value
             guard token == requestToken else { return }   // a newer query won, or cancelled
             lastQuery = result.query   // the words that ran: the label, the exchange, the layer and the record carry them
             #if DEBUG
@@ -405,6 +420,57 @@ final class JarbitsSession {
 
     // MARK: Facts
 
+    /// The fact reader on the words of a query, beside the route: nothing
+    /// waits for it. Its findings are applied once the route has answered
+    /// too, so the log line carries the query's pick; the facts are kept
+    /// whatever became of the query, since the words were said.
+    private func startFactReading(query: String, exchanges: [Exchange], routing: Task<EngineResult, Never>) {
+        guard let factReader else { return }
+        let known = knownFacts
+        let persona = persona
+        Task { [weak self] in
+            let reading = await factReader.read(query: query, exchanges: exchanges, known: known.map(\.text), persona: persona, now: .now)
+            let result = await routing.value
+            await self?.apply(findings: reading.findings, summary: reading.summary, known: known, query: query, decision: result.decision)
+        }
+    }
+
+    /// What the reader found, written: a new fact added, a restated one
+    /// refreshed, a changed one replaced with its old words kept; then one
+    /// mark for what was added or changed, and the reader's own log line.
+    private func apply(findings: [FactReader.Finding], summary: ExtractionSummary, known: [Fact], query: String, decision: Pick) async {
+        var added: [String] = []
+        var changed: [String] = []
+        var restated = 0
+        for finding in findings {
+            switch finding.kind {
+            case .new:
+                let kept = await facts.add(Fact(text: finding.text, source: .inferred, madeBy: query))
+                if Fact.key(kept.text) == Fact.key(finding.text), !known.contains(where: { $0.id == kept.id }) { added.append(kept.text) } else { restated += 1 }
+            case .same:
+                guard let of = finding.of, known.indices.contains(of - 1) else { continue }
+                _ = await facts.refresh(known[of - 1].id)
+                restated += 1
+            case .changed:
+                guard let of = finding.of, known.indices.contains(of - 1) else { continue }
+                if let kept = await facts.replace(known[of - 1].id, with: finding.text, madeBy: query) {
+                    changed.append(kept.text)
+                } else {
+                    _ = await facts.add(Fact(text: finding.text, source: .inferred, madeBy: query))
+                    added.append(finding.text)
+                }
+            }
+        }
+        if !findings.isEmpty { await refreshFacts() }
+        #if DEBUG
+        print("facts read: \(added.count) new, \(restated) same, \(changed.count) changed (\(summary.latencyMs) ms)" + (added + changed).map { "\n  \($0)" }.joined())
+        #endif
+        if !added.isEmpty || !changed.isEmpty {
+            note(FactMark(text: (added + changed).joined(separator: " · "), kind: added.isEmpty ? .updated : .remembered))
+        }
+        record(decision, query: query, extraction: summary, fact: FactSummary(action: "read", source: .inferred, text: added.first ?? changed.first, remember: decision.remember, latencyMs: summary.latencyMs, found: added.count, restated: restated, replaced: changed.count))
+    }
+
     /// Keeps `fact`, or refreshes the one already there, and shows the mark.
     func learn(_ fact: Fact) async -> Fact {
         let kept = await facts.add(fact)
@@ -427,16 +493,30 @@ final class JarbitsSession {
     }
 
     private func refreshFacts() async {
-        factTexts = await facts.all().map(\.text)
+        let all = await facts.all()
+        knownFacts = all
+        factTexts = all.map(\.text)
     }
 
-    /// The mark, for a moment, as a line in the bubble: "Remembered: …".
+    /// The mark, for a moment: a line in the bubble ("Remembered: …") when
+    /// nothing is there to read, else a line at the foot of the reply that
+    /// is up, so the reply stays where the user is reading it.
     private func note(_ mark: FactMark) {
-        let layer = Layer(plan: .said(query: lastQuery, text: (mark.kind == .remembered ? "Remembered: " : "Forgotten: ") + mark.text), query: lastQuery, decision: nil)
+        markTask?.cancel()
+        if let reply, !reply.lingers, replyHasContent {
+            replyFoot = mark
+            markTask = Task { [weak self] in
+                try? await Task.sleep(for: FactMark.linger)
+                guard !Task.isCancelled, let self, replyFoot == mark else { return }
+                replyFoot = nil
+            }
+            return
+        }
+        replyFoot = nil
+        let layer = Layer(plan: .said(query: lastQuery, text: mark.line), query: lastQuery, decision: nil)
         layer.lingers = true
         reply?.answer?.cancel()
         reply = layer
-        markTask?.cancel()
         markTask = Task { [weak self] in
             try? await Task.sleep(for: FactMark.linger)
             guard !Task.isCancelled, let self, reply === layer else { return }
@@ -747,6 +827,7 @@ final class JarbitsSession {
     func dismissReply() {
         reply?.answer?.cancel()
         reply = nil
+        replyFoot = nil
         markTask?.cancel()
     }
 
@@ -1213,13 +1294,9 @@ final class JarbitsSession {
         // mark is read once, whatever the query routed to.
         let replaying = replayingQuery
         replayingQuery = nil
-        // A lasting fact the words stated on the way to something else is
-        // kept beside the pick, with the mark.
-        var factSummary: FactSummary?
-        if let inferred = result.inferred {
-            factSummary = FactSummary(action: "remembered", source: .inferred, text: inferred.text, remember: decision.remember)
-            Task { await learn(inferred) }
-        }
+        // A lasting fact the words stated is the fact reader's, which runs
+        // beside every query and logs its own line; nothing is kept here.
+        let factSummary: FactSummary? = nil
         if result.reasoning {
             plan(query: query, decision: decision, exchanges: result.chained, reading: result.reading, lead: result.lead, screen: result.screen, token: token)
             return

@@ -146,6 +146,9 @@ import Testing
                 engine: EngineSummary(model: "gemini-3.8-flash", rounds: 1, steps: [], usage: AnswerUsage(inputTokens: 5000, outputTokens: 40, thoughtTokens: 20), latencyMs: 1500, factsGiven: 0, memoriesGiven: 2, outcome: .fellBackToWeb("round 1: no calls"))),
             DecisionRecord(timestamp: now.addingTimeInterval(845), query: "suggest a vegetarian dinner", decision: Pick(instinct: .narrative, suggested: nil, confidence: 1, source: .plan),
                 answer: AnswerSummary(model: "gemini-3.1-flash-lite", format: .narrative, usage: AnswerUsage(inputTokens: 900, outputTokens: 180, thoughtTokens: 0), firstTokenMs: 500, latencyMs: 2000, outcome: .completed)),
+            DecisionRecord(timestamp: now.addingTimeInterval(850), query: "my friend noah went vegan once", decision: Pick(instinct: .narrative, suggested: .narrative, confidence: 0.95, probabilities: ["narrative": 0.95], model: "jev-1.13.0", latencyMs: 180, inputTokens: 300, remember: 0.8, source: .jev),
+                extraction: ExtractionSummary(model: "gemini-3.1-flash-lite", latencyMs: 900, usage: AnswerUsage(inputTokens: 600, outputTokens: 60, thoughtTokens: 0), fields: ["facts"], outcome: .extracted),
+                fact: FactSummary(action: "read", source: .inferred, text: "Lorcan has a friend named Noah", remember: 0.8, latencyMs: 900, found: 2, restated: 0, replaced: 0)),
         ]
         let lines = try records.map { String(decoding: try DecisionRecord.encoder.encode($0), as: UTF8.self) }.joined(separator: "\n") + "\n"
         let parsed = try DecisionsReport.parse(Data(lines.utf8))
@@ -153,7 +156,7 @@ import Testing
 
         let oldRecord = #"{"timestamp":"2026-10-01T00:00:00Z","query":"x","decision":{"instinct":"web_results","probabilities":{},"source":{"noKey":{}}}}"#
         let markdown = DecisionsReport.markdown(records: parsed)
-        #expect(markdown.contains("19 queries: 16 asked Jev, 1 addresses, 0 without a key, 1 errors, 1 answers sent to web for recency, 1 steps of plans. 1 rewritten by the reading."))
+        #expect(markdown.contains("20 queries: 17 asked Jev, 1 addresses, 0 without a key, 1 errors, 1 answers sent to web for recency, 1 steps of plans. 1 rewritten by the reading."))
         #expect(markdown.contains("## Readings"))
         #expect(markdown.contains("1 read beside Jev: 1 rewritten, 0 unchanged, 0 failed. Median latency 700 ms; about $0.0000 in tokens."))
         #expect(markdown.contains("Rewritten: \"oh pull up lobsters\" → \"pull up lobsters\""))
@@ -165,9 +168,10 @@ import Testing
         #expect(markdown.contains("2 plans: 1 completed, 1 fell back to web, 0 declined, 0 over budget, 0 overtaken. Mean 1.5 rounds and 1.0 steps; median 4200 ms; about $0.0092 in tokens."))
         #expect(markdown.contains("Fell back: \"do the thing\": round 1: no calls"))
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).engine == nil, "lines without a plan decode")
-        #expect(markdown.contains("1 asked a model for a value: 1 read one, 0 came back empty, 0 failed. Median latency 400 ms."))
+        #expect(markdown.contains("2 asked a model for a value: 2 read one, 0 came back empty, 0 failed. Median latency 900 ms."))
         #expect(markdown.contains("1 touched the facts: 1 remembered (1 told, 0 chosen, 0 inferred), 0 forgotten, 0 declined, 0 found nothing to keep or drop."))
-        #expect(markdown.contains("Remember gate (threshold 0.5): mean 0.95 where a fact was kept, 0.95 over every query asked."))
+        #expect(markdown.contains("1 read for facts beside the query: 2 new, 0 restated, 0 changed; 0 found nothing, 0 failed. Median latency 900 ms."))
+        #expect(markdown.contains("Remember gate (threshold 0.5): mean 0.95 where a fact was kept, 0.88 over every query asked."))
         #expect(markdown.contains("Kept: \"I'm vegetarian\""))
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).fact == nil, "lines without a fact decode")
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).extraction == nil, "lines without an extraction decode")
@@ -180,7 +184,7 @@ import Testing
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).decision.recall == nil, "lines without a recall intent decode")
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).decision.chain == nil, "lines without a chain decode")
         #expect(markdown.contains("| `web_results` | 1 | 1 | 0 | 0 | 0.90 | \"look up steve jobs\" |"))
-        #expect(markdown.contains("| `narrative` | 3 | 2 | 1 | 0 | 0.57 | \"do the thing\", \"remember I'm vegetarian, then suggest dinner\", \"can I use water\" |"), "a continuation counts as acted on")
+        #expect(markdown.contains("| `narrative` | 4 | 3 | 1 | 0 | 0.66 | \"do the thing\", \"my friend noah went vegan once\", \"remember I'm vegetarian, then suggest dinner\" |"), "a continuation counts as acted on")
         #expect(markdown.contains("| `time` | 1 | 1 | 0 | 0 | 0.95 | \"what time is it in tokyo\" |"))
         #expect(markdown.contains("Queries with earlier exchanges: 2 asked, 2 depended on the newest (mean chain 1.0), 2 continued an answer (1 as one line), 0 went to another card."))
         #expect(markdown.contains("Reasoning (0 direct, 2 several steps): mean score 1.20 over 4; 1 unsure picks leaned to several steps."))

@@ -70,6 +70,23 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: store.fileURL.path(percentEncoded: false)))
     }
 
+    @Test func refreshMovesTheDateAndReplaceKeepsTheHistory() async throws {
+        let store = store()
+        defer { try? FileManager.default.removeItem(at: store.fileURL) }
+        let ana = await store.add(Fact(text: "Lorcan's wife is Ana", source: .inferred, madeBy: "q1", date: Date(timeIntervalSince1970: 1_792_600_000)))
+        let refreshed = await store.refresh(ana.id, date: Date(timeIntervalSince1970: 1_792_600_500))
+        #expect(refreshed?.text == ana.text && refreshed?.date == Date(timeIntervalSince1970: 1_792_600_500) && refreshed?.previous == nil)
+        let changed = await store.replace(ana.id, with: "Lorcan and his ex-wife Ana split up", madeBy: "q2", date: Date(timeIntervalSince1970: 1_792_601_000))
+        #expect(changed?.id == ana.id, "the same fact")
+        #expect(changed?.text == "Lorcan and his ex-wife Ana split up" && changed?.previous == "Lorcan's wife is Ana" && changed?.madeBy == "q2")
+        let reopened = await FactStore(fileURL: store.fileURL).all()
+        #expect(reopened == [changed!], "the change and its history survive a reload")
+        #expect(await store.replace(UUID(), with: "x", madeBy: "q3") == nil, "a fact that is gone cannot be replaced")
+        #expect(await store.refresh(UUID()) == nil)
+        let json = String(decoding: try DecisionRecord.encoder.encode(ana), as: UTF8.self)
+        #expect(!json.contains("previous"), "a fact never changed carries no history key")
+    }
+
     @Test func theNameIsKeptBesideTheFactsAndGoesWithAClear() async throws {
         let store = store()
         #expect(await store.userName() == nil)

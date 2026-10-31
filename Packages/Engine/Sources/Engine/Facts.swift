@@ -23,18 +23,22 @@ public struct Fact: Codable, Sendable, Hashable, Identifiable {
     /// When it was learned, or last stated again.
     public var date: Date
     public var version: Int
+    /// The words this fact replaced, when a later query changed it ("Ana
+    /// and I split up" after "Lorcan's wife is Ana"): the history, one step.
+    public var previous: String?
 
-    public init(id: UUID = UUID(), text: String, source: Source, madeBy: String, date: Date = .now) {
+    public init(id: UUID = UUID(), text: String, source: Source, madeBy: String, date: Date = .now, previous: String? = nil) {
         self.id = id
         self.text = text
         self.source = source
         self.madeBy = madeBy
         self.date = date
         version = Self.currentVersion
+        self.previous = previous
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, text, source, madeBy, date, version
+        case id, text, source, madeBy, date, version, previous
     }
 
     /// Tolerant: a line without a source, a maker or a version still reads;
@@ -51,6 +55,18 @@ public struct Fact: Codable, Sendable, Hashable, Identifiable {
         madeBy = try container.decodeIfPresent(String.self, forKey: .madeBy) ?? ""
         date = try container.decodeIfPresent(Date.self, forKey: .date) ?? .now
         version = try container.decodeIfPresent(Int.self, forKey: .version) ?? Self.currentVersion
+        previous = try container.decodeIfPresent(String.self, forKey: .previous)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(text, forKey: .text)
+        try container.encode(source, forKey: .source)
+        try container.encode(madeBy, forKey: .madeBy)
+        try container.encode(date, forKey: .date)
+        try container.encode(version, forKey: .version)
+        try container.encodeIfPresent(previous, forKey: .previous)
     }
 
     /// The words, folded: what makes two statements the same fact. "I'm
@@ -63,7 +79,8 @@ public struct Fact: Codable, Sendable, Hashable, Identifiable {
 /// How a query touched the facts, for the decision log.
 public struct FactSummary: Codable, Sendable, Equatable {
     /// `remembered`, `forgotten`, `declined` (the sheet said keep, or was
-    /// swiped away), or `none` (nothing to remember or forget).
+    /// swiped away), `none` (nothing to remember or forget), or `read`: the
+    /// fact reader's own line for a query, with what it found.
     public var action: String
     public var source: Fact.Source?
     public var text: String?
@@ -73,8 +90,12 @@ public struct FactSummary: Codable, Sendable, Equatable {
     public var candidates: Int?
     public var judged: Int?
     public var latencyMs: Int?
+    /// For a reading: how many facts were new, restated, and changed.
+    public var found: Int?
+    public var restated: Int?
+    public var replaced: Int?
 
-    public init(action: String, source: Fact.Source? = nil, text: String? = nil, remember: Double? = nil, candidates: Int? = nil, judged: Int? = nil, latencyMs: Int? = nil) {
+    public init(action: String, source: Fact.Source? = nil, text: String? = nil, remember: Double? = nil, candidates: Int? = nil, judged: Int? = nil, latencyMs: Int? = nil, found: Int? = nil, restated: Int? = nil, replaced: Int? = nil) {
         self.action = action
         self.source = source
         self.text = text
@@ -82,6 +103,9 @@ public struct FactSummary: Codable, Sendable, Equatable {
         self.candidates = candidates
         self.judged = judged
         self.latencyMs = latencyMs
+        self.found = found
+        self.restated = restated
+        self.replaced = replaced
     }
 }
 

@@ -281,8 +281,10 @@ public enum DecisionsReport {
             out.append("")
         }
 
-        let facts = records.compactMap { record in record.fact.map { (record, $0) } }
-        if !facts.isEmpty {
+        let allFacts = records.compactMap { record in record.fact.map { (record, $0) } }
+        let factReadings = allFacts.filter { $0.1.action == "read" }
+        let facts = allFacts.filter { $0.1.action != "read" }
+        if !allFacts.isEmpty {
             out.append("## Facts")
             out.append("")
             let remembered = facts.filter { $0.1.action == "remembered" }
@@ -291,6 +293,16 @@ public enum DecisionsReport {
             let declined = facts.filter { $0.1.action == "declined" }.count
             let nothing = facts.filter { $0.1.action == "none" }.count
             out.append("\(facts.count) touched the facts: \(remembered.count) remembered (\(count(.told)) told, \(count(.chosen)) chosen, \(count(.inferred)) inferred), \(forgotten) forgotten, \(declined) declined, \(nothing) found nothing to keep or drop.")
+            if !factReadings.isEmpty {
+                let found = factReadings.reduce(0) { $0 + ($1.1.found ?? 0) }
+                let restated = factReadings.reduce(0) { $0 + ($1.1.restated ?? 0) }
+                let replaced = factReadings.reduce(0) { $0 + ($1.1.replaced ?? 0) }
+                let empty = factReadings.filter { $0.0.extraction?.outcome == .empty }.count
+                let failed = factReadings.filter { if case .failed = $0.0.extraction?.outcome { true } else { false } }.count
+                let latencies = factReadings.compactMap { $0.1.latencyMs }.sorted()
+                let median = latencies.isEmpty ? "–" : "\(latencies[latencies.count / 2]) ms"
+                out.append("\(factReadings.count) read for facts beside the query: \(found) new, \(restated) restated, \(replaced) changed; \(empty) found nothing, \(failed) failed. Median latency \(median).")
+            }
             let gates = records.compactMap(\.decision.remember)
             if !gates.isEmpty {
                 let kept = remembered.compactMap(\.0.decision.remember)

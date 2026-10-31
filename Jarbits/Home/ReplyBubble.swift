@@ -16,6 +16,9 @@ struct ReplyBubble: View {
     let layer: Layer?
     /// A question takes the bubble over while it waits for its answer.
     let question: PendingQuestion?
+    /// A fact kept while this reply is up: one quiet line at the foot for a
+    /// moment, so the reply stays.
+    var footMark: FactMark? = nil
     /// A card grows no taller than this; past it the text is cut and "Read on" shows.
     let maxHeight: CGFloat
     let width: CGFloat
@@ -125,6 +128,21 @@ struct ReplyBubble: View {
     /// The row at the foot of every form: the x at the left, then what the
     /// form says there, and "Read on" at the right where the form has it.
     private func foot(_ label: Text? = nil, readOn: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let footMark, question == nil {
+                Text(footMark.line)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Palette.quiet)
+                    .lineLimit(2)
+                    .transition(.opacity)
+                    .accessibilityLabel(footMark.line)
+            }
+            footRow(label, readOn: readOn)
+        }
+        .animation(.smooth(duration: 0.2), value: footMark)
+    }
+
+    private func footRow(_ label: Text?, readOn: Bool) -> some View {
         HStack(spacing: 8) {
             Button(action: close) {
                 Image(systemName: "xmark")

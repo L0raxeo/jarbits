@@ -491,6 +491,7 @@ private struct SessionBubble: View {
         ReplyBubble(
             layer: session.reply,
             question: session.question,
+            footMark: session.replyFoot,
             maxHeight: maxHeight,
             width: width,
             onReadOn: session.promoteReply,

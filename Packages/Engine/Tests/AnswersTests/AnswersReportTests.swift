@@ -25,7 +25,7 @@ import Testing
         #expect(markdown.contains("- Searched \"<term searched>\"\n- Read \"<page title>\" (<host>)"), "the block is rendered from the same code")
         #expect(markdown.contains("### Input with facts"))
         #expect(markdown.contains("- <fact>\n- <fact>"))
-        #expect(markdown.contains(ValueExtractor.factSystem(.example)))
+        #expect(markdown.contains(FactReader.system(.example)))
         #expect(markdown.contains("### Values read by Gemini"))
         #expect(markdown.contains(ValueExtractor.system(.example)))
         #expect(markdown.contains("Earlier: Searched \"<term searched>\"\nRequest: <query>"))

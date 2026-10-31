@@ -39,6 +39,9 @@ import Sites
 //      small metered call each, printing the texts nearest first with their closeness)
 //   [BRAVE_API_KEY=…] swift run --package-path Packages/Engine report sites "go to hacker news"
 //     (what the seeded book says of a name, and with the key Brave's candidates)
+//   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report facts [cases.jsonl] [--no-network]
+//     (every case of Evals/facts.jsonl through the fact reader: the facts a request states, new, same as a
+//     known one or changed from one; answers cached under .evalcache/facts/ by the request body)
 //   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Engine report eval [--out results.jsonl]
 //     (every case of Evals/engine.jsonl through the device rules and Jev; misses with the gate and the
 //     spread, a pass count per format; Jev's answers cached under .evalcache/ by the request body, so
@@ -488,6 +491,47 @@ case "plans":
         try? data.write(to: out, options: .atomic)
     }
     print(PlanReport.text(results: results, file: file.lastPathComponent, model: Planner.model), terminator: "")
+    exit(results.contains { $0.status == .fail } ? 1 : 0)
+case "facts":
+    let usage = "usage: report facts [cases.jsonl] [--out <results.jsonl>] [--no-network]"
+    let packageRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()   // main.swift → ReportCLI/
+        .deletingLastPathComponent()   // → Sources/
+        .deletingLastPathComponent()   // → Engine/
+    var file = packageRoot.appending(path: "Evals/facts.jsonl")
+    var out = packageRoot.appending(path: ".evalcache/facts.jsonl")
+    var network = true
+    var rest = Array(arguments.dropFirst())
+    while let argument = rest.first {
+        rest.removeFirst()
+        switch argument {
+        case "--out":
+            guard let next = rest.first else { fail(usage) }
+            rest.removeFirst()
+            out = URL(fileURLWithPath: next)
+        case "--no-network": network = false
+        default:
+            guard !argument.hasPrefix("--") else { fail(usage) }
+            file = URL(fileURLWithPath: argument)
+        }
+    }
+    var cases: [FactCase] = []
+    do {
+        cases = try FactSet.parse(try Data(contentsOf: file))
+    } catch {
+        fail("could not read \(file.path(percentEncoded: false)): \(error)")
+    }
+    var client: GeminiClient?
+    if network, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty {
+        client = GeminiClient(apiKey: key, model: FactReader.model, totalTimeout: FactReader.timeout)
+    }
+    let runner = FactRunner(client: client, cache: PlanCache(directory: packageRoot.appending(path: ".evalcache/facts")))
+    let results = await runner.run(cases)
+    if let data = try? JSONEncoder().encode(results) {
+        try? FileManager.default.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: out, options: .atomic)
+    }
+    print(FactReport.text(results: results, file: file.lastPathComponent, model: FactReader.model), terminator: "")
     exit(results.contains { $0.status == .fail } ? 1 : 0)
 case "eval":
     let usage = "usage: report eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network]"
