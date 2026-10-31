@@ -81,6 +81,7 @@ import Testing
         #expect(system.contains("in a note it is never written out: the handle in braces is the link"))
         #expect(Planner.describe(InstinctSpec.spec(for: .notebook)).contains("a link always goes into a note as the thing's handle in braces"))
         #expect(system.contains("never call remember for what the request says. Call remember for something lasting that came out of an answer or of ask"))
+        #expect(system.contains("ask does nothing itself: after a yes-like answer"), "an answer to ask is not a step done")
         #expect(system.contains("never call it again with the same arguments"))
         #expect(system.contains("Call done when the request has been handled"))
         #expect(system.contains("- Lorcan is vegetarian\n- Lorcan lives in Austin"))

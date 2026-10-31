@@ -194,7 +194,9 @@ final class Executor {
                     guard session.isCurrent(token) else { return finish(.stale, memories: memories.count) }
                     switch answer {
                     case let .option(_, text)?, let .text(text)?:
-                        result = "the user answered: \(text)"
+                        // The question goes back beside the answer, so "Keep" is read as the answer to it.
+                        result = "the user answered \"\(text)\" to \"\(question)\""
+                        if !options.isEmpty { result += " (options: \(options.joined(separator: ", ")))" }
                         outcome = "asked"
                         answered = true
                     case nil:

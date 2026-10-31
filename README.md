@@ -1094,7 +1094,11 @@ Lorcan 2026-10-29; `store: false`; prices in `GeminiPricing`), with every instin
 each taking a `query` and its own fields (and, on the page-opening ones,
 `screen`: see "Jarbits's screen and the user's"), plus five the executor answers
 itself: `ask` puts one question in the bubble (up to three options, or a
-line to type), `say` shows the planner's own text in the bubble as it is,
+line to type; the plan waits, and the tap goes back as the step's result
+with the question beside it, `the user answered "Keep" to "Delete the
+watchlist?" (options: Delete, Keep)`, since a bare word once read as a
+delete done; the rules say asking changes nothing on its own, 2026-10-31),
+`say` shows the planner's own text in the bubble as it is,
 `open` shows a thing by its handle, `look` reads more of an open page, and
 `done` ends the plan. `say` is for what the planner already holds in full
 (the facts, the memories shown to it, earlier steps' results), including
