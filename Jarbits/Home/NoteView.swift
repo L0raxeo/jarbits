@@ -12,7 +12,12 @@ import Engine
 /// Jarbits while on screen is reloaded. Bullets, numbers and checkboxes
 /// show as marker characters at the start of their lines; `NoteMarkdown`
 /// keeps the form on each paragraph and `NoteDisplay` turns the markers
-/// into Markdown on the way out, so the file never holds a marker.
+/// into Markdown on the way out, so the file never holds a marker. The
+/// editor behaves as Notes does: a return in a list item starts the next
+/// item (the next number in a numbered list), a return on an empty item
+/// ends the list, a return after a heading starts a plain line, a tap on a
+/// checkbox ticks or clears it, and the page scrolls to keep the cursor
+/// above the keyboard.
 struct NoteView: View {
     @Environment(JarbitsSession.self) private var session
     let note: Note
@@ -45,8 +50,9 @@ struct NoteView: View {
                         .scrollDisabled(true)   // the page scrolls, not the editor
                         .frame(minHeight: proxy.size.height - topInset - 160, alignment: .top)
                         .focused($editing)
-                    // The editor opens a tapped link through the system; this takes it first.
-                    NoteLinkCatcher(onLink: openLink)
+                    // The editor opens a tapped link through the system; this takes it
+                    // first, ticks a tapped checkbox, and keeps the cursor above the keyboard.
+                    NoteLinkCatcher(onLink: openLink, onCheckbox: toggleCheckbox)
                         .frame(width: 0, height: 0)
                 }
                 .padding(.horizontal, 20)
@@ -60,7 +66,8 @@ struct NoteView: View {
                 openLink(url)
                 return .handled
             })
-            .onChange(of: text) { _, _ in
+            .onChange(of: text) { old, new in
+                if editing, continueList(from: old, to: new) { return }   // the change comes round again
                 restyle()
                 scheduleSave()
             }
@@ -156,6 +163,89 @@ struct NoteView: View {
         session.saveNote(note, body: body, title: title)
     }
 
+    // MARK: Lists as Notes has them
+
+    /// A return typed at the end of a formed line, found by comparing the
+    /// text before and after the keystroke: one newline added. In a list
+    /// item with words, the next item's marker goes on the new line and the
+    /// cursor after it (a numbered list counts on, and the items below are
+    /// renumbered); on an empty item, the marker and the return both go,
+    /// ending the list on a plain line; after a heading, the new line is
+    /// plain. True when the text was changed here.
+    private func continueList(from old: AttributedString, to new: AttributedString) -> Bool {
+        let before = Array(old.characters), after = Array(new.characters)
+        guard after.count == before.count + 1 else { return false }
+        var p = 0
+        while p < before.count, before[p] == after[p] { p += 1 }
+        guard after[p] == "\n", Array(after[(p + 1)...]) == Array(before[p...]) else { return false }
+        var start = p
+        while start > 0, after[start - 1] != "\n" { start -= 1 }
+        guard start > 0 else { return false }   // the title line: a plain body line follows it
+        let lineRange = Self.index(start, in: new) ..< Self.index(p, in: new)
+        let line = AttributedString(new[lineRange])
+        let (form, bare) = NoteDisplay.stripMarker(line, form: line.runs.first?[NoteParagraphAttribute.self] ?? .plain)
+        var plain = AttributeContainer()
+        plain[NoteParagraphAttribute.self] = .plain
+        plain.font = .body
+        switch form {
+        case .plain:
+            return false
+        case .heading:
+            text = new
+            selection = AttributedTextSelection(insertionPoint: Self.index(p + 1, in: text), typingAttributes: plain)
+            return true
+        case .bullet, .numbered, .checkbox, .checked:
+            if bare.characters.allSatisfy(\.isWhitespace) {
+                var out = new
+                out.removeSubrange(lineRange.lowerBound ..< Self.index(p + 1, in: new))
+                text = out
+                selection = AttributedTextSelection(insertionPoint: Self.index(start, in: text), typingAttributes: plain)
+                return true
+            }
+            let next: NoteParagraph = form == .checked ? .checkbox : form
+            var marker: AttributedString
+            if form == .numbered {
+                let number = Int(String(line.characters).prefix { $0.isNumber }) ?? 0
+                marker = AttributedString("\(number + 1). ")
+            } else {
+                marker = AttributedString(NoteDisplay.markers[next] ?? "")
+            }
+            marker[NoteParagraphAttribute.self] = next
+            var out = new
+            out.insert(marker, at: Self.index(p + 1, in: out))
+            var caret = p + 1 + marker.characters.count
+            if form == .numbered { (out, caret) = NoteDisplay.renumbered(out, caret: caret) }
+            text = out
+            var typing = AttributeContainer()
+            typing[NoteParagraphAttribute.self] = next
+            selection = AttributedTextSelection(insertionPoint: Self.index(caret, in: text), typingAttributes: typing)
+            return true
+        }
+    }
+
+    /// A tap on a checkbox marker, from the catcher: ticked or cleared.
+    private func toggleCheckbox(at offset: Int) {
+        guard offset >= 0, offset < text.characters.count else { return }
+        let range = NoteDisplay.paragraphRange(containing: Self.index(offset, in: text), in: text)
+        guard range.lowerBound > text.startIndex else { return }
+        let current = NoteDisplay.form(of: AttributedString(text[range]))
+        guard current == .checkbox || current == .checked else { return }
+        let caret = caretOffset()
+        text = NoteDisplay.setForm(current == .checkbox ? .checked : .checkbox, in: range, of: text)
+        if let caret { selection = AttributedTextSelection(insertionPoint: Self.index(caret, in: text)) }
+    }
+
+    private static func index(_ offset: Int, in text: AttributedString) -> AttributedString.Index {
+        text.index(text.startIndex, offsetByCharacters: min(max(offset, 0), text.characters.count))
+    }
+
+    private func caretOffset() -> Int? {
+        switch selection.indices(in: text) {
+        case let .insertionPoint(index): return text.characters.distance(from: text.startIndex, to: index)
+        case .ranges: return nil
+        }
+    }
+
     // MARK: Forms
 
     private func toggleInline(_ intent: InlinePresentationIntent) {
@@ -241,6 +331,37 @@ enum NoteDisplay {
             return (.numbered, AttributedString(text[text.index(text.startIndex, offsetByCharacters: match.output.count)...]))
         }
         return (form == .heading ? .heading : .plain, text)
+    }
+
+    /// Every numbered line's number made to count on from the one above
+    /// it, starting again after any other line; `caret`, a character
+    /// offset, moved with the text before it.
+    static func renumbered(_ text: AttributedString, caret: Int) -> (AttributedString, Int) {
+        var out = AttributedString()
+        var number = 0
+        var offset = 0
+        var caret = caret
+        for (index, paragraph) in NoteMarkdown.paragraphs(of: text).enumerated() {
+            if index > 0 { out += AttributedString("\n"); offset += 1 }
+            var line = paragraph.text
+            let length = line.characters.count
+            if index > 0, let match = String(line.characters).firstMatch(of: /^\d+\.\s/) {
+                number += 1
+                let wanted = "\(number). "
+                if match.output != wanted {
+                    var marker = AttributedString(wanted)
+                    marker[NoteParagraphAttribute.self] = .numbered
+                    line.replaceSubrange(line.startIndex ..< line.index(line.startIndex, offsetByCharacters: match.output.count), with: marker)
+                    if caret > offset + match.output.count { caret += wanted.count - match.output.count }
+                    else if caret > offset { caret = offset + wanted.count }
+                }
+            } else {
+                number = 0
+            }
+            out += line
+            offset += length
+        }
+        return (out, caret)
     }
 
     static func paragraphRange(containing position: AttributedString.Index, in text: AttributedString) -> Range<AttributedString.Index> {

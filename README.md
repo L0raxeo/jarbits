@@ -738,7 +738,14 @@ keyboard, and not while the capsule does. A page kept in the note is its
 title in link colour in the text, and a tap opens the page in Jarbits,
 caught before the editor can hand it to the system (`NoteLinkCatcher`);
 while typing, a tap on a link places the cursor, as on any text. There is
-no separate list of links. A link in a note shown as a card in the bubble
+no separate list of links. The editor keeps to what Notes does
+(2026-10-31): a return in a list item starts the next item, the next
+number in a numbered list, with the items below renumbered; a return on
+an empty item ends the list on a plain line; a return after a heading
+starts a plain line; a tap on a checkbox ticks or clears it, typing or
+not; and the page scrolls so the cursor stays above the keyboard after
+each keystroke and when the keyboard comes up (the same catcher view
+moves the page, since the editor does not scroll itself). A link in a note shown as a card in the bubble
 opens the same way, in Jarbits. Typing saves after a pause and on leaving; the
 file is the truth, and a note Jarbits changes while it is on screen is
 reloaded.
