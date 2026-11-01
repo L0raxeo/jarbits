@@ -62,6 +62,12 @@ final class JarbitsSession {
     let messenger = Messenger.shared
     /// The query in flight, from sent to nothing still running; see `QueryRun`.
     private(set) var run: QueryRun?
+    /// The one session the app makes, for the actions the system runs (the
+    /// Action button's "Ask Jarbits").
+    static weak var current: JarbitsSession?
+    /// Stamped by `wake()`: the home screen clears whatever keeps the
+    /// microphone shut (the keyboard) when it changes.
+    private(set) var woke = UUID()
     /// Passive listening, on the idle screen and over a result; what it
     /// hears is never shown.
     let dictation: DictationSession
@@ -339,6 +345,7 @@ final class JarbitsSession {
         warmer.warm()
         restoreWebpages()
         messenger.session = self
+        Self.current = self
     }
 
     // MARK: Open webpages
@@ -897,6 +904,17 @@ final class JarbitsSession {
         dismissReply()
         dropEarlyPicture()
         stage = .idle
+    }
+
+    /// The Action button, or a Shortcut: Jarbits comes up listening. A
+    /// question in the bubble goes (the user chose to speak instead); a
+    /// query in flight is left alone, its run and bubble standing, and the
+    /// new words become the next query. The microphone opens through the
+    /// home screen's own rule once nothing keeps it shut.
+    func wake() {
+        question?.cancel()
+        attention.touched()
+        woke = UUID()
     }
 
     // MARK: The run of a query

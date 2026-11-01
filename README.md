@@ -68,6 +68,17 @@ Whenever it is not open the clay turns a soft red. Once a word is heard
 the capsule rounds into a small circle at the left with "Disregard" and
 "I'm done talking" beside it; any touch turns it back and forgets the words.
 
+The Action button brings him up listening (2026-11-01): the app
+publishes one action, "Ask Jarbits" (`Jarbits/Intents/AskJarbits.swift`,
+an App Intent with its App Shortcut), which the user assigns in Settings
+› Action Button › Shortcut. iOS gives an app one event from the button,
+so the hold opens Jarbits with the microphone on, a question in the
+bubble put away and the keyboard down, and the release means nothing: he
+stops on the pause after you finish, with "I'm done talking" and
+"Disregard" there as always. From the lock screen the phone unlocks
+first. Hold-to-talk, speaking only while the button is down, is Siri's
+alone.
+
 The page is SwiftUI's `WebView`. A site's tab bar is kept above the capsule
 by laying the page out to end there, and it follows the capsule as fast as
 WebKit lays the page out again for each frame, which is not Safari's

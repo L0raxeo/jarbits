@@ -369,6 +369,11 @@ struct HomeView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { session.attention.touched() }
         }
+        // The Action button: the keyboard goes, so the microphone's rule can say yes.
+        .onChange(of: session.woke) { _, _ in
+            typing = false
+            followingUp = false
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         .onChange(of: swiping) { _, swiping in
