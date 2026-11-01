@@ -30,7 +30,10 @@ import Sites
 //     (advanced reasoning's first request, with every instinct as a tool; with the key and no --dry-run,
 //      one metered round on the planner's model, printing the calls the model asks for, the tokens and the cost;
 //      --timeout lifts the app's round budget of ReasoningPolicy.roundTimeout to measure a slow round)
-//   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report read "Which oh can you pull up youtube?" [--after <q> <a>]... [--dry-run]
+//   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report answer "what is a void egg for" [--one-line] [--fact "…"]... [--after <q> <a>]... [--dry-run]
+//     (one answer as the app asks it, narrative unless --one-line; with the key, one small metered call,
+//      printing the answer as written, for hearing the voice)
+//   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report read"Which oh can you pull up youtube?" [--after <q> <a>]... [--dry-run]
 //     (the reading the engine makes beside Jev: the request with its substance isolated and what it is
 //      about; with the key and no --dry-run, one small metered call, printing both, the latency, the
 //      tokens and the cost)
@@ -374,6 +377,47 @@ case "plan":
     case let .failed(reason, latencyMs):
         print("round 1 failed (\(latencyMs) ms): \(reason)")
     }
+case "answer":
+    let usage = "usage: report answer <query> [--one-line] [--fact <text>]... [--after <earlier query> <earlier answer>]... [--dry-run]"
+    var rest = Array(arguments.dropFirst())
+    guard let query = rest.first else { fail(usage) }
+    rest.removeFirst()
+    var format: Instinct = .narrative
+    var facts: [String] = []
+    var history: [AnswerTurn] = []
+    var dryRun = false
+    while let flag = rest.first {
+        switch flag {
+        case "--one-line":
+            format = .oneLine
+            rest.removeFirst()
+        case "--fact":
+            guard rest.count >= 2 else { fail(usage) }
+            facts.append(rest[1])
+            rest.removeFirst(2)
+        case "--after":
+            guard rest.count >= 3 else { fail(usage) }
+            history.append(AnswerTurn(query: rest[1], answer: rest[2], format: format))
+            rest.removeFirst(3)
+        case "--dry-run":
+            dryRun = true
+            rest.removeFirst()
+        default: fail(usage)
+        }
+    }
+    let request = AnswerPrompt.request(format: format, query: query, context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), history: history, facts: facts, persona: .example)
+    guard !dryRun, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
+        print("request body (\(GeminiClient.defaultModel)):")
+        print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
+        print(dryRun ? "dry run: no call made" : "set GEMINI_API_KEY to make the call (one small metered call)")
+        exit(0)
+    }
+    do {
+        print(try await GeminiClient(apiKey: key).interact(request).text)
+    } catch {
+        fail("the answer failed: \(error)")
+    }
+
 case "read":
     let usage = "usage: report read <query> [--after <earlier query> <earlier answer>]... [--dry-run]"
     var rest = Array(arguments.dropFirst())
