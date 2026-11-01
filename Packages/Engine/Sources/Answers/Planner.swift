@@ -352,7 +352,10 @@ public struct Planner: Sendable {
         do {
             interaction = try await client.interact(request, timeout: timeout)
         } catch {
-            return .failed(error.summary, latencyMs: Int((clock.now - start) / .milliseconds(1)))
+            let latency = Int((clock.now - start) / .milliseconds(1))
+            // No connection: the request never reached the model.
+            if case .transport = error { return .unreachable(error.summary, latencyMs: latency) }
+            return .failed(error.summary, latencyMs: latency)
         }
         let latency = Int((clock.now - start) / .milliseconds(1))
         guard interaction.usable else {
@@ -396,4 +399,6 @@ public enum PlanRound: Sendable, Equatable {
     /// The model wrote text and called nothing: nothing to do.
     case silent(steps: [JSONValue], usage: AnswerUsage?, latencyMs: Int, incomplete: Bool = false)
     case failed(String, latencyMs: Int)
+    /// The model could not be reached: the connection failed before a reply.
+    case unreachable(String, latencyMs: Int)
 }

@@ -1681,10 +1681,12 @@ final class JarbitsSession {
                     // going (perhaps after a line promising to keep checking):
                     // the device says why in his voice, from its record of
                     // what was tried, with the choice left to the user. A miss
-                    // leaves the fixed lines.
-                    let fixed = summary.outcome == .budget ? "That one got away from me, I'm afraid." : "I couldn't manage that one, sir."
+                    // leaves the fixed lines. A lost connection is said as it
+                    // is: no model is asked to explain what never happened.
+                    let fixed = summary.lostConnection == true ? Self.lostConnectionLine
+                        : summary.outcome == .budget ? "That one got away from me, I'm afraid." : "I couldn't manage that one, sir."
                     var message = fixed
-                    if let closing {
+                    if let closing, summary.lostConnection != true {
                         let reason: Closing.Reason = summary.outcome == .budget ? .budget : (summary.steps.contains { $0.outcome.hasPrefix("failed") } ? .failed : .nothing)
                         let (line, ms) = await closing.line(query: query, steps: summary.steps, reason: reason, persona: persona)
                         guard token == requestToken else { return }
@@ -1699,6 +1701,9 @@ final class JarbitsSession {
             record(decision, query: query, engine: summary, reading: reading)
         }
     }
+
+    /// The connection failed before the model could plan anything.
+    static let lostConnectionLine = "I lost the connection before I could do that, sir."
 
     /// A query that brought nothing: the screen as it stood, and the
     /// question in the bubble, "Try again" or "Search instead". Nothing is

@@ -48,8 +48,11 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     public var screenChars: Int?
     public var screenItems: Int?
     public var pictureBytes: Int?
+    /// The plan stopped because the model could not be reached: the
+    /// connection failed before a reply. Nil otherwise.
+    public var lostConnection: Bool?
 
-    public init(model: String, rounds: Int, steps: [Step], usage: AnswerUsage? = nil, latencyMs: Int, factsGiven: Int, webpagesGiven: Int, outcome: Outcome, screenChars: Int? = nil, screenItems: Int? = nil, pictureBytes: Int? = nil) {
+    public init(model: String, rounds: Int, steps: [Step], usage: AnswerUsage? = nil, latencyMs: Int, factsGiven: Int, webpagesGiven: Int, outcome: Outcome, screenChars: Int? = nil, screenItems: Int? = nil, pictureBytes: Int? = nil, lostConnection: Bool? = nil) {
         self.model = model
         self.rounds = rounds
         self.steps = steps
@@ -61,10 +64,11 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         self.screenChars = screenChars
         self.screenItems = screenItems
         self.pictureBytes = pictureBytes
+        self.lostConnection = lostConnection
     }
 
     enum CodingKeys: String, CodingKey {
-        case model, rounds, steps, usage, latencyMs, factsGiven, webpagesGiven, outcome, screenChars, screenItems, pictureBytes
+        case model, rounds, steps, usage, latencyMs, factsGiven, webpagesGiven, outcome, screenChars, screenItems, pictureBytes, lostConnection
         /// The field's name before 2026-11-01, read from older logs.
         case memoriesGiven
     }
@@ -82,6 +86,7 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         screenChars = try c.decodeIfPresent(Int.self, forKey: .screenChars)
         screenItems = try c.decodeIfPresent(Int.self, forKey: .screenItems)
         pictureBytes = try c.decodeIfPresent(Int.self, forKey: .pictureBytes)
+        lostConnection = try c.decodeIfPresent(Bool.self, forKey: .lostConnection)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -97,6 +102,7 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         try c.encodeIfPresent(screenChars, forKey: .screenChars)
         try c.encodeIfPresent(screenItems, forKey: .screenItems)
         try c.encodeIfPresent(pictureBytes, forKey: .pictureBytes)
+        try c.encodeIfPresent(lostConnection, forKey: .lostConnection)
     }
 
     /// A step put a result on screen.

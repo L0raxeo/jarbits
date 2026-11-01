@@ -257,6 +257,13 @@ import Testing
             return
         }
         #expect(reason.contains("400"))
+        // No connection at all: the request never reached the model, which the device says plainly.
+        let offline = Planner(client: MockGeminiTransport.client(status: 200, body: ""))
+        MockGeminiTransport.handler = nil
+        guard case .unreachable = await offline.propose(bundle, transcript: [.userText("Request: q")]) else {
+            Issue.record("a connection that fails is unreachable, not a failed round")
+            return
+        }
     }
 
     @Test func theExtractorGivesUpAtItsBudget() async {

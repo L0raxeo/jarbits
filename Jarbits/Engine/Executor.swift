@@ -32,12 +32,15 @@ final class Executor {
         var usage = AnswerUsage(inputTokens: 0, outputTokens: 0, thoughtTokens: 0)
         var counted = false
         var rounds = 0
+        /// The connection failed before the model replied.
+        var lostConnection = false
         let facts = session.factTexts
         func finish(_ outcome: EngineSummary.Outcome, webpages: Int) -> EngineSummary {
             EngineSummary(
                 model: planner.client.model, rounds: rounds, steps: steps, usage: counted ? usage : nil,
                 latencyMs: Int((clock.now - start) / .milliseconds(1)), factsGiven: facts.count, webpagesGiven: webpages, outcome: outcome,
-                screenChars: screen.map { $0.visible.count + $0.rest.count }, screenItems: screen?.items.count, pictureBytes: screen?.picture?.count
+                screenChars: screen.map { $0.visible.count + $0.rest.count }, screenItems: screen?.items.count, pictureBytes: screen?.picture?.count,
+                lostConnection: lostConnection ? true : nil
             )
         }
         func add(_ found: AnswerUsage?) {
@@ -99,6 +102,10 @@ final class Executor {
             switch round {
             case let .failed(reason, _):
                 let happened = shown || steps.contains { $0.outcome == "ran" }
+                return finish(happened ? .completed : .fellBackToWeb("round \(rounds): \(reason)"), webpages: listedWebpages.count)
+            case let .unreachable(reason, _):
+                let happened = shown || steps.contains { $0.outcome == "ran" }
+                lostConnection = !happened
                 return finish(happened ? .completed : .fellBackToWeb("round \(rounds): \(reason)"), webpages: listedWebpages.count)
             case let .silent(modelSteps, found, _, incomplete):
                 add(found)
@@ -497,6 +504,7 @@ final class Executor {
             "\(calls.map { "\($0.name)(\(String(decoding: (try? $0.arguments.data()) ?? Data(), as: UTF8.self)))" }.joined(separator: ", ")); \(steps.count) steps, \(latencyMs) ms, \(usage.map { "\($0.inputTokens) in \($0.outputTokens + $0.thoughtTokens) out" } ?? "no usage")"
         case let .silent(steps, _, latencyMs, incomplete): "\(incomplete ? "incomplete: the budget ran out while thinking" : "no calls"); \(steps.count) steps, \(latencyMs) ms"
         case let .failed(reason, latencyMs): "failed: \(reason), \(latencyMs) ms"
+        case let .unreachable(reason, latencyMs): "unreachable: \(reason), \(latencyMs) ms"
         }
     }
     #endif

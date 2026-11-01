@@ -12,6 +12,7 @@ import Testing
         #expect(system.contains("From the facts below and nothing else"))
         #expect(system.contains("Never a tool name, a handle, a count of steps or rounds"))
         #expect(system.contains("do not repeat it: add only what is new"))
+        #expect(system.contains("never that you did something not listed as tried, and never that you are unable to do a kind of thing"))
     }
 
     @Test func theInputSaysWhatWasTriedInPlainWordsAndWhatWasSaid() {

@@ -376,6 +376,8 @@ case "plan":
         print("round 1 (\(latencyMs) ms): \(incomplete ? "incomplete, the budget ran out while thinking" : "no calls"); \(steps.count) model steps, \(usage.map { "\($0.outputTokens) out" } ?? "no usage")")
     case let .failed(reason, latencyMs):
         print("round 1 failed (\(latencyMs) ms): \(reason)")
+    case let .unreachable(reason, latencyMs):
+        print("round 1 could not reach the model (\(latencyMs) ms): \(reason)")
     }
 case "answer":
     let usage = "usage: report answer <query> [--one-line] [--fact <text>]... [--after <earlier query> <earlier answer>]... [--dry-run]"
