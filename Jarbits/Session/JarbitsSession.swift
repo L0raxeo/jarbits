@@ -1373,7 +1373,8 @@ final class JarbitsSession {
         if let at = layers.firstIndex(where: { $0 === layer }) {
             if let context { lastQuery = context.query }
             if at != index { move(to: at) } else if stage == .idle { move(to: at) }
-            if byQuery { askedOver = layer; if layer.drawn { stage = .ready } }
+            // Still loading: its first commit ends the loading, so the query never waits on nothing.
+            if byQuery { askedOver = layer; stage = layer.drawn ? .ready : .loading }
             if let context { record(context) }
             return
         }
@@ -1416,7 +1417,9 @@ final class JarbitsSession {
     /// reloaded page back where it stood.
     private func show(_ url: URL, in layer: Layer, restoring notes: PageNotes? = nil, byQuery: Bool = true) {
         layer.plan = .web(url)
-        if layer.page == nil { layer.drawn = false }   // a fresh host: nothing on screen until it commits
+        // A fresh host has nothing on screen until it commits; the query's
+        // own load counts as new too, so its first commit ends the loading.
+        if byQuery || layer.page == nil { layer.drawn = false }
         let host = layer.page ?? makeHost(for: layer)
         layer.page = host
         layer.notes = nil
@@ -1428,10 +1431,18 @@ final class JarbitsSession {
         let host = PageHost()
         host.window = window
         host.topInset = topInset
-        host.onCommitted = { [weak self, weak layer] in
+        // One handler for both screens: a page on Jarbits's screen may be
+        // brought forward before it commits, and its commit must then end
+        // the query's loading like any page of the user's.
+        host.onCommitted = { [weak self, weak layer, weak host] in
             guard let self, let layer else { return }
             let first = !layer.drawn
             layer.drawn = true
+            if layer.desk {
+                // Held again on each document: the page may begin a new one.
+                if let host { Task { await host.suspendMedia(true) } }
+                return
+            }
             // Only the query's own page, on its first commit, ends the
             // query's loading: a page the user opened or a link tapped
             // meanwhile is theirs.
@@ -1468,15 +1479,6 @@ final class JarbitsSession {
             // the screen the page is on.
             guard let self else { return }
             if let layer, layer.desk { _ = openOnDesk(url, query: layer.query, decision: layer.decision) } else { open(url) }
-        }
-        if layer.desk {
-            // Held again on each document: the page may begin a new one.
-            host.onCommitted = { [weak self, weak layer, weak host] in
-                guard let self, let layer else { return }
-                layer.drawn = true
-                _ = self
-                if let host, layer.desk { Task { await host.suspendMedia(true) } }
-            }
         }
         return host
     }
