@@ -484,10 +484,25 @@ in the stack.
 
 A plan or an answer that brings nothing no longer becomes a web search
 for the words, which read as a mishearing on "add this to my wishlist":
-the bubble says so ("I couldn't get through that one.", "That took too
-long to work out.", "Nothing came back.") with "Try again" and "Search
-instead" under it, and the screen stays as it stood
-(`JarbitsSession.offerRetry`). Without a planner at all, web results
+the bubble says so with "Try again" and "Search instead" under it, and
+the screen stays as it stood (`JarbitsSession.offerRetry`). The line is
+the device's, in his voice, from its record of what was tried: each step
+in plain words with its outcome, why it stopped, and what the planner
+already said go to the cheap model (`Closing`, one short line, no tool
+names, handles or counts); a miss (no key, no credit, a slow reply)
+leaves the fixed lines ("I couldn't get through that one.", "That took
+too long to work out.", "Nothing came back."). Before that, the planner
+itself is told how to meet a task it cannot finish (2026-10-31, after
+"which is closer to Maginnes Hall" ran the two minutes out in silence):
+an effect no tool produces (a booking, a call, a payment) is said at once
+with what would do it, then done; information is always tried; and while
+it works it judges progress, not attempts: a step that gained ground
+earns the next, however many, and a step that gained nothing is the
+moment to say in one line what it could not find and what would find it
+("I can't measure distances yet; Maps will tell you which is closer. I'll
+keep checking in case."), and then to keep checking, since the answer may
+be one search away; when the time still runs out, the device's closing
+line answers the promise under it. Without a planner at all, web results
 still stand in.
 
 ## Images

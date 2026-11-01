@@ -193,6 +193,12 @@ extension JarbitsSession {
         Secrets.geminiAPIKey.map { FactReader(client: GeminiClient(apiKey: $0)) }
     }
 
+    /// Words the line that closes a plan that could not finish, when a
+    /// Gemini key is configured; nil keeps the bubble's fixed lines.
+    static func makeClosing() -> Closing? {
+        Secrets.geminiAPIKey.map { Closing(client: GeminiClient(apiKey: $0)) }
+    }
+
     static func makeEngine() -> Engine {
         let router = Secrets.typeSafeAPIKey.map { Picker(client: JevClient(apiKey: $0)) }
         let reader = Secrets.geminiAPIKey.map { QueryReader(client: GeminiClient(apiKey: $0)) }

@@ -257,6 +257,9 @@ final class JarbitsSession {
     /// Reads every lasting fact a query states, beside the query; nil
     /// without a Gemini key.
     let factReader: FactReader?
+    /// Words the line that closes a plan that could not finish, from the
+    /// device's record of what was tried; nil keeps the fixed lines.
+    let closing: Closing?
     /// The facts as kept, beside their texts: what the reader is shown, and
     /// what a same or changed finding points back at.
     private(set) var knownFacts: [Fact] = []
@@ -280,7 +283,7 @@ final class JarbitsSession {
     /// A Gemini key is configured, so an answer can be shown.
     var canAnswer: Bool { answerClient != nil }
 
-    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared) {
+    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, closing: Closing? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared) {
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
@@ -292,6 +295,7 @@ final class JarbitsSession {
         self.facts = facts
         self.factResolver = factResolver
         self.factReader = factReader
+        self.closing = closing
         self.engine = engine
         self.log = log
         self.answerClient = answerClient
@@ -1415,13 +1419,28 @@ final class JarbitsSession {
             #if DEBUG
             print("plan \(summary.outcome) after \(summary.rounds) rounds, \(summary.steps.count) steps, \(summary.latencyMs) ms")
             #endif
-            if !summary.shownSomething {
-                if summary.didSomething || summary.outcome == .declined {
+            if summary.outcome == .budget || !summary.shownSomething {
+                if summary.outcome != .budget, summary.didSomething || summary.outcome == .declined {
                     // Done without a screen of its own: back to where the screen stood.
                     stage = stageBefore
                 } else {
-                    // Nothing came of it: said so, with the choice left to the user.
-                    offerRetry(query: query, decision: decision, message: summary.outcome == .budget ? "That took too long to work out." : "I couldn't get through that one.", token: token)
+                    // Nothing came of it, or the time ran out on a plan still
+                    // going (perhaps after a line promising to keep checking):
+                    // the device says why in his voice, from its record of
+                    // what was tried, with the choice left to the user. A miss
+                    // leaves the fixed lines.
+                    let fixed = summary.outcome == .budget ? "That took too long to work out." : "I couldn't get through that one."
+                    var message = fixed
+                    if let closing {
+                        let reason: Closing.Reason = summary.outcome == .budget ? .budget : (summary.steps.contains { $0.outcome.hasPrefix("failed") } ? .failed : .nothing)
+                        let (line, ms) = await closing.line(query: query, steps: summary.steps, reason: reason, persona: persona)
+                        guard token == requestToken else { return }
+                        #if DEBUG
+                        print("closing \(line.map { "\"\($0)\"" } ?? "missed") (\(ms) ms)")
+                        #endif
+                        if let line { message = line }
+                    }
+                    offerRetry(query: query, decision: decision, message: message, token: token)
                 }
             }
             record(decision, query: query, engine: summary, reading: reading)

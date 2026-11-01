@@ -8,7 +8,8 @@ struct JarbitsApp: App {
         recall: JarbitsSession.makeRecallResolver(),
         siteSearch: JarbitsSession.makeSiteSearch(),
         factResolver: JarbitsSession.makeFactResolver(),
-        factReader: JarbitsSession.makeFactReader()
+        factReader: JarbitsSession.makeFactReader(),
+        closing: JarbitsSession.makeClosing()
     )
 
     var body: some Scene {
