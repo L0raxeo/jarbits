@@ -10,6 +10,15 @@
 	<string>$(GEMINI_API_KEY)</string>
 	<key>BraveAPIKey</key>
 	<string>$(BRAVE_API_KEY)</string>
+	<key>ElevenLabsAPIKey</key>
+	<string>$(ELEVENLABS_API_KEY)</string>
+	<key>ElevenLabsVoiceID</key>
+	<string>$(ELEVENLABS_VOICE_ID)</string>
+	<!-- A line Jarbits is speaking finishes after the user leaves the app. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UIDesignRequiresCompatibility</key>
 	<true/>
 </dict>

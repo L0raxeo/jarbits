@@ -439,9 +439,56 @@ newest gets the rest. "Read on" on a piece opens that piece as the full
 view and puts the bubble away, the user's own move. A mark ("Remembered:
 …") is a foot line under the stack when a piece with content is up, else
 a piece that lingers three seconds and goes. This is the rule speech has
-(a sentence said cannot be unsaid): a voice, when Jarbits has one, reads
-each piece as it arrives (`Layer.spoken` holds the words, unread for
-now), and the screen holds the same pieces for a user whose sound is off.
+(a sentence said cannot be unsaid): the voice reads each piece as it
+arrives (`Layer.spoken` holds the words it said), and the screen holds
+the same pieces for a user whose sound is off.
+
+## The voice
+
+Jarbits speaks (2026-11-01). `Speaker` (`Jarbits/Voice/`) reads each
+reply as it lands in the bubble, word for word as displayed (the markup
+that shapes it on screen left out: emphasis markers, list bullets, a
+link's address), in the order the replies land. Spoken: what the planner
+says, his questions (the question; the options stay buttons), one-line
+answers, the time, the fixed "can't do that" lines, the line when
+something did not work out, and long answers in full, from their first
+finished sentence while the rest streams. Not spoken: note cards and
+their headings, notes, pages, lists, "Read: …" lines, "Remembered: …"
+marks, anything while he is still working; after an edit with no reply in
+the bubble he stays silent ("Done, sir." later). Whether to speak is
+decided once, as a reply starts: the phone's volume at 20% or more
+(`Speaker.minimumVolume`; iOS lets no app see the silent switch, so only
+the volume counts) and no call in progress (CallKit's call observer).
+Below that the bubble alone. Once begun a reply is finished: a new
+query, talking, the volume turned down or leaving the app (background
+audio is declared) do not stop him; replies queue; the one thing that
+cuts a reply is the app withdrawing it (an answer that leaves the bubble
+for a web search). Interruptions, and keeping the microphone from hearing
+him, are later; the input's voice processing already cancels the phone's
+own output.
+
+The voice is ElevenLabs Flash (`eleven_flash_v2_5`, `ElevenLabsVoice`):
+one websocket (the multi-context stream input) kept across replies, each
+reply a context, text sent as it is known and flushed at the end, audio
+back as 16-bit PCM at 24 kHz played as it arrives through an engine of
+the speaker's own, separate from the microphone's. Apple's voice reads
+instead when the keys are missing (`ELEVENLABS_API_KEY`,
+`ELEVENLABS_VOICE_ID` in `Config/Secrets.xcconfig`, through Info.plist
+like the Gemini key), the socket cannot be had, or no audio has come three
+seconds after a reply's first text; once it has fallen back it stays
+there for the session. Flash is half a credit a character (a long answer
+of 1,500 characters is about 750 credits); the free plan then
+pay-as-you-go, the key capped at 100,000 credits.
+
+While he speaks, other apps' audio is turned down and brought back after
+(`Microphone.duck`/`restore`, one dip per run of replies). iOS lets it
+back up only when the session goes inactive, which it cannot while the
+microphone's tap runs: so the tap pauses for the cycle and resumes, the
+one restart the voice costs (the session is otherwise set once and never
+touched; see "Dictation"). Two limits: a video in his own page is not
+turned down (same app, same session), and from iOS 18 the volume reading
+can go stale after a session cycle, which is why the gate reads it
+before the dip, never after.
 On the idle screen it
 stops short of the clay's circle. The page stays live and tappable around
 it. An answer's bubble appears the moment its stream starts, a short bar

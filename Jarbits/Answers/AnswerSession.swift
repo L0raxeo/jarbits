@@ -36,6 +36,9 @@ final class AnswerSession {
     /// Called once per answer, the first time `displayText` has something to
     /// show. The owner fades the wave line out and the text in.
     var onFirstText: (() -> Void)?
+    /// Called with `displayText` each time it grows. The voice reads the
+    /// sentences that have finished.
+    var onText: ((String) -> Void)?
 
     private let client: GeminiClient
     private var task: Task<Void, Never>?
@@ -125,6 +128,7 @@ final class AnswerSession {
                         announced = true
                         onFirstText?()
                     }
+                    if announced { onText?(displayText) }
                 case let .usage(found):
                     usage = found
                 case let .finished(status):

@@ -6,7 +6,9 @@ import os
 /// The one microphone. The audio session is set once, at launch, to record
 /// and play while mixing with everything else, and is never touched again
 /// while anything plays: so opening the microphone cannot pause a page's
-/// video or another app's music. One tap on the input, shared by whoever
+/// video or another app's music. The one exception is the voice: while
+/// Jarbits speaks, other apps' audio is turned down (`duck`) and brought
+/// back after (`restore`), which cycles the session and so the tap. One tap on the input, shared by whoever
 /// subscribes (passive listening today; a voice memo tomorrow). And an
 /// exclusive mode for recording on purpose, which stands passive listening
 /// aside. If WebKit takes the session for an audible video, the category is
@@ -28,6 +30,8 @@ final class Microphone {
     /// own output (a video's speaker, music) is cancelled out of what the
     /// microphone hears and only the user's voice remains.
     static let mode: AVAudioSession.Mode = .voiceChat
+    /// The same, with other apps' audio turned down while ours plays.
+    static let duckingOptions: AVAudioSession.CategoryOptions = options.union(.duckOthers)
 
     init() {
         prepareSession()
@@ -62,6 +66,39 @@ final class Microphone {
             print("audio session: \(error)")
             #endif
         }
+    }
+
+    /// Other apps' audio down while Jarbits speaks. A video in his own page
+    /// is not touched (same app, same session).
+    func duck() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(Self.category, mode: Self.mode, options: Self.duckingOptions)
+            try session.setActive(true)
+        } catch {
+            #if DEBUG
+            print("audio session duck: \(error)")
+            #endif
+        }
+    }
+
+    /// Other apps' audio back up. iOS lets it back up only when the session
+    /// goes inactive, which it cannot while the tap runs: so the tap pauses
+    /// for the cycle and resumes, the one restart the voice costs.
+    func restore() {
+        let session = AVAudioSession.sharedInstance()
+        guard session.categoryOptions.contains(.duckOthers) else { return }
+        engine.pause()
+        do {
+            try session.setCategory(Self.category, mode: Self.mode, options: Self.options)
+            try session.setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            #if DEBUG
+            print("audio session restore: \(error)")
+            #endif
+        }
+        prepareSession()
+        engine.resume()
     }
 
     /// The input's own format; what a subscriber converts from.
@@ -118,6 +155,17 @@ nonisolated final class MicrophoneEngine: @unchecked Sendable {
             return table.isEmpty
         }
         if empty { stop() }
+    }
+
+    /// The tap off for a moment, the subscribers kept.
+    func pause() {
+        if engine.isRunning { stop() }
+    }
+
+    /// The tap back on for the subscribers that are still there.
+    func resume() {
+        guard !handlers.withLock({ $0.isEmpty }), !engine.isRunning else { return }
+        try? start()
     }
 
     private func start() throws {

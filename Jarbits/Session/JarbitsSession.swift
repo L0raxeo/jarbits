@@ -56,6 +56,8 @@ final class JarbitsSession {
     /// The one microphone: its session set once at launch, shared by whoever
     /// listens, never touching what plays.
     let microphone: Microphone
+    /// Jarbits's voice: reads each reply as it lands in the bubble.
+    let speaker: Speaker
     /// Passive listening, on the idle screen and over a result; what it
     /// hears is never shown.
     let dictation: DictationSession
@@ -287,6 +289,7 @@ final class JarbitsSession {
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
+        speaker = Speaker(apiKey: Secrets.elevenLabsAPIKey, voiceID: Secrets.elevenLabsVoiceID, microphone: microphone)
         self.webpages = webpages
         self.recall = recall
         self.siteSearch = siteSearch
@@ -516,6 +519,7 @@ final class JarbitsSession {
         question?.cancel()
         let pending = PendingQuestion(title: title, input: input)
         question = pending
+        speaker.speak(pending.id, text: title)   // the question; its options stay buttons
         let answer = await pending.wait()
         if question === pending { question = nil }
         return answer
@@ -537,6 +541,7 @@ final class JarbitsSession {
         askedName = true
         let pending = PendingQuestion(title: "What's your name?", input: .text(placeholder: "Your name"))
         question = pending
+        speaker.speak(pending.id, text: pending.title)
         Task {
             let answer = await pending.wait()
             if question === pending { question = nil }
@@ -959,8 +964,14 @@ final class JarbitsSession {
         layer.fact = context.fact
         layer.reading = context.reading
         layer.asked = askedQuery
-        if case let .time(_, text) = plan { layer.spoken = text }
+        switch plan {
+        case let .time(_, text), let .said(_, text):
+            layer.spoken = text
+        default:
+            break
+        }
         append(layer)
+        if let spoken = layer.spoken { speaker.speak(layer.id, text: spoken) }
         stage = stageBefore
         if recording { record(context) }
         return layer
@@ -1041,7 +1052,6 @@ final class JarbitsSession {
         let layer = showReply(.note(note), context: context)
         layer.summary = summary
         layer.wrote = lines
-        layer.spoken = summary
     }
 
     /// Several of his notes, in the grid.
@@ -1080,7 +1090,6 @@ final class JarbitsSession {
         lastQuery = context.query   // the capsule shows the user's words, not the planner's
         let layer = showReply(.said(query: context.query, text: text), context: context)
         layer.sources = readThisQuery
-        layer.spoken = text
     }
 
     /// An answer streamed from Gemini. A fresh one goes to the bubble: a
@@ -1334,6 +1343,10 @@ final class JarbitsSession {
         answer.onFinish = { [weak self, weak layer] summary in
             guard let self, let layer else { return }
             answerFinished(summary, in: layer)
+        }
+        answer.onText = { [weak self, weak layer] text in
+            guard let self, let layer else { return }
+            speaker.add(layer.id, text: text)
         }
         return answer
     }
@@ -1683,7 +1696,14 @@ final class JarbitsSession {
     /// reply, the screen goes back to where it stood and the bubble shows.
     private func answerStarted(in layer: Layer) {
         guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
-        if replies.contains(where: { $0 === layer }) { stage = stageBefore } else if layer === current { stage = .ready }
+        if replies.contains(where: { $0 === layer }) {
+            stage = stageBefore
+            // Read aloud from its first sentence, the rest as it streams. An
+            // answer growing in the full view is the user's to read.
+            if speaker.begin(layer.id) { speaker.add(layer.id, text: answer.displayText) }
+        } else if layer === current {
+            stage = .ready
+        }
     }
 
     private func answerFinished(_ summary: AnswerSummary, in layer: Layer) {
@@ -1702,20 +1722,22 @@ final class JarbitsSession {
         case .needsLiveData:
             // The layer becomes the results page: live data is what the
             // web has. A reply leaves the bubble for the stack first.
+            speaker.cancel(layer.id)
             if replies.contains(where: { $0 === layer }) { remove(layer); open(layer) }
             show(QueryParser.searchURL(for: answer.query), in: layer)
         case .fellBackToWeb:
             // Nothing came back: said so, the choice left to the user.
+            speaker.cancel(layer.id)
             if replies.contains(where: { $0 === layer }) { remove(layer) }
             if let decision = layer.decision {
                 offerRetry(query: answer.query, decision: decision, message: "Nothing came of that, I'm afraid.", token: requestToken)
             } else {
                 stage = stageBefore
             }
-        case .completed:
-            if answer.format == .oneLine { layer.spoken = answer.text }
-        case .partial:
-            break
+        case .completed, .partial:
+            if replies.contains(where: { $0 === layer }) { layer.spoken = answer.displayText }
+            speaker.add(layer.id, text: answer.displayText)
+            speaker.finish(layer.id)
         }
     }
 
