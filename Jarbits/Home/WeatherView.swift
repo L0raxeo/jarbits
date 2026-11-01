@@ -62,6 +62,10 @@ struct WeatherView: View {
         if let hour = snapshot.hour {
             return "\(WeatherText.dayName(hour.date, now: snapshot.now, in: snapshot.timeZone, locale: locale).capitalized) at \(WeatherText.time(hour.date, in: snapshot.timeZone, locale: locale))"
         }
+        if let first = snapshot.spanDays.first, let last = snapshot.spanDays.last {
+            let name = { (d: Date) in WeatherText.dayName(d, now: snapshot.now, in: snapshot.timeZone, locale: locale).capitalized }
+            return "\(name(first.date)) – \(name(last.date))"
+        }
         if snapshot.asksAnotherDay, let day = snapshot.day {
             return day.date.formatted(Date.FormatStyle(locale: locale, timeZone: snapshot.timeZone).weekday(.wide).month(.wide).day())
         }
@@ -173,7 +177,10 @@ private struct WeatherPanel: View {
     private var locale: Locale { .current }
     private func temp(_ c: Double) -> String { WeatherText.temperature(c, locale: locale) }
     private func time(_ d: Date) -> String { WeatherText.time(d, in: snapshot.timeZone, locale: locale) }
-    private var anotherDay: Bool { snapshot.asksAnotherDay }
+    /// A single later day was asked about: the small panels show that day's values.
+    /// A span's own days are in its rows; the panels around it show now.
+    private var anotherDay: Bool { snapshot.asksAnotherDay && !snapshot.asksSpan }
+    private var kind: WeatherSnapshot.Precipitation { snapshot.precipitationKind }
 
     var body: some View {
         Tile {
@@ -191,8 +198,10 @@ private struct WeatherPanel: View {
         case .alerts: "Warning"
         case .now: "Now"
         case .day: snapshot.day.map { WeatherText.dayName($0.date, now: snapshot.now, in: snapshot.timeZone, locale: locale).capitalized } ?? "Day"
-        case .hourly: anotherDay ? "That day, hour by hour" : "Next 24 hours"
-        case .rain: "Rain"
+        case .span: spanTitle
+        // A short span's hours cover the span; a longer one's strip is the next 24.
+        case .hourly: snapshot.asksSpan && snapshot.spanDays.count <= 2 ? "Hour by hour" : anotherDay ? "That day, hour by hour" : "Next 24 hours"
+        case .rain: kind.title
         case .daily: "\(WeatherSource.daysAhead)-day forecast"
         case .wind: "Wind"
         case .uv: "UV index"
@@ -207,6 +216,7 @@ private struct WeatherPanel: View {
         case .alerts: EmptyView()
         case .now: now
         case .day: day
+        case .span: span
         case .hourly: hourly
         case .rain: rain
         case .daily: daily
@@ -285,7 +295,7 @@ private struct WeatherPanel: View {
             HStack(spacing: 18) {
                 ForEach(Array(snapshot.stripHours.enumerated()), id: \.offset) { index, h in
                     VStack(spacing: 8) {
-                        Text(index == 0 && !anotherDay ? "Now" : time(h.date))
+                        Text(index == 0 && !snapshot.asksAnotherDay ? "Now" : time(h.date))
                             .font(.caption)
                             .foregroundStyle(Palette.quiet)
                         Image(systemName: h.symbol)
@@ -347,7 +357,7 @@ private struct WeatherPanel: View {
                 Text(summary)
                     .font(large ? .title3.weight(.semibold) : .subheadline.weight(.medium))
                     .foregroundStyle(Palette.ink)
-                Bars(values: minutes.map { min($0.intensity / 8, 1) }, spacing: 1)
+                Bars(values: minutes.map { min($0.intensity / 8, 1) }, spacing: 1, snow: kind == .snow)
                     .frame(height: large ? 70 : 44)
                 HStack {
                     Text("Now")
@@ -362,10 +372,10 @@ private struct WeatherPanel: View {
         } else {
             let hours = snapshot.stripHours
             VStack(alignment: .leading, spacing: 10) {
-                Text("\(WeatherText.percent(snapshot.day?.precipitationChance ?? 0)) chance \(anotherDay ? "that day" : "today")")
+                Text("\(WeatherText.percent(snapshot.day?.precipitationChance ?? 0)) chance of \(kind.word) \(anotherDay ? "that day" : "today")")
                     .font(large ? .title3.weight(.semibold) : .subheadline.weight(.medium))
                     .foregroundStyle(Palette.ink)
-                Bars(values: hours.map(\.precipitationChance), spacing: 3)
+                Bars(values: hours.map(\.precipitationChance), spacing: 3, snow: kind == .snow)
                     .frame(height: large ? 70 : 44)
                 if let first = hours.first, let last = hours.last {
                     HStack {
@@ -377,6 +387,61 @@ private struct WeatherPanel: View {
                     .foregroundStyle(Palette.quiet)
                 }
             }
+        }
+    }
+
+    // MARK: A span of days
+
+    private var spanTitle: String {
+        guard let first = snapshot.spanDays.first, let last = snapshot.spanDays.last else { return "Days" }
+        let name = { (d: Date) in WeatherText.dayName(d, now: snapshot.now, in: snapshot.timeZone, locale: locale).capitalized }
+        return "\(name(first.date)) to \(name(last.date))"
+    }
+
+    /// One row a day: its name, symbol, the focus's own number, low and high.
+    private var span: some View {
+        VStack(spacing: 12) {
+            ForEach(snapshot.spanDays, id: \.date) { d in
+                HStack(spacing: 10) {
+                    Text(WeatherText.dayName(d.date, now: snapshot.now, in: snapshot.timeZone, locale: locale).capitalized)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Palette.ink)
+                        .frame(width: 92, alignment: .leading)
+                        .lineLimit(1)
+                    Image(systemName: d.symbol)
+                        .symbolRenderingMode(.multicolor)
+                        .font(large ? .title3 : .body)
+                        .frame(width: 28)
+                    Text(spanValue(d))
+                        .font(.caption)
+                        .foregroundStyle(snapshot.focus == .rain || snapshot.focus == .overview || snapshot.focus == .temperature ? Color.blue : Palette.quiet)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 4)
+                    Text("\(temp(d.low))  \(temp(d.high))")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Palette.ink)
+                }
+            }
+        }
+    }
+
+    /// The focus's number for a day of the span.
+    private func spanValue(_ d: WeatherSnapshot.Day) -> String {
+        switch snapshot.focus {
+        case .overview, .temperature:
+            return d.precipitationChance >= 0.1 ? "\(WeatherText.percent(d.precipitationChance)) \(d.kind.word)" : ""
+        case .rain:
+            let amount = (d.kind == .snow || d.kind == .mixed) && d.snowfall >= 1 ? " · \(WeatherText.snowfall(d.snowfall, locale: locale))" : ""
+            return "\(WeatherText.percent(d.precipitationChance)) \(d.kind.word)\(amount)"
+        case .wind:
+            return "\(WeatherText.speed(d.wind.speed, locale: locale)) \(d.wind.compass)"
+        case .uv:
+            return "UV \(d.uvIndex)"
+        case .sun:
+            return [d.sunrise, d.sunset].compactMap { $0.map(time) }.joined(separator: " – ")
+        case .humidity:
+            return snapshot.humidity(on: d).map { WeatherText.percent($0) } ?? ""
         }
     }
 
@@ -518,13 +583,15 @@ private struct RangeBar: View {
 private struct Bars: View {
     let values: [Double]
     let spacing: CGFloat
+    /// Snow draws in a cooler grey-blue than rain.
+    var snow = false
 
     var body: some View {
         GeometryReader { proxy in
             HStack(alignment: .bottom, spacing: spacing) {
                 ForEach(Array(values.enumerated()), id: \.offset) { _, value in
                     RoundedRectangle(cornerRadius: 1.5)
-                        .fill(Color.blue.opacity(0.25 + 0.75 * value))
+                        .fill((snow ? Color(red: 0.45, green: 0.55, blue: 0.7) : Color.blue).opacity(0.25 + 0.75 * value))
                         .frame(height: max(proxy.size.height * value, 2))
                 }
             }

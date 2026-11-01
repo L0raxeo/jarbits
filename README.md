@@ -624,8 +624,10 @@ still stand in.
 `weather` is the forecast, now or up to ten days ahead, here or in a named
 place, from WeatherKit; and a question whose answer turns on it ("should I
 bring an umbrella", "can I run at 6"). Jev picks it; the value extractor
-reads the place (here when none is named) and the day or hour as ISO 8601
-against today (`WeatherWhen` reads it in the place's own time zone); Jev
+reads the place (here when none is named) and the day, hour or span of days
+as ISO 8601 against today (`2026-11-07`, `2026-11-07T18:00`, or
+`2026-11-07/2026-11-08` for "this weekend"; `WeatherWhen` reads it in the
+place's own time zone, and a bare "6pm" as the next one); Jev
 reads `focus`, the one detail asked about (overview, temperature, rain,
 wind, uv, sun, humidity), as a closed-set question.
 
@@ -634,7 +636,16 @@ wind, uv, sun, humidity), as a closed-set question.
   rest of the forecast below; a severe weather warning pinned above all.
   The arrangement is `WeatherLayout`, fixed per focus: it arranges the
   screen and never interprets the words. A later day puts its summary where
-  now would be. Jarbits says the short answer (`WeatherText.line`) over the
+  now would be. A span of days leads with one row per day, each with the
+  focus's own number (the chance of rain or snow, wind, UV, sunrise and
+  sunset, humidity), the hours beside it for two days or less; it is said a
+  clause a day up to three days, as a summary beyond ("Over the next 7 days
+  in New York, highs from 50° to 61°; rain most likely Thursday, 80%"). A
+  span past the ten days stops at the last.
+- What falls is named as the forecast names it: snow is said as snow, with
+  its amount ("An 80% chance of snow in Denver Friday, about 12 cm"), and so
+  are sleet, hail and rain and snow together; the rain panel's title and
+  bars follow. A day with nothing forecast still speaks of rain. Jarbits says the short answer (`WeatherText.line`) over the
   screen with no bubble piece, or sends it as a message when away.
 - **In a plan**, the tool takes a `screen` value like the page tools: `user`
   shows the screen as above; `mine` reads the forecast for Jarbits's own

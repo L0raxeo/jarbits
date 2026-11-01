@@ -29,7 +29,7 @@ struct WeatherInstinct: InstinctRunner {
         guard session.isCurrent(token) else { return .nothing }
         let summary = WeatherText.summary(snapshot)
         #if DEBUG
-        print("weather \(snapshot.place) \(focus.rawValue)\(asked.map { " \($0.date)" } ?? ""): \(WeatherText.line(snapshot))")
+        print("weather \(snapshot.place) \(focus.rawValue)\(asked.map { " \($0)" } ?? ""): \(WeatherText.line(snapshot))")
         #endif
         if context.lookup {
             // Read for the plan's own answer: nothing on screen, the screen kept for the bubble's mark.

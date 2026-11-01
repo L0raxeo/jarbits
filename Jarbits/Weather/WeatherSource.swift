@@ -22,20 +22,26 @@ enum WeatherSource {
         }
     }
 
-    static func snapshot(for place: WeatherPlace, focus: WeatherFocus, asked: (date: Date, hour: Bool)?, now: Date = .now) async -> Result<WeatherSnapshot, Failure> {
+    static func snapshot(for place: WeatherPlace, focus: WeatherFocus, asked: WeatherWhen.Asked?, now: Date = .now) async -> Result<WeatherSnapshot, Failure> {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = place.timeZone
         let today = calendar.startOfDay(for: now)
         let horizon = calendar.date(byAdding: .day, value: daysAhead, to: today) ?? now
-        if let asked {
-            if asked.date >= horizon { return .failure(.tooFar) }
-            if asked.hour ? asked.date < now.addingTimeInterval(-3600) : asked.date < today { return .failure(.past) }
+        var asked = asked
+        if let read = asked {
+            if read.start >= horizon { return .failure(.tooFar) }
+            if case let .hour(date) = read { if date < now.addingTimeInterval(-3600) { return .failure(.past) } }
+            else if read.start < today { return .failure(.past) }
+            // A span reaching past the forecast stops at its last day.
+            if case let .days(start, end) = read, end >= horizon, let last = calendar.date(byAdding: .day, value: -1, to: horizon) {
+                asked = WeatherWhen.span(start, last)
+            }
         }
-        // The hours run from this one through the end of the day asked about,
-        // at least a day.
+        // The hours run from this one through the end of the last day asked
+        // about, at least a day.
         let hourStart = calendar.dateInterval(of: .hour, for: now)?.start ?? now
         var hourEnd = hourStart.addingTimeInterval(25 * 3600)
-        if let asked, let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: asked.date)), end > hourEnd {
+        if let asked, let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: asked.lastDay)), end > hourEnd {
             hourEnd = end
         }
         let service = WeatherService.shared
@@ -49,13 +55,12 @@ enum WeatherSource {
                 place: place.name,
                 timeZone: place.timeZone,
                 focus: focus,
-                asked: asked?.date,
-                askedHour: asked?.hour ?? false,
+                asked: asked,
                 now: now,
                 current: Self.current(current),
                 hours: hourly.forecast.map(Self.hour),
                 days: daily.forecast.map(Self.day),
-                nextHour: minute?.forecast.map { .init(date: $0.date, chance: $0.precipitationChance, intensity: $0.precipitationIntensity.converted(to: .metersPerSecond).value * 3_600_000) },
+                nextHour: minute?.forecast.map { .init(date: $0.date, chance: $0.precipitationChance, intensity: $0.precipitationIntensity.converted(to: .metersPerSecond).value * 3_600_000, kind: Self.kind($0.precipitation)) },
                 nextHourSummary: minute?.summary,
                 alerts: (alerts ?? []).map { .init(summary: $0.summary, severity: $0.severity.description, source: $0.source, details: $0.detailsURL) },
                 attribution: .init(markLight: attribution.combinedMarkLightURL, markDark: attribution.combinedMarkDarkURL, legalPage: attribution.legalPageURL, serviceName: attribution.serviceName)
@@ -70,6 +75,18 @@ enum WeatherSource {
     private static func celsius(_ m: Measurement<UnitTemperature>) -> Double { m.converted(to: .celsius).value }
     private static func kmh(_ m: Measurement<UnitSpeed>) -> Double { m.converted(to: .kilometersPerHour).value }
     private static func mm(_ m: Measurement<UnitLength>) -> Double { m.converted(to: .millimeters).value }
+
+    private static func kind(_ p: Precipitation) -> WeatherSnapshot.Precipitation {
+        switch p {
+        case .none: .none
+        case .rain: .rain
+        case .snow: .snow
+        case .sleet: .sleet
+        case .hail: .hail
+        case .mixed: .mixed
+        @unknown default: .rain
+        }
+    }
 
     private static func wind(_ w: Wind) -> WeatherSnapshot.Wind {
         .init(speed: kmh(w.speed), gust: w.gust.map(kmh), direction: w.direction.converted(to: .degrees).value, compass: w.compassDirection.abbreviation)
@@ -91,7 +108,8 @@ enum WeatherSource {
             date: h.date, temperature: celsius(h.temperature), feelsLike: celsius(h.apparentTemperature),
             condition: h.condition.description, symbol: h.symbolName,
             precipitationChance: h.precipitationChance, precipitation: mm(h.precipitationAmount),
-            humidity: h.humidity, wind: wind(h.wind), uvIndex: h.uvIndex.value, cloudCover: h.cloudCover
+            humidity: h.humidity, wind: wind(h.wind), uvIndex: h.uvIndex.value, cloudCover: h.cloudCover,
+            kind: kind(h.precipitation)
         )
     }
 
@@ -102,7 +120,8 @@ enum WeatherSource {
             precipitationChance: d.precipitationChance, precipitation: mm(d.precipitationAmountByType.precipitation),
             snowfall: mm(d.precipitationAmountByType.snowfallAmount.amount), uvIndex: d.uvIndex.value, uvLevel: d.uvIndex.category.description,
             wind: wind(d.wind), sunrise: d.sun.sunrise, sunset: d.sun.sunset,
-            moonPhase: d.moon.phase.description, moonSymbol: d.moon.phase.symbolName
+            moonPhase: d.moon.phase.description, moonSymbol: d.moon.phase.symbolName,
+            kind: kind(d.precipitation)
         )
     }
 }

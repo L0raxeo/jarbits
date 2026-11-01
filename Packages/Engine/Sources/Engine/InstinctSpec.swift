@@ -280,7 +280,7 @@ public struct InstinctSpec: Sendable, Identifiable {
             questions = { _ in [] }
             arguments = ArgumentSchema(fields: [
                 .init(name: "place", kind: .text, description: "the place whose weather is asked, as named; null for the weather here", required: false),
-                .init(name: "when", kind: .text, description: "the day or hour the weather is asked for, as an ISO 8601 date (\"tomorrow\", \"saturday\") or date-time (\"at 6pm\", \"tonight\") read against today; null for now", required: false),
+                .init(name: "when", kind: .text, description: "the day, hour or span of days the weather is asked for, read against today, always as ISO 8601 with the date: a date for one day (\"tomorrow\", \"saturday\": 2026-11-07), a date-time for an hour (\"at 6pm\", \"tonight\": 2026-11-01T18:00), or two dates joined by a slash for several days, first and last inclusive (\"this weekend\": 2026-11-07/2026-11-08; \"this week\" or \"the next few days\": today to six days on); null for now", required: false),
                 .init(name: "focus", kind: .choice(WeatherFocus.allCases.map(\.rawValue)), description: "the one detail the request asks about: temperature, rain (rain, snow, an umbrella), wind, uv, sun (sunrise, sunset, daylight), humidity; overview for the weather in general or advice that turns on all of it", required: false),
             ])
         case .map, .stock:

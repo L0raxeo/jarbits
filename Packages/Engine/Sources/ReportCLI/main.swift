@@ -220,7 +220,7 @@ case "route":
     }
     if let ms = decision.latencyMs { print("latency: \(ms) ms, input tokens: \(decision.inputTokens ?? 0)") }
 case "extract":
-    let usage = "usage: report extract <query> --field <name>:<kind>[:optional]... [--after <earlier query> <earlier answer>]... [--timeout <seconds>]  (kinds: text, number, integer, boolean, choice=a|b)"
+    let usage = "usage: report extract <query> (--field <name>:<kind>[:optional]... | --instinct <id>) [--after <earlier query> <earlier answer>]... [--timeout <seconds>]  (kinds: text, number, integer, boolean, choice=a|b; --instinct reads that instinct's own fields, descriptions included)"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
@@ -250,6 +250,10 @@ case "extract":
             let required = parts.count < 3 || parts[2] != "optional"
             fields.append(.init(name: parts[0], kind: kind, description: parts[0].replacingOccurrences(of: "_", with: " "), required: required))
             rest.removeFirst(2)
+        case "--instinct":
+            guard rest.count >= 2, let spec = InstinctSpec.spec(for: rest[1]) else { fail(usage) }
+            fields += spec.arguments.fields
+            rest.removeFirst(2)
         case "--after":
             guard rest.count >= 3 else { fail(usage) }
             exchanges.append(.answer(query: rest[1], text: rest[2]))
@@ -258,20 +262,23 @@ case "extract":
         }
     }
     guard !fields.isEmpty else { fail(usage) }
+    // As the app asks: its instructions and today's date, so "this weekend" can be read.
+    let instructions = ValueExtractor.system(Persona())
+    let today = Date.now
     let schema = ArgumentSchema(fields: fields)
     let free = schema.freeForm
     guard !free.isEmpty else { fail("every field is closed-set: those are Jev's questions in the routing request, not a model call") }
     if free.count < fields.count {
         print("closed-set fields (Jev's questions, left out of the call): \(schema.closedSet.map(\.name).joined(separator: ", "))")
     }
-    let request = ValueExtractor.request(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free))
+    let request = ValueExtractor.request(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free), instructions: instructions, now: today)
     print("request body:")
     print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
     guard let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
         print("set GEMINI_API_KEY to make the call (one small metered request)")
         exit(0)
     }
-    let verdict = await ValueExtractor(client: GeminiClient(apiKey: key), timeout: timeout).extract(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free))
+    let verdict = await ValueExtractor(client: GeminiClient(apiKey: key), timeout: timeout).extract(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free), instructions: instructions, now: today)
     let budget = Double(timeout.components.seconds) + Double(timeout.components.attoseconds) / 1e18
     switch verdict {
     case let .values(values, summary):
