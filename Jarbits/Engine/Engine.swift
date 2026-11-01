@@ -52,8 +52,9 @@ struct Engine {
         let decision: Pick
         func read() async -> ReadingSummary? {
             guard let reader else { return nil }
-            let screen = await screenRead?.value
-            return await reader.read(typed, exchanges: sent.map(\.exchange), persona: persona, screen: screen)
+            // The reader cleans the words and nothing more: no exchanges, no
+            // screen, so "this" comes through as said for the planner to resolve.
+            return await reader.read(typed, persona: persona)
         }
         if QueryParser.directURL(from: typed) != nil {
             decision = .directURL()

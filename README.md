@@ -322,13 +322,18 @@ their object cleanly. "Which oh can you pull up youtube?" went to web
 results on the literal words under version 1; the same request without
 the grunt opened YouTube. So every query that is not an address goes to
 `gemini-3.1-flash-lite` at minimal thinking (`QueryReader` in the Answers
-library) at the same moment it goes to Jev, with the newest three
-exchanges, today's date and what is on the screen (the selection and the
-visible text; see "Screen awareness"), and a one-field schema: `query`, the request
-standing on its own (dictation noise, interjections, fillers and false
-starts dropped, every word that carries meaning kept, in the person's own
-wording and language, and anything the words point back at folded in:
-"pictures of it" after a Brazil page → "pictures of Brazil"). When the substance
+library) at the same moment it goes to Jev, with today's date and a
+one-field schema: `query`, the request with the noise gone (dictation
+noise, interjections, fillers and false starts dropped, every word that
+carries meaning kept, in the person's own wording and language). It
+cleans and nothing more: a word that points at something ("it", "this",
+"those rules") stays exactly as said, and the reader sees neither the
+exchanges nor the screen (2026-11-01; before, it folded in what the words
+pointed at, and once swapped a user's own forty words of instructions for
+the answer on screen because the sentence ended "add it to my notes").
+The planner reads the request with everything in view and resolves it
+there, and gets the words as spoken beside the read ones ("As spoken")
+when they differ. When the substance
 differs from the typed words (`Substance.differs`: case, diacritics,
 punctuation and spacing aside), Jev is asked again on the read words and
 that pick wins, and they are what the instinct, the planner, the exchange,
@@ -1134,7 +1139,15 @@ the planner can point at, every open webpage (newest first, forty at most, else 
 meaning (the newest, without the index; recall is its tool for anything
 beyond them), every note of the notebook, a line each, and last the
 screen as the user sees it, its links in view as `s` handles, the thing
-on it named by the handle it already has ("On screen, n1: my note …"; the
+on it named by the handle it already has (each of the newest five earlier
+things carries the words that made it, "p3: You asked "add to my notes
+that answers should bold less…" → Added to Assistant project (my note …):"
+with the lines written, so a correction, "no, not that, I meant the rules
+I talked about", has those words and that change in view; the rules say
+content the request itself carries is what "it" means whatever is on
+screen, that a correction points at the request before, and that Jarbits
+never asks the user to say again what the listing holds; 2026-11-01;
+"On screen, n1: my note …"; the
 reply in the bubble is a second place in view, named too, "In the bubble,
 n3: my note …", and the rules say that when the words point at a thing
 without naming it and more than one thing in view fits, ask which with the

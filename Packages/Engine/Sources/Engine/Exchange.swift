@@ -36,8 +36,13 @@ public struct Exchange: Codable, Sendable, Hashable {
     /// on screen resolves to the notebook's note as the notebook's own
     /// handle does; nil for everything else. Jev is never sent it.
     public var noteID: UUID?
+    /// The words the user said that produced this exchange, as read, when
+    /// they differ from `query` (a plan step's own query, a layer's label):
+    /// the planner's listing shows them, so "the rules I talked about" has
+    /// them in view. Jev is never sent it.
+    public var asked: String?
 
-    public init(query: String, kind: Kind, title: String? = nil, host: String? = nil, address: String? = nil, text: String? = nil, own: Bool? = nil, noteID: UUID? = nil) {
+    public init(query: String, kind: Kind, title: String? = nil, host: String? = nil, address: String? = nil, text: String? = nil, own: Bool? = nil, noteID: UUID? = nil, asked: String? = nil) {
         self.query = query
         self.kind = kind
         self.title = title
@@ -46,6 +51,7 @@ public struct Exchange: Codable, Sendable, Hashable {
         self.text = text
         self.own = own
         self.noteID = noteID
+        self.asked = asked
     }
 
     public static func answer(query: String, text: String) -> Exchange {
@@ -67,6 +73,7 @@ public struct Exchange: Codable, Sendable, Hashable {
         var copy = self
         copy.own = nil
         copy.noteID = nil
+        copy.asked = nil
         return copy
     }
 
@@ -80,6 +87,22 @@ public struct Exchange: Codable, Sendable, Hashable {
 
     public static func note(query: String, title: String, excerpt: String, noteID: UUID? = nil) -> Exchange {
         Exchange(query: query, kind: .note, title: title, text: excerpt.isEmpty ? nil : excerpt, noteID: noteID)
+    }
+
+    /// A write to a note, recorded by what was written: the heading ("Added
+    /// to Watch List") and the lines, so "not that" and "undo that" have
+    /// the change in view.
+    public static func noteWrite(query: String, title: String, heading: String, lines: String?, noteID: UUID? = nil) -> Exchange {
+        var exchange = Exchange(query: query, kind: .note, title: title, text: heading, noteID: noteID)
+        exchange.wrote = lines
+        return exchange
+    }
+
+    /// The lines a write put into a note, for the listing; nil for an open
+    /// or a rewrite (whose first lines `text` carries). Jev is never sent it.
+    public var wrote: String? {
+        get { host }   // kind note has no host: the field carries the lines
+        set { host = newValue }
     }
 
     /// A conversation's turns as exchanges, oldest first.

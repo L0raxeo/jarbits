@@ -37,6 +37,14 @@ extension Layer {
     /// one for a picture, a grid of open webpages or a choice of sites. Nothing
     /// for an answer still streaming.
     var exchanges: [SessionExchange] {
+        bare.map { one in
+            var exchange = one.exchange
+            exchange.asked = asked
+            return SessionExchange(exchange: exchange, turn: one.turn, layerID: one.layerID)
+        }
+    }
+
+    private var bare: [SessionExchange] {
         switch plan {
         case let .web(url):
             let address = pageAddress ?? notes?.address ?? url
@@ -55,6 +63,10 @@ extension Layer {
             return [SessionExchange(exchange: .site(query: query, name: name, hosts: candidates.map(\.host)), turn: nil, layerID: id)]
         case let .note(note):
             // The note's id rides along, so the thing on screen and the notebook's entry are one note.
+            // A write is recorded by what was written, an open by the note's first words.
+            if let summary {
+                return [SessionExchange(exchange: .noteWrite(query: query, title: note.title, heading: summary, lines: wrote ?? (summary.hasPrefix("Rewrote") || summary.hasPrefix("Made") ? String(note.excerpt.prefix(160)) : nil), noteID: note.id), turn: nil, layerID: id)]
+            }
             return [SessionExchange(exchange: .note(query: query, title: note.title, excerpt: note.excerpt, noteID: note.id), turn: nil, layerID: id)]
         case let .notes(notes, title):
             return [SessionExchange(exchange: .note(query: query, title: title ?? "my notes", excerpt: notes.map(\.title).joined(separator: "; ")), turn: nil, layerID: id)]

@@ -178,6 +178,9 @@ final class JarbitsSession {
     }
     /// The query most recently sent, in flight or shown; a newer one wins.
     private(set) var lastQuery = ""
+    /// The user's request as read, for the query in flight: what every
+    /// layer it makes records as `asked`, whatever a plan step's own query is.
+    private var askedQuery = ""
     /// Where the query in flight is; the instincts move it as they open their layers.
     /// The idle circle and a drawn layer are places the screen stands, so each
     /// is remembered as it comes: a query hands back to the last of them,
@@ -343,6 +346,7 @@ final class JarbitsSession {
             guard !row.isEmpty, layers.isEmpty else { return }
             layers = row.map { webpage in
                 let layer = Layer(plan: .web(webpage.address), query: webpage.query, decision: nil)
+                layer.asked = webpage.query
                 layer.webpageID = webpage.id
                 layer.pageAddress = webpage.address
                 layer.pageTitle = webpage.title
@@ -459,6 +463,7 @@ final class JarbitsSession {
         earlyPicture = nil
         let screenRead: Task<Screen?, Never>? = shown.map { layer in Task { await layer.screen(picture: early) } }
         lastQuery = trimmed
+        askedQuery = trimmed
         askedOver = shown
         readThisQuery = []
         stage = .routing
@@ -472,6 +477,7 @@ final class JarbitsSession {
             let result = await routing.value
             guard token == requestToken else { return }   // a newer query won, or cancelled
             lastQuery = result.query   // the words that ran: the label, the exchange, the layer and the record carry them
+            askedQuery = result.query
             #if DEBUG
             if let reading = result.reading {
                 switch reading.outcome {
@@ -876,6 +882,7 @@ final class JarbitsSession {
             dismissReply()
         }
         if !layer.isWeb { layer.drawn = true }
+        if layer.asked == nil { layer.asked = askedQuery }
         if byQuery { askedOver = layer }
         if let leaving = current {
             leaving.answer?.cancel()
@@ -951,6 +958,7 @@ final class JarbitsSession {
         layer.extraction = context.extraction
         layer.fact = context.fact
         layer.reading = context.reading
+        layer.asked = askedQuery
         if case let .time(_, text) = plan { layer.spoken = text }
         append(layer)
         stage = stageBefore
@@ -1103,6 +1111,7 @@ final class JarbitsSession {
         } else {
             // The bubble at once, its pulse until the first text; the wave meanwhile.
             layer = Layer(plan: plan, query: context.query, decision: context.decision)
+            layer.asked = askedQuery
             append(layer)
         }
         layer.sources = readThisQuery   // what Jarbits read on its screen for this answer
@@ -1473,6 +1482,8 @@ final class JarbitsSession {
     /// screen is always in what the planner sees, so "this" is a thing it
     /// can point at. Without a planner, web results.
     private func plan(query: String, decision: Pick, exchanges: [Exchange], reading: ReadingSummary?, lead: String?, screen: Screen? = nil, token: UUID) {
+        // The words as spoken, when the reading changed them: the planner resolves "it" from these.
+        let spoken = reading?.changed == true ? reading?.original : nil
         guard let executor else {
             openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
             record(decision, query: query, reading: reading)
@@ -1490,7 +1501,7 @@ final class JarbitsSession {
         if case let .note(note)? = inBubble?.plan { bubbleNoteID = note.id }
         Task {
             let bubble = await inBubble?.screen()
-            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, token: token)
+            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, spoken: spoken, token: token)
             guard token == requestToken else { return }
             #if DEBUG
             print("plan \(summary.outcome) after \(summary.rounds) rounds, \(summary.steps.count) steps, \(summary.latencyMs) ms")

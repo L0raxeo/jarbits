@@ -101,7 +101,13 @@ extension Exchange {
         case .site:
             if let text { return "Chose among sites for \"\(title ?? query)\": \(text)" }
             else { return "Chose among sites for \"\(title ?? query)\"" }
-        case .note: return "Opened my note \"\(title ?? query)\""
+        case .note:
+            // A write says what it did and what went in; an open, that it opened.
+            if let text, text.hasPrefix("Added to ") || text.hasPrefix("Rewrote ") || text.hasPrefix("Made the note ") || text.hasPrefix("Took ") {
+                let lines = wrote.map { $0.split(separator: "\n").map { "    " + String($0) }.joined(separator: "\n") }
+                return "\(text) (my note \"\(title ?? query)\")" + (lines.map { ":\n" + $0 } ?? "")
+            }
+            return "Opened my note \"\(title ?? query)\""
         }
     }
 }
@@ -242,16 +248,22 @@ public struct ThingTable: Sendable, Equatable {
     /// is; an opened note names the notebook's handle for the same note
     /// when `noteHandles` has it, and a page the user saw names the open
     /// webpage it is when `webpageHandles` has it.
-    public static func line(_ entry: Entry, now: Date, calendar: Calendar = .current, noteHandles: [UUID: String] = [:], webpageHandles: [URL: String] = [:]) -> String {
+    public static func line(_ entry: Entry, now: Date, calendar: Calendar = .current, noteHandles: [UUID: String] = [:], webpageHandles: [URL: String] = [:], withWords: Bool = false) -> String {
         switch entry.thing {
         case let .exchange(exchange):
+            // The user's own words first, when the listing carries them and
+            // they are not the line's query already.
+            var lead = "\(entry.handle): "
+            if withWords, let asked = exchange.asked?.trimmingCharacters(in: .whitespacesAndNewlines), !asked.isEmpty, asked.lowercased() != exchange.query.lowercased() {
+                lead += "You asked \"\(asked)\" → "
+            }
             if exchange.kind == .note, let id = exchange.noteID, let handle = noteHandles[id] {
-                return "\(entry.handle): \(exchange.described) (\(handle))"
+                return "\(lead)\(exchange.described) (\(handle))"
             }
             if exchange.kind == .page, exchange.own != true, let address = exchange.address.flatMap(URL.init(string:)), let handle = webpageHandles[Webpage.canonical(address)] {
-                return "\(entry.handle): \(exchange.described) (\(handle))"
+                return "\(lead)\(exchange.described) (\(handle))"
             }
-            return "\(entry.handle): \(exchange.described)"
+            return "\(lead)\(exchange.described)"
         case let .webpage(webpage):
             let since = RecallRouting.when(webpage.opened, now: now, calendar: calendar)
             switch webpage.kind {

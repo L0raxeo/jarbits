@@ -3,9 +3,12 @@ import Engine
 
 /// The reading beside the Jev request: one small Gemini call that returns
 /// the request with its substance isolated ("Which oh can you pull up
-/// youtube?" → "can you pull up youtube?"), with anything the words pointed
-/// back at folded in ("pictures of it" after a Brazil page → "pictures of
-/// Brazil"). The engine sends the typed words to Jev at the same moment; a
+/// youtube?" → "can you pull up youtube?"). It cleans and nothing more: a
+/// word that points at something ("it", "this") stays as said, since the
+/// planner reads the request with everything in view and resolves it
+/// there (2026-11-01; before, the reader folded in what "this" meant and
+/// once swapped a user's own instructions for the answer on screen). The
+/// engine sends the typed words to Jev at the same moment; a
 /// reading whose substance differs sends Jev the read words again and that
 /// pick wins; the read words are what the instinct and the extractor get.
 /// Built on the same whole-body call that reads values, with its own schema
@@ -26,7 +29,7 @@ public struct QueryReader: Sendable {
     public static let schema: JSONValue = [
         "type": "object",
         "properties": [
-            "query": ["type": "string", "description": "the request standing on its own; exactly the request when there is nothing to drop and nothing to fold in"],
+            "query": ["type": "string", "description": "the request with the noise gone; exactly the request when there is nothing to drop"],
         ],
         "required": ["query"],
         "additionalProperties": false,
@@ -38,8 +41,8 @@ public struct QueryReader: Sendable {
     public static func system(_ persona: Persona) -> String {
         persona.readerLine + "\n" + """
         You read a request \(persona.user) made to you, usually dictated. Reply with JSON matching the schema and nothing else.
-        query: the request, standing on its own, whole. The only words to drop are ones that carry nothing: dictation noise, fillers, false starts and repeated words. Everything else stays, in the person's own wording and language: names, numbers, addresses, and above all how they asked for it to be done. "google", "look up", "search", "ask AI", "pull up", "show me pictures of", "remember", "bring back" name what they want done and are the most important words in the request; a request that asks for a search comes back still asking for a search, never turned into the bare question. Polite framing around such a word ("can you google X" → "google X") is the frame, not the word. A request that leans on the earlier exchanges comes back complete, with what they make clear folded in, so it can be read with nothing else in view. \(Screen.rule) "how much is this" over a page showing one thing names that thing; "google chocolate milk" over any page stays as it is. Never answer, never add anything the request, the exchanges and the screen do not say. A request with nothing to drop and nothing to fold in comes back exactly as it is.
-        Earlier exchanges of the session may come before the request, oldest first, then today's date, then what is on the screen.
+        query: the request, standing on its own, whole. The only words to drop are ones that carry nothing: dictation noise, fillers, false starts and repeated words. Everything else stays, in the person's own wording and language: names, numbers, addresses, and above all how they asked for it to be done. "google", "look up", "search", "ask AI", "pull up", "show me pictures of", "remember", "bring back" name what they want done and are the most important words in the request; a request that asks for a search comes back still asking for a search, never turned into the bare question. Polite framing around such a word ("can you google X" → "google X") is the frame, not the word. A word that points at something ("it", "this", "that one", "the one I'm looking at", "those rules", "what I just said") stays exactly as said: never swap it for what it points at, and never add what the request does not say; the planner reads the request with everything in view and resolves it there. Never answer. A request with nothing to drop comes back exactly as it is.
+        Today's date may come before the request.
         """
     }
 

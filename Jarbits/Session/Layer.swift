@@ -15,8 +15,11 @@ final class Layer: Identifiable {
     let id = UUID()
     var plan: CardPlan
     /// The words that made this layer; what the capsule reads and a web
-    /// follow-up starts from.
+    /// follow-up starts from. In a plan, the step's own query.
     var query: String
+    /// The user's request, as read, that produced this layer: what the
+    /// listing shows as "You asked …", so a correction has it in view.
+    var asked: String?
     /// Why the plan is what it is; logged with the record.
     var decision: Pick?
     /// How reading the plan's values out of the words went, when a model
