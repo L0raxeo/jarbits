@@ -107,6 +107,8 @@ struct ResultView: View {
             NoteView(note: note, topInset: topInset, barCompact: $barCompact)
         case let .notes(notes, title):
             NotesGridView(notes: notes, title: title, topInset: topInset, barCompact: $barCompact)
+        case let .weather(snapshot):
+            WeatherView(snapshot: snapshot, topInset: topInset, barCompact: $barCompact)
         }
     }
 
@@ -248,6 +250,13 @@ private struct AnswerView: View {
     /// the footer, a tap brings one forward.
     var sources: [Layer] = []
 
+    /// A source as the footer names it: the page's title and host, or the
+    /// weather Jarbits read.
+    static func sourceLabel(_ source: Layer) -> String {
+        if case let .weather(snapshot) = source.plan { return "Read: the weather in \(snapshot.place)" }
+        return "Read: \u{201C}\(source.pageTitle ?? source.webAddress.map { QueryParser.displayText(for: $0) } ?? source.query)\u{201D}\(source.webAddress?.host().map { " (\($0))" } ?? "")"
+    }
+
     private let ink = Palette.ink
     private let quiet = Palette.quiet
 
@@ -349,8 +358,14 @@ private struct AnswerView: View {
                     .foregroundStyle(quiet)
             }
             ForEach(sources) { source in
-                Button("Read: \u{201C}\(source.pageTitle ?? source.webAddress.map { QueryParser.displayText(for: $0) } ?? source.query)\u{201D}\(source.webAddress?.host().map { " (\($0))" } ?? "")") {
+                Button {
                     session.bringForward(source, byQuery: false)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(Self.sourceLabel(source))
+                        // Apple's mark goes wherever its data does.
+                        if case let .weather(snapshot) = source.plan { WeatherMark(attribution: snapshot.attribution) }
+                    }
                 }
                 .buttonStyle(.plain)
                 .font(.subheadline)

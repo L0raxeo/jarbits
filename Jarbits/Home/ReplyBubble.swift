@@ -199,6 +199,7 @@ struct ReplyBubble: View {
 /// bubble carries the x and the fact mark in its foot row; the others have
 /// only their label and "Read on", when they have either.
 private struct ReplyPiece: View {
+    @Environment(JarbitsSession.self) private var session
     let layer: Layer
     /// The text's cap at rest.
     let cap: CGFloat
@@ -256,11 +257,23 @@ private struct ReplyPiece: View {
                     .transition(.opacity)
                     .accessibilityLabel(footMark.line)
             }
+            if let weather {
+                // Answered from the forecast: Apple's mark goes with its data, and a tap shows the weather screen.
+                Button { session.bringForward(weather, byQuery: false) } label: {
+                    if case let .weather(snapshot) = weather.plan { WeatherMark(attribution: snapshot.attribution) }
+                }
+                .buttonStyle(.plain)
+            }
             if onClose != nil || label != nil || readOn {
                 ReplyFootRow(label: label, readOn: readOn ? { onReadOn() } : nil, onClose: onClose)
             }
         }
         .animation(.smooth(duration: 0.2), value: footMark)
+    }
+
+    /// The forecast Jarbits read for this reply, if it answered from one.
+    private var weather: Layer? {
+        layer.sources.first { if case .weather = $0.plan { true } else { false } }
     }
 
     @ViewBuilder

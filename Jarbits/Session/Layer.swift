@@ -125,6 +125,8 @@ final class Layer: Identifiable {
             return Screen(kind: .grid, title: title ?? "Open webpages", visible: webpages.map { "\($0.kind.label): \($0.title)" }.joined(separator: "\n"))
         case let .siteChoices(name, candidates):
             return Screen(kind: .grid, title: name, visible: candidates.map(\.host).joined(separator: "\n"))
+        case let .weather(snapshot):
+            return Screen(kind: .other, title: "Weather in \(snapshot.place)", visible: WeatherText.summary(snapshot))
         }
     }
 

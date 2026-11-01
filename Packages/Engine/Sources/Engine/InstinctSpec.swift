@@ -272,6 +272,17 @@ public struct InstinctSpec: Sendable, Identifiable {
             shortcut = true
             questions = { _ in [] }
             arguments = ArgumentSchema(fields: [.init(name: "place", kind: .text, description: "the place whose time is asked, as named; null for the time here", required: false)])
+        case .weather:
+            // The place and the day or hour are values the words state, read
+            // by the extractor; which detail is asked about is a choice Jev
+            // reads. The detail only arranges the screen.
+            shortcut = true
+            questions = { _ in [] }
+            arguments = ArgumentSchema(fields: [
+                .init(name: "place", kind: .text, description: "the place whose weather is asked, as named; null for the weather here", required: false),
+                .init(name: "when", kind: .text, description: "the day or hour the weather is asked for, as an ISO 8601 date (\"tomorrow\", \"saturday\") or date-time (\"at 6pm\", \"tonight\") read against today; null for now", required: false),
+                .init(name: "focus", kind: .choice(WeatherFocus.allCases.map(\.rawValue)), description: "the one detail the request asks about: temperature, rain (rain, snow, an umbrella), wind, uv, sun (sunrise, sunset, daylight), humidity; overview for the weather in general or advice that turns on all of it", required: false),
+            ])
         case .map, .stock:
             questions = { _ in [] }
         case .notebook:

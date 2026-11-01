@@ -86,7 +86,7 @@ import Testing
     }
 
     @Test func siteFormatIsBuiltAndLast() {
-        #expect(Instinct.allCases.suffix(6) == [.site, .video, .remember, .forget, .time, .notebook], "appended in order; video, the fact instincts, time and the notebook came after")
+        #expect(Instinct.allCases.suffix(7) == [.site, .video, .remember, .forget, .time, .notebook, .weather], "appended in order; video, the fact instincts, time, the notebook and the weather came after")
         #expect(Instinct.site.outranksConversation)
         #expect(!Instinct.site.isAnswered)
     }

@@ -27,7 +27,7 @@
 {"query": "bitcoin price", "instinct": "stock"}
 {"query": "s&p 500 today", "instinct": "stock"}
 {"query": "what's the time in costa rica", "instinct": "time", "source": "jev", "note": "the time instinct: the clock answers, the reading names the place"}
-{"query": "will it rain today", "instinct": "one_line", "note": "relabelled 2026-10-29: the notebook's all question joined the request and this case moved across the 0.9 line; moved 2026-10-29 with the screen clause: one_line 0.92, over the floor; recency 0.48 so it answers", "source": "jev"}
+{"query": "will it rain today", "instinct": "weather", "note": "relabelled 2026-11-01: the weather instinct answers from the forecast; it was one_line, whose model had no live data"}
 {"query": "how long do cold sores last", "instinct": "one_line"}
 {"query": "capital of peru", "instinct": "one_line"}
 {"query": "100 usd to eur", "instinct": "one_line", "source": "jev", "note": "a live rate: picked as one_line, shown as web results (the pick is graded; the answer instinct shows web results for a recent one)"}
@@ -141,3 +141,18 @@
 {"query": "google chocolate milk", "exchanges": [{"query": "dyson pencilvac", "kind": "page", "title": "Dyson PencilVac | Dyson", "host": "www.dyson.com", "address": "https://www.dyson.com/pencilvac"}], "instinct": "planned", "note": "sibling of the screen cases: a request that stands on its own over any page is direct; second re-ask of 2026-10-29: web_results 0.90 rounded, a hair under the floor; the planner then calls web_results (its case), so the pair with the screen cases still comes out apart", "pick": "web_results"}
 {"query": "how old is he", "exchanges": [{"query": "jim carrey", "kind": "answer", "text": "**Jim Carrey** is a Canadian-American actor and comedian, born 17 January 1962 in Newmarket, Ontario."}, {"query": "dyson pencilvac", "kind": "page", "title": "Dyson PencilVac | Dyson", "host": "www.dyson.com", "address": "https://www.dyson.com/pencilvac"}], "instinct": "one_line", "source": "jev", "note": "sibling: leans on the earlier answer, not on the page open now"}
 {"query": "what is a venom f5", "exchanges": [{"query": "hennessey", "kind": "page", "title": "Hennessey Performance | Official Website", "host": "www.hennesseyperformance.com", "address": "https://www.hennesseyperformance.com/"}], "instinct": "narrative", "source": "jev", "note": "sibling: a world question over a related page is still direct; the answer may lean on the page"}
+{"query": "what's the weather", "instinct": "weather"}
+{"query": "what's the temperature", "instinct": "weather"}
+{"query": "weather in tokyo tomorrow", "instinct": "weather"}
+{"query": "is it windy out", "instinct": "weather"}
+{"query": "what's the uv index", "instinct": "weather"}
+{"query": "when's sunset", "instinct": "weather"}
+{"query": "should I bring an umbrella", "instinct": "weather", "note": "advice that turns on the forecast is weather, not an answer (2026-11-01)"}
+{"query": "weather this weekend in nyc", "instinct": "weather"}
+{"query": "how cold is it outside", "instinct": "weather", "note": "held out: not a criterion example (2026-11-01)"}
+{"query": "do I need a jacket tonight", "instinct": "weather", "note": "held out: advice that turns on the forecast (2026-11-01)"}
+{"query": "is it going to snow in denver on friday", "instinct": "weather", "note": "held out: a named place and day (2026-11-01)"}
+{"query": "what's the humidity like", "instinct": "weather", "note": "held out (2026-11-01)"}
+{"query": "pull up the weather channel", "instinct": "site", "note": "a weather site by name is a site (2026-11-01)"}
+{"query": "what's the difference between weather and climate", "instinct": "narrative", "note": "weather as a topic is an explanation (2026-11-01)"}
+{"query": "what was the weather like last tuesday", "instinct": "web_results", "note": "past weather is not in the forecast (2026-11-01)"}

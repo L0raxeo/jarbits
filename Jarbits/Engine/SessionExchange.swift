@@ -70,6 +70,10 @@ extension Layer {
             return [SessionExchange(exchange: .note(query: query, title: note.title, excerpt: note.excerpt, noteID: note.id), turn: nil, layerID: id)]
         case let .notes(notes, title):
             return [SessionExchange(exchange: .note(query: query, title: title ?? "my notes", excerpt: notes.map(\.title).joined(separator: "; ")), turn: nil, layerID: id)]
+        case let .weather(snapshot):
+            // What was said over the screen, so "and tomorrow?" reads the place
+            // from it; no turn, so an answer never grows over the screen.
+            return [SessionExchange(exchange: .answer(query: query, text: WeatherText.line(snapshot)), turn: nil, layerID: id)]
         }
     }
 }

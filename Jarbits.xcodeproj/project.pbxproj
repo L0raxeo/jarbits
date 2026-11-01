@@ -24,6 +24,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				Jarbits.entitlements,
 			);
 			target = B10000000000000000000006 /* Jarbits */;
 		};
@@ -243,11 +244,13 @@
 			baseConfigurationReference = B10000000000000000000010 /* Debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Jarbits/Jarbits.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FA45M2PG8T;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Jarbits/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your approximate city, for the weather where you are.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hears what you ask. Nothing leaves the phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -276,11 +279,13 @@
 			baseConfigurationReference = B10000000000000000000011 /* Release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Jarbits/Jarbits.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FA45M2PG8T;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Jarbits/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your approximate city, for the weather where you are.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Hears what you ask. Nothing leaves the phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

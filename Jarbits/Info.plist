@@ -24,6 +24,9 @@
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).query.*</string>
 	</array>
+	<!-- The weather here needs only the city: approximate location by default. -->
+	<key>NSLocationDefaultAccuracyReduced</key>
+	<true/>
 	<key>UIDesignRequiresCompatibility</key>
 	<true/>
 </dict>

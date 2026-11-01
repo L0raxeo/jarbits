@@ -33,6 +33,9 @@ enum CardPlan: Hashable, Sendable {
     /// Several of his notes the words may mean; a tap opens one. `title`
     /// says what they are, in his voice ("My notes about the trip").
     case notes([Note], title: String?)
+    /// The weather screen: the forecast WeatherKit gave for a place, its
+    /// asked-for detail on top. See `WeatherView`.
+    case weather(WeatherSnapshot)
 
     /// Which card a plan is, for the console: a short name, an answer's
     /// carrying the thread's first query (which a time answer shares).
@@ -47,6 +50,7 @@ enum CardPlan: Hashable, Sendable {
         case .siteChoices: "choices"
         case let .note(note): "note:\(note.id)"
         case .notes: "notes"
+        case .weather: "weather"
         }
     }
 }

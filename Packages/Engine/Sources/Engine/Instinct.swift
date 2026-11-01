@@ -35,6 +35,10 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
     /// opened, read back or deleted, as Markdown files on the device, found
     /// by title and text and judged by Jev. See `Note`.
     case notebook
+    /// The weather now or ahead, here or in a named place, from WeatherKit:
+    /// a native screen with the asked-for detail on top, or the numbers for
+    /// the planner to answer from. See `WeatherSnapshot`.
+    case weather
 
     /// What the app shows when the router cannot or should not decide.
     public static let fallback: Instinct = .webResults
@@ -49,7 +53,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
     public var outranksConversation: Bool {
         switch self {
         case .narrative, .oneLine, .webResults: false
-        case .map, .stock, .recall, .image, .video, .site, .remember, .forget, .time, .notebook: true
+        case .map, .stock, .recall, .image, .video, .site, .remember, .forget, .time, .notebook, .weather: true
         }
     }
 
@@ -69,6 +73,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .forget: "Forget"
         case .time: "Time"
         case .notebook: "Notebook"
+        case .weather: "Weather"
         }
     }
 
@@ -88,6 +93,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .forget: nil
         case .time: nil
         case .notebook: nil
+        case .weather: nil
         }
     }
 
@@ -123,7 +129,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .map:
             Criterion(
                 what: "A map with a pin. The query names a physical place to locate or get to: an address, a shop, a city, a landmark, directions, or something near me.",
-                notFor: "Places mentioned only as the subject of a question or a fact, such as whether a country is safe or what time it is there.",
+                notFor: "Places mentioned only as the subject of a question or a fact, such as whether a country is safe, what time it is there or what the weather is there.",
                 examples: ["coffee near me", "directions to austin airport", "where is machu picchu", "blue bottle coffee san francisco"]
             )
         case .stock:
@@ -134,10 +140,9 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
             )
         case .oneLine:
             Criterion(
-                what: "A single short answer that fits on one line: a time, a date, a number, a duration, a yes/no, a conversion, or a quick fact that is itself a name, number or date, including live ones like the weather. A short question about the user's own life, people, preferences or situation, such as what they are allergic to or whether they have a vegan friend, is one of these: the assistant answers it from what it was told.",
-                notFor: "The time or date right now, here or somewhere, which is time; questions that ask why or how and need a few paragraphs; definitions and what-is questions, which need the full name and some context rather than one value; and anything that wants a price chart.",
+                what: "A single short answer that fits on one line: a time, a date, a number, a duration, a yes/no, a conversion, or a quick fact that is itself a name, number or date. A short question about the user's own life, people, preferences or situation, such as what they are allergic to or whether they have a vegan friend, is one of these: the assistant answers it from what it was told.",
+                notFor: "The time or date right now, here or somewhere, which is time; the weather now or ahead, or whether to bring an umbrella or a coat, which is weather; questions that ask why or how and need a few paragraphs; definitions and what-is questions, which need the full name and some context rather than one value; and anything that wants a price chart.",
                 examples: [
-                    "will it rain today",
                     "how long do cold sores last",
                     "capital of peru",
                     "100 usd to eur",
@@ -199,7 +204,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .time:
             Criterion(
                 what: "The time or date right now, here or in a named place: what time it is, the time in Tokyo, today's date, what day it is. The device clock answers it.",
-                notFor: "Time zones as a topic, how long something takes, a date in history, the weather, and when an event starts, which are answers; and a place to find, which is map.",
+                notFor: "Time zones as a topic, how long something takes, a date in history, and when an event starts, which are answers; the weather, which is weather; and a place to find, which is map.",
                 examples: ["what time is it in tokyo", "what's the time in costa rica", "What time is it in Mexico?", "what's the time", "what day is it today"]
             )
         case .notebook:
@@ -207,6 +212,12 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
                 what: "Jarbits's notebook: writing the user wants kept as a note or a list, added to, changed, opened, read back or deleted. A note to make, something to put in a list, a page to keep in the notes, a note to open or read out, a note to delete. The notes are the user's own writing, kept as files, not facts about the user.",
                 notFor: "A lasting fact about the user with nothing to write down (\"remember that I'm allergic to peanuts\"), which is remember; dropping such a fact, which is forget; bringing back a page, an answer or a search seen in this app before, which is recall.",
                 examples: ["make a note that the plumber comes tuesday", "add milk to my shopping list", "open my packing list", "what's in my notes about the trip", "put this page in my notes", "delete that note", "start a new note called ideas"]
+            )
+        case .weather:
+            Criterion(
+                what: "The weather now or ahead, here or in a named place, from the forecast: the temperature, rain or snow, wind, UV, humidity, sunrise or sunset, the forecast for a day or an hour up to ten days out; and a question whose answer turns on the forecast, such as whether to bring an umbrella or a coat, or whether it is a good day for a run or the beach.",
+                notFor: "Weather or climate as a topic (\"why is it so humid in florida\", \"what's the difference between weather and climate\"), which is an explanation; a weather website or app by its name (\"pull up the weather channel\"), which is site; and the weather on a past date, which is web results.",
+                examples: ["what's the weather", "what's the temperature", "weather in tokyo tomorrow", "will it rain today", "is it windy out", "what's the uv index", "when's sunset", "should I bring an umbrella", "weather this weekend in nyc"]
             )
         }
     }

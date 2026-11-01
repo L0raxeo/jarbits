@@ -708,22 +708,24 @@ final class JarbitsSession {
     /// Runs a plan step's showing instinct as the ordinary path would, and
     /// waits until its result is on screen: true then, false when it never
     /// came within `performWait` or the query was overtaken.
-    func perform(_ instinct: any InstinctRunner, context: InstinctContext, token: UUID) async -> (shown: Bool, failed: String?, declined: Bool) {
-        guard token == requestToken else { return (false, nil, false) }
+    /// `text` is what the instinct handed back besides showing (the
+    /// weather's forecast in words), for the planner to answer from.
+    func perform(_ instinct: any InstinctRunner, context: InstinctContext, token: UUID) async -> (shown: Bool, failed: String?, declined: Bool, text: String) {
+        guard token == requestToken else { return (false, nil, false, "") }
         // The capsule keeps the user's words; a step's query is the planner's.
         let before = replies.last   // a piece already up is not this step's
         let outcome = await instinct.run(context, in: self, token: token)
-        if let reason = outcome.failed { return (false, reason, false) }
-        if outcome.declined { return (true, nil, true) }   // the user said no to its question: shown what it showed, and over
+        if let reason = outcome.failed { return (false, reason, false, "") }
+        if outcome.declined { return (true, nil, true, "") }   // the user said no to its question: shown what it showed, and over
         let clock = ContinuousClock()
         let start = clock.now
         let landed = { [self] in stage == .ready || (replies.last !== before && replyHasContent) }
         while clock.now - start < Self.performWait {
-            if landed() { return (true, nil, false) }
-            guard token == requestToken else { return (false, nil, false) }
+            if landed() { return (true, nil, false, outcome.text) }
+            guard token == requestToken else { return (false, nil, false, "") }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return (landed(), nil, false)
+        return (landed(), nil, false, outcome.text)
     }
 
     /// How long a plan step may take to reach the screen.
@@ -737,6 +739,7 @@ final class JarbitsSession {
         switch layer.plan {
         case let .note(note): return await notebook.note(id: note.id).map { .note($0) } ?? .note(note)
         case .answer, .time, .said: return layer.exchanges.last.map { .exchange($0.exchange) }
+        case let .weather(snapshot): return .exchange(.answer(query: layer.query, text: WeatherText.summary(snapshot)))
         default: return nil
         }
     }
@@ -1085,17 +1088,30 @@ final class JarbitsSession {
         if recording { record(context) }
     }
 
-    /// A new card layer, on screen at once.
+    /// A new card layer, on screen at once. `spoken` is a line Jarbits says
+    /// over it (the weather's short answer), with no bubble piece to cover
+    /// the card; away from the app it arrives as a message, as a reply's does.
     @discardableResult
-    func showCard(_ plan: CardPlan, context: InstinctContext, recording: Bool = true) -> Layer {
+    func showCard(_ plan: CardPlan, context: InstinctContext, recording: Bool = true, spoken: String? = nil) -> Layer {
         let layer = Layer(plan: plan, query: context.query, decision: context.decision)
         layer.extraction = context.extraction
         layer.fact = context.fact
         layer.reading = context.reading
+        layer.spoken = spoken
         open(layer)
         stage = .ready
+        if let spoken { deliver(layer.id, text: spoken) }
         if recording { record(context) }
         return layer
+    }
+
+    /// A forecast a plan read for its own answer: kept as a source of this
+    /// query, so the answer it gives carries Apple's mark and a tap shows
+    /// the weather screen. Nothing on screen moves.
+    func keepWeather(_ snapshot: WeatherSnapshot) {
+        let layer = Layer(plan: .weather(snapshot), query: lastQuery, decision: nil)
+        layer.created = .now
+        readThisQuery.append(layer)
     }
 
     /// A reply in the bubble, over the screen as it stood: the stage goes

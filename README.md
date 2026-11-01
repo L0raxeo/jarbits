@@ -397,8 +397,8 @@ The model has no web access, on purpose. Grounding with Google Search was
 built and removed: Google's terms require their Search Suggestions bar,
 unmodified and full width, under every grounded answer, and it cannot be
 restyled. So:
-- a one-line question that needs live data (today's weather, a price, a
-  rate, a score, the latest news) makes the model reply with the marker
+- a one-line question that needs live data (a price, a rate, a score, the
+  latest news; the weather is its own instinct, see "Weather") makes the model reply with the marker
   `NEEDS_LIVE_DATA`, which the app never shows; it loads the Google results
   page for the query instead and logs `needsLiveData`;
 - a one-line question whose answer may have changed since the cutoff, such
@@ -618,6 +618,49 @@ keep checking in case."), and then to keep checking, since the answer may
 be one search away; when the time still runs out, the device's closing
 line answers the promise under it. Without a planner at all, web results
 still stand in.
+
+## Weather
+
+`weather` is the forecast, now or up to ten days ahead, here or in a named
+place, from WeatherKit; and a question whose answer turns on it ("should I
+bring an umbrella", "can I run at 6"). Jev picks it; the value extractor
+reads the place (here when none is named) and the day or hour as ISO 8601
+against today (`WeatherWhen` reads it in the place's own time zone); Jev
+reads `focus`, the one detail asked about (overview, temperature, rain,
+wind, uv, sun, humidity), as a closed-set question.
+
+- **Picked by Jev**, it opens the weather screen (`WeatherView`): the panel
+  the focus names, large, on top; the panels that go with it around it; the
+  rest of the forecast below; a severe weather warning pinned above all.
+  The arrangement is `WeatherLayout`, fixed per focus: it arranges the
+  screen and never interprets the words. A later day puts its summary where
+  now would be. Jarbits says the short answer (`WeatherText.line`) over the
+  screen with no bubble piece, or sends it as a message when away.
+- **In a plan**, the tool takes a `screen` value like the page tools: `user`
+  shows the screen as above; `mine` reads the forecast for Jarbits's own
+  answer and shows nothing. Either way the result the planner gets is the
+  forecast in words (`WeatherText.summary`), so "what should I wear for my
+  run at 6" is answered from real numbers. A forecast read on `mine` is
+  kept as a source of the query: the answer carries Apple's mark, and a tap
+  shows the weather screen.
+- **Here** is the approximate city (`Places`: a `CLServiceSession`, a
+  15-minute cache, reverse geocoding for the name and time zone), asked for
+  on first use; a named place is MapKit's geocoder. A place it cannot find,
+  location denied, a day past ten or in the past, or the service failing is
+  a failure the planner takes over.
+- **Apple's attribution** is required wherever WeatherKit's data shows: the
+  screen's foot holds the combined mark and the legal link; an answer from
+  the forecast shows the mark in the bubble and beside its source line.
+- Numbers are kept in fixed units in `WeatherSnapshot` (°C, km/h, mm) and
+  formatted in the reader's (`MeasurementFormatter` usages `.weather`,
+  `.wind`, `.rainfall`); times are the place's own.
+- Setup: `Jarbits/Jarbits.entitlements` carries
+  `com.apple.developer.weatherkit`; the App ID needs WeatherKit switched on
+  (Xcode's automatic signing registers it; if calls fail with an
+  authorization error, switch it on under both Capabilities and App
+  Services on the developer site, and allow about 30 minutes).
+  `NSLocationWhenInUseUsageDescription` is a build setting;
+  `NSLocationDefaultAccuracyReduced` is in `Info.plist`.
 
 ## Images
 
@@ -1469,12 +1512,14 @@ app as open webpages; card layers do not.
 | `Jarbits/Engine/DecisionLog.swift` | JSON Lines log of every decision and answer. |
 | `Jarbits/Engine/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`, `BraveAPIKey`). |
 | `Jarbits/Engine/CardPlan.swift` | The renderable plans. One enum case per card type. |
+| `Jarbits/Engine/WeatherInstinct.swift`, `Jarbits/Weather/` | The weather instinct (see "Weather"): `Places` (here, approximately, and a named place by MapKit's geocoder) and `WeatherSource` (one WeatherKit call into a `WeatherSnapshot`). The snapshot, its layout per focus and its words live in the package (`Weather.swift`). |
+| `Jarbits/Home/WeatherView.swift` | The weather screen: the focus's panel on top, the panels around it, the rest, Apple's mark and legal link at the foot. |
 | `Jarbits/Session/JarbitsSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the engine, applies the plan (a recall through the open webpages, a site through the book or the search) or runs an instinct that shows nothing, keeps the facts and the mark, holds the reply in the bubble and puts a question there and waits for it, opens, swipes between, unloads and reloads layers, keeps the open webpages' row and restores it on launch, writes the log. |
 | `Jarbits/Session/Layer.swift` | One query's result: its plan, its live page (`PageHost`) or the notes left by an unload, its own answer stream and pictures, the page it ended on (for the engine's exchanges), its opened site and the open webpage it is, when it was last shown. |
 | `Jarbits/Web/PageHost.swift` | One live web page: the `WebPage` with its watcher, what it pins to its edges, whether it loads or plays or is in use, the navigation watch and the document bookkeeping behind the chrome, the notes read as it goes and the restore when it comes back. |
 | `Jarbits/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, address changes for the open webpages, audio, and whether the page is in use), the page's notes for an unload, the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
 | `Jarbits/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `Clay` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar; the page bounces sideways only when it is wider than the screen, since the web view's default rubber-bands sideways on every page and a vertical drag with a little drift wobbles it) `ClayCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard, and swipes between layers) and `QueryField` (the text field the clay and the capsule share). No system toolbars, so no Liquid Glass. |
-| `Jarbits/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the three API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
+| `Jarbits/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the API keys, `NSLocationDefaultAccuracyReduced` and `UIDesignRequiresCompatibility`. `Jarbits.entitlements` beside it carries WeatherKit. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
 
 Two names keep the project's old one, on purpose: the app's bundle id,
@@ -1540,6 +1585,6 @@ simulator.
 Dark mode, Markdown in answers, the Debug ribbon (the log still records every decision; summarise
 it with the report CLI), a tab strip, history, bookmarks, content blocking, reader
 mode, the map and stock cards, live search behind answers (see
-"Answer cards" for why Google's grounding was removed), location, the
+"Answer cards" for why Google's grounding was removed), the
 backend (the Jev and Gemini requests move behind it later, taking the keys
 with them).

@@ -101,6 +101,7 @@ enum InstinctRegistry {
             ForgetInstinct(),
             TimeInstinct(),
             NotebookInstinct(),
+            WeatherInstinct(),
         ]
         assert(instincts.map(\.spec.id) == InstinctSpec.all.map(\.id), "every spec in the registry has its conformer, in order")
         return instincts

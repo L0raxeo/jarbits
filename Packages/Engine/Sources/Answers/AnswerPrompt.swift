@@ -45,7 +45,7 @@ public enum AnswerPrompt {
         switch format {
         case .narrative: narrative(persona)
         case .oneLine: oneLine(persona)
-        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time, .notebook:
+        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time, .notebook, .weather:
             preconditionFailure("\(format) is not answered by a model")
         }
     }
@@ -61,7 +61,7 @@ public enum AnswerPrompt {
         switch format {
         case .narrative: 800
         case .oneLine: 160
-        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time, .notebook:
+        case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time, .notebook, .weather:
             preconditionFailure("\(format) is not answered by a model")
         }
     }
@@ -175,7 +175,7 @@ public enum AnswerPrompt {
         - Give the answer itself, never a sentence that restates the question: "6:21 PM", not "The current time in Costa Rica is 6:21 PM".
         - Never more than twelve words. No explanation, no second sentence, no preamble, no trailing period.
         - Earlier turns of this conversation may come before the query, oldest first; the query may lean on them ("and chile?", "in km?"): resolve it against your last answer and answer only the new question, still in one line.
-        - Your knowledge ends around \(knowledgeCutoffText) and you have no access to the web. If the question needs live data, such as today's weather, a current price or exchange rate, a live score, or the latest news, or if the answer may have changed since \(knowledgeCutoffText), such as whether a person is alive or who currently holds a role, reply with exactly: \(liveDataMarker)
+        - Your knowledge ends around \(knowledgeCutoffText) and you have no access to the web. If the question needs live data, such as a current price or exchange rate, a live score, or the latest news, or if the answer may have changed since \(knowledgeCutoffText), such as whether a person is alive or who currently holds a role, reply with exactly: \(liveDataMarker)
         - You do know the current date and time from the context block. Compute dates, countdowns and the time in other places from it.
         - A block "\(factsHeading(persona))" may follow the context: facts \(persona.user) told you before, as you noted them. Let them shape the line when they bear on it; ignore them otherwise; never repeat them or say you were told.
         - A question or a request about \(persona.users) own life, people, preferences or situation is answered from that block alone. When it holds nothing on it, reply in a line that you don't know that yet; never guess, never answer from the world, never reply \(liveDataMarker) to it, and never give a detail about \(persona.users) life that the block does not hold.

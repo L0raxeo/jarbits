@@ -330,6 +330,8 @@ final class Executor {
                     let stepQuery = values["query"]?.stringValue ?? query
                     // A page opens on Jarbits's own screen unless the planner said the user's.
                     let onDesk = Planner.opensPage(spec) && values[Planner.screenField.name]?.stringValue != "user"
+                    // The weather read for the plan's own answer: nothing on the user's screen.
+                    let readsWeather = spec.instinct == .weather && values[Planner.screenField.name]?.stringValue == "mine"
                     let fresh = values[Planner.freshField.name]?.boolValue == true
                     if spec.instinct == .remember, answered { values[RememberInstinct.sourceField] = .string(Fact.Source.chosen.rawValue) }
                     answered = false
@@ -399,6 +401,20 @@ final class Executor {
                             let handles = things.mint(webpages: act.found)
                             result = Planner.found(handles, in: things, now: now)
                             outcome = act.found.isEmpty ? "found nothing" : "found \(act.found.count)"
+                        } else if readsWeather {
+                            // The forecast in words, for the planner to answer from; kept
+                            // as a source, so the answer carries Apple's mark.
+                            context.lookup = true
+                            let act = await instinct.run(context, in: session, token: token)
+                            guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
+                            if let reason = act.failed {
+                                result = "could not: \(reason)"
+                                outcome = "failed: \(reason)"
+                                failures += 1
+                            } else {
+                                result = act.text
+                                outcome = "read"
+                            }
                         } else if onDesk {
                             // On Jarbits's screen: nothing the user sees moves; the page
                             // comes back as a thing, for look, open, item or about.
@@ -419,7 +435,7 @@ final class Executor {
                                 failures += 1
                             }
                         } else if spec.showsLayer {
-                            let (didShow, reason, declined) = await session.perform(instinct, context: context, token: token)
+                            let (didShow, reason, declined, text) = await session.perform(instinct, context: context, token: token)
                             guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
                             shown = shown || didShow   // an earlier piece stays shown whatever a later step does
                             if declined {
@@ -429,7 +445,7 @@ final class Executor {
                                 outcome = "declined"
                                 ended = .declined
                             } else {
-                                result = didShow ? "shown on screen" : "could not: \(reason ?? "not shown")"
+                                result = didShow ? (text.isEmpty ? "shown on screen" : "shown on screen; what it shows:\n\(text)") : "could not: \(reason ?? "not shown")"
                                 outcome = didShow ? "shown" : "failed: \(reason ?? "not shown")"
                                 if !didShow { failures += 1 }
                             }
