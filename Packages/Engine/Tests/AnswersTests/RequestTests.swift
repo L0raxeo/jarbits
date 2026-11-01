@@ -204,9 +204,19 @@ import Testing
     @Test func everyInstructionOpensWithWhoJarbitsIs() {
         let line = Persona.example.identityLine
         #expect(line == "You are Jarbits, the assistant in Lorcan's phone browser. Lorcan is the person speaking to you; you are not Lorcan. Speak of Lorcan by name and of yourself as Jarbits.")
-        for system in [AnswerPrompt.system(for: .narrative, persona: .example), AnswerPrompt.system(for: .oneLine, persona: .example), ValueExtractor.factSystem(.example), Planner.system(facts: [], context: .example, persona: .example)] {
-            #expect(system.hasPrefix(line + "\n"), "where Jarbits writes or answers")
+        #expect(ValueExtractor.factSystem(.example).hasPrefix(line + "\n"), "where Jarbits writes a fact")
+        let speaker = Persona.example.speakerLine
+        #expect(speaker == "You are Jarbits, Lorcan's own assistant, on Lorcan's phone. Lorcan is the person speaking to you; you are not Lorcan. You speak to Lorcan directly: \"you\" for them, \"I\" for yourself.")
+        #expect(!speaker.contains("by name"), "the name opened every reply")
+        for system in [AnswerPrompt.system(for: .narrative, persona: .example), AnswerPrompt.system(for: .oneLine, persona: .example), Planner.system(facts: [], context: .example, persona: .example), Closing.system(.example)] {
+            #expect(system.hasPrefix(speaker + "\n"), "where Jarbits speaks to the user")
         }
+        for system in [AnswerPrompt.system(for: .narrative, persona: .example), Planner.system(facts: [], context: .example, persona: .example), Closing.system(.example)] {
+            #expect(system.contains(Voice.guide(.example)), "with how he talks")
+        }
+        #expect(!AnswerPrompt.system(for: .oneLine, persona: .example).contains(Voice.guide(.example)), "a one-line answer is the bare answer: \"120 levels\", never \"There are 120 levels, sir\"")
+        #expect(AnswerPrompt.system(for: .oneLine, persona: .example).contains("never \"sir\""))
+        #expect(!ValueExtractor.factSystem(.example).contains(Voice.guide(.example)), "a fact is written, not spoken")
         let reader = Persona.example.readerLine
         #expect(reader.hasSuffix("What you hand back is Lorcan's request in Lorcan's own words, not your words about it."))
         #expect(!reader.contains("by name"))
@@ -219,7 +229,7 @@ import Testing
         for system in [AnswerPrompt.system(for: .narrative, persona: .example), AnswerPrompt.system(for: .oneLine, persona: .example)] {
             #expect(system.contains("A question or a request about Lorcan's own life, people, preferences or situation is answered from that block alone."))
             #expect(system.contains("that the block does not hold"))
-            #expect(system.contains("say \"you\" for them and \"I\" for yourself"))
+            #expect(system.contains("in English, British English"))
         }
         #expect(Persona(userName: "  ").userName == nil)
         #expect(ValueExtractor.factSystem(.example).contains("\"Lorcan's friend Noah is vegan\", \"Lorcan is allergic to peanuts\""))

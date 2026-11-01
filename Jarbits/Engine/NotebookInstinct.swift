@@ -40,7 +40,7 @@ struct NotebookInstinct: InstinctRunner {
             let notes = await session.notebook.all()
             guard session.isCurrent(token) else { return .nothing }
             if notes.isEmpty {
-                session.showSaid("My notebook is empty.", context: context)
+                session.showSaid("You haven't any notes yet.", context: context)
                 return InstinctOutcome(fact: nil, text: "my notebook is empty")
             }
             session.showNotes(notes, title: "My notes", context: context)
@@ -95,7 +95,7 @@ struct NotebookInstinct: InstinctRunner {
             guard let note = found else {
                 return .failed(named.map { "no note of mine is \"\($0)\"; the notes I have are listed" } ?? "no note was named; the notes I have are listed")
             }
-            let answer = await session.ask("Delete my note \u{201C}\(note.title)\u{201D}?", .options(["Delete", "Keep"]), token: token)
+            let answer = await session.ask("Delete \u{201C}\(note.title)\u{201D}, sir?", .options(["Delete", "Keep"]), token: token)
             guard session.isCurrent(token) else { return .nothing }
             guard case .option(0, _)? = answer else {
                 // Kept: the note shown as it is, and the plan ends here.
@@ -104,7 +104,7 @@ struct NotebookInstinct: InstinctRunner {
             }
             await session.notebook.delete(note.id)
             guard session.isCurrent(token) else { return .nothing }
-            session.showSaid("I deleted my note \u{201C}\(note.title)\u{201D}.", context: context)
+            session.showSaid("\u{201C}\(note.title)\u{201D} is gone.", context: context)
             return InstinctOutcome(fact: nil, text: "deleted my note \"\(note.title)\"")
         default:   // open
             guard let note = found else {

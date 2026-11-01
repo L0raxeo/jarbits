@@ -43,7 +43,7 @@ public struct Closing: Sendable {
     public static var system: String { system(Persona()) }
 
     public static func system(_ persona: Persona) -> String {
-        persona.identityLine + "\n" + """
+        persona.speakerLine + "\n\n" + Voice.guide(persona) + "\n\n" + """
         \(persona.user.capitalizedFirst) asked you for something and you could not finish it. From the facts below and nothing else, write one short line to \(persona.user), in your own voice (you for them, I for yourself): what you tried, in plain words, why it did not work out, and what they could do instead when you know of something that would (Maps for a distance, a site or a call for a booking). Two sentences at most. Never a tool name, a handle, a count of steps or rounds, or anything technical: say what a person would say. If a line you already said to them is listed, do not repeat it: add only what is new, or say that you kept looking and found nothing more. Reply with JSON matching the schema and nothing else.
         """
     }

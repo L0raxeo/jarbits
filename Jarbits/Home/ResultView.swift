@@ -290,7 +290,7 @@ private struct AnswerView: View {
                         queryLine(query).id(Self.latestTurn)
                     }
                     if failed {
-                        Text(needsLiveData ? "That needs live data; try web results." : "Nothing came back.")
+                        Text(needsLiveData ? "That needs something more current than I have. The web results will know." : "Nothing came of that, I'm afraid.")
                             .font(.footnote)
                             .foregroundStyle(quiet)
                     } else {

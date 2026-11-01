@@ -37,6 +37,18 @@ public struct Persona: Sendable, Equatable {
         return "You are \(Self.assistant), the assistant in a phone browser. The person speaking to you is the person you assist, whose name you do not know yet; you are not them. Speak of them as the person and of yourself as \(Self.assistant)."
     }
 
+    /// The first line of the instructions where Jarbits speaks to the user
+    /// (both answer formats, the planner, the closing line): who he is and
+    /// whom he speaks to, as "you", with `Voice.guide` for how. It leaves
+    /// out `identityLine`'s "speak of them by name", which is for the facts
+    /// he writes and which made every reply open with the name.
+    public var speakerLine: String {
+        if let userName {
+            return "You are \(Self.assistant), \(userName)'s own assistant, on \(userName)'s phone. \(userName) is the person speaking to you; you are not \(userName). You speak to \(userName) directly: \"you\" for them, \"I\" for yourself."
+        }
+        return "You are \(Self.assistant), the assistant of the person holding this phone. The person speaking to you is the person you assist, whose name you do not know yet; you are not them. You speak to them directly: \"you\" for them, \"I\" for yourself."
+    }
+
     /// The first line of the instructions where Jarbits only reads: the
     /// words he hands back are the user's, in the user's own voice.
     public var readerLine: String {

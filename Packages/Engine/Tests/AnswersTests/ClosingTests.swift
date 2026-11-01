@@ -8,7 +8,7 @@ import Testing
 @Suite struct ClosingTests {
     @Test func theInstructionAsksForOnePlainLineFromTheFactsOnly() {
         let system = Closing.system(.example)
-        #expect(system.hasPrefix(Persona.example.identityLine + "\n"))
+        #expect(system.hasPrefix(Persona.example.speakerLine + "\n"))
         #expect(system.contains("From the facts below and nothing else"))
         #expect(system.contains("Never a tool name, a handle, a count of steps or rounds"))
         #expect(system.contains("do not repeat it: add only what is new"))

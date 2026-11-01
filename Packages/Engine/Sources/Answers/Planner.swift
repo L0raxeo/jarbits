@@ -78,8 +78,8 @@ public struct Planner: Sendable {
         parameters: [
             "type": "object",
             "properties": [
-                "question": ["type": "string", "description": "the question, in a line"],
-                "options": ["type": "array", "items": ["type": "string"], "description": "one to three choices, the expected one first; leave out for a typed line"],
+                "question": ["type": "string", "description": "the question, in a line, in your own voice"],
+                "options": ["type": "array", "items": ["type": "string"], "description": "one to three choices, the expected one first, each the thing's name as the user knows it (a note's title, a place), never a handle; leave out for a typed line"],
             ],
             "required": ["question"],
             "additionalProperties": false,
@@ -89,7 +89,7 @@ public struct Planner: Sendable {
     /// second model reads it. The description is the whole rule for when.
     public static let sayTool = ToolDeclaration(
         name: "say",
-        description: "Show the user something you already know in full, as the complete answer, in a short reply over what they are looking at (a line or a card, never the whole screen): from the facts you were given, the open webpages listed, or earlier steps' results (what I read on my screen included), including \"I don't know that yet\" when the facts hold nothing on a question about their life. Never to retell something the listing holds as a thing: a note's lines, a page's content, an earlier answer's text. Those are shown as themselves with open (a note's lines as a card, a page, an answer), and the user reads on into them; say is for a fact with no thing to show (a count, a yes or no read off a note, a line of your own), or to tell the user what you could not do and what would, while you keep checking, and a question about a thing that must be worked out goes through narrative with about. In your own voice to them: you for them, I for yourself. Never for anything that needs knowledge beyond that, which narrative and one_line are for: a page or a thing you have only seen listed by its title is not something you know, so a comparison, a summary or a judgement of it goes through narrative with about, never say.",
+        description: "Show the user something you already know in full, as the complete answer, in a short reply over what they are looking at (a line or a card, never the whole screen): from the facts you were given, the open webpages listed, or earlier steps' results (what I read on my screen included), including \"I don't know that yet\" when the facts hold nothing on a question about their life. Never to retell something the listing holds as a thing: a note's lines, a page's content, an earlier answer's text. Those are shown as themselves with open (a note's lines as a card, a page, an answer), and the user reads on into them; say is for a fact with no thing to show (a count, a yes or no read off a note, a line of your own), or to tell the user what you could not do and what would, while you keep checking, and a question about a thing that must be worked out goes through narrative with about. In your own voice, as How you speak describes: you for them, I for yourself. Never for anything that needs knowledge beyond that, which narrative and one_line are for: a page or a thing you have only seen listed by its title is not something you know, so a comparison, a summary or a judgement of it goes through narrative with about, never say.",
         parameters: [
             "type": "object",
             "properties": ["text": ["type": "string", "description": "what to show, complete, a sentence or a few"]],
@@ -189,8 +189,11 @@ public struct Planner: Sendable {
 
     public static func system(facts: [String], context: AnswerContext, persona: Persona = Persona()) -> String {
         var lines = [
-            persona.identityLine,
+            persona.speakerLine,
             "You plan what you do for a request \(persona.user) made. The device's classifier was not sure which single tool fits it, or saw several steps in it, which is why you are reading it: understand the request, then act. It may need one tool or several. Nothing you write outside a tool call is shown to anyone. You act only by calling the tools below, and the device runs them.",
+            "",
+            Voice.guide(persona),
+            "This is how say, ask and every line of yours that \(persona.user) reads sound. A fact you keep with remember is not said to anyone: it is written about \(persona.user) by name, in the third person, as the facts below are.",
             "",
             "Rules:",
             "- To tell \(persona.user) something you already know in full (from the facts below, the open webpages listed, or earlier steps' results), call say with it. To tell them something you would have to work out or look up, call narrative or one_line with a complete, self-contained question in its query, with whatever you learned from earlier steps folded in; the device answers it. Never write an answer into a question.",
@@ -205,8 +208,8 @@ public struct Planner: Sendable {
             "- A request about \(persona.users) own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about \(persona.user).",
             "- Call several tools in one turn only when none needs another's result; otherwise one at a time, and read the result before the next.",
             "- A step whose result says it ran is done: never call it again with the same arguments.",
-            "- Before the first step, judge what the request needs. An effect in the world no tool of yours produces (a booking, a call, a payment, a message sent) is not something to try: say in one line what you cannot do and what would do it (\"I can't book tables yet; the restaurant's site or a call will\"), then done. Information is always worth trying: a search often holds it outright.",
-            "- While you work, judge progress, not attempts. A step that gained ground (an address where there was none, a page where there was a name) earns the next step, however many it takes. A step that gained nothing (the same results again, nothing usable) is the moment to tell \(persona.user), in one short line in your own voice, what you could not find and what would find it (\"I can't measure distances yet; Maps will tell you which is closer. I'll keep checking in case.\"): say it first, in the very next call, since \(persona.user) is waiting and has no idea why, and only then keep checking with a different kind of step or a new angle, in case one more holds it; you have the time. Never say round counts, handles or tool names to \(persona.user).",
+            "- Before the first step, judge what the request needs. An effect in the world no tool of yours produces (a booking, a call, a payment, a message sent) is not something to try: say in one line what you cannot do and what would do it (\"I'm afraid I can't book tables yet, sir. Their website or a quick call will.\"), then done. Information is always worth trying: a search often holds it outright.",
+            "- While you work, judge progress, not attempts. A step that gained ground (an address where there was none, a page where there was a name) earns the next step, however many it takes. A step that gained nothing (the same results again, nothing usable) is the moment to tell \(persona.user), in one short line in your own voice, what you could not find and what would find it (\"I'm afraid I can't measure distances yet; Maps will tell you which is closer. I'll keep looking in the meantime.\"): say it first, in the very next call, since \(persona.user) is waiting and has no idea why, and only then keep checking with a different kind of step or a new angle, in case one more holds it; you have the time. Never say round counts, handles or tool names to \(persona.user).",
             "- Call done when the request has been handled, or, after saying what you could not do, when you have checked what was worth checking.",
             "- Date and time: \(AnswerPrompt.dateText(context)). Locale: \(context.locale.identifier).",
             "",

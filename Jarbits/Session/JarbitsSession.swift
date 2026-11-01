@@ -1011,7 +1011,7 @@ final class JarbitsSession {
             if let id = reference.noteID, let note = await notebook.note(id: id) {
                 showNote(note, context: context)
             } else {
-                showReply(.said(query: context.query, text: "I no longer have that note in my notebook."), context: context)
+                showReply(.said(query: context.query, text: "That note's no longer with us, I'm afraid."), context: context)
             }
         case .answer, .page, .recall, .site:
             if let text = reference.text, !text.isEmpty {
@@ -1516,7 +1516,7 @@ final class JarbitsSession {
                     // the device says why in his voice, from its record of
                     // what was tried, with the choice left to the user. A miss
                     // leaves the fixed lines.
-                    let fixed = summary.outcome == .budget ? "That took too long to work out." : "I couldn't get through that one."
+                    let fixed = summary.outcome == .budget ? "That one got away from me, I'm afraid." : "I couldn't manage that one, sir."
                     var message = fixed
                     if let closing {
                         let reason: Closing.Reason = summary.outcome == .budget ? .budget : (summary.steps.contains { $0.outcome.hasPrefix("failed") } ? .failed : .nothing)
@@ -1708,7 +1708,7 @@ final class JarbitsSession {
             // Nothing came back: said so, the choice left to the user.
             if replies.contains(where: { $0 === layer }) { remove(layer) }
             if let decision = layer.decision {
-                offerRetry(query: answer.query, decision: decision, message: "Nothing came back.", token: requestToken)
+                offerRetry(query: answer.query, decision: decision, message: "Nothing came of that, I'm afraid.", token: requestToken)
             } else {
                 stage = stageBefore
             }

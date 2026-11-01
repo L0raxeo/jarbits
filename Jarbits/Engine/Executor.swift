@@ -481,9 +481,9 @@ final class Executor {
         }
     }
 
-    /// "Go ahead: …?" on the sheet, for a paid or destructive step.
+    /// "Shall I go ahead, sir?" on the sheet, for a paid or destructive step.
     private func confirmed(_ spec: InstinctSpec, _ stepQuery: String, token: UUID) async -> Bool {
-        let answer = await session.ask("Go ahead: \(spec.instinct.title.lowercased()) \u{201C}\(stepQuery)\u{201D}?", .options(["Yes", "No"]), token: token)
+        let answer = await session.ask("Shall I go ahead, sir? \u{201C}\(stepQuery)\u{201D}", .options(["Yes", "No"]), token: token)
         if case .option(0, _)? = answer { return true }
         return false
     }

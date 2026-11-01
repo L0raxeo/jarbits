@@ -60,7 +60,7 @@ import Testing
         #expect(input.contains("- p1: Read \"My Base was GRIEFED\" (m.youtube.com)"))
         #expect(input.contains("- w1: A page open since yesterday (www.dyson.com): \"Dyson PencilVac | Dyson\""))
         #expect(try PlanCache.key(for: request) == PlanCache.key(for: PlanRunner.request(for: planCase)), "the same case keys the same file")
-        #expect(request.systemInstruction.hasPrefix(Persona.example.identityLine))
+        #expect(request.systemInstruction.hasPrefix(Persona.example.speakerLine))
     }
 
     @Test func aPriorStepSeedsTheCallAndItsResult() throws {

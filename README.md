@@ -458,7 +458,7 @@ right where the form has it. A drag stretches the body with the finger
   Watch List" over the lines written, as the note draws them; the note on
   "Read on"), what the planner said (`say`), or a question with
   its one to three buttons or a line to type (`ask`, "What's your
-  name?", "Delete my note …?", "Forget which?"); it grows to at most 40%
+  name?", "Delete “…”, sir?", "Which shall I forget?"); it grows to at most 40%
   of the screen, and past that the text is cut at the foot with "Read
   on";
 - the full view: the answer layer as before, reached by "Read on", by a
@@ -495,8 +495,8 @@ the device's, in his voice, from its record of what was tried: each step
 in plain words with its outcome, why it stopped, and what the planner
 already said go to the cheap model (`Closing`, one short line, no tool
 names, handles or counts); a miss (no key, no credit, a slow reply)
-leaves the fixed lines ("I couldn't get through that one.", "That took
-too long to work out.", "Nothing came back."). Before that, the planner
+leaves the fixed lines ("I couldn't manage that one, sir.", "That one
+got away from me, I'm afraid.", "Nothing came of that, I'm afraid."). Before that, the planner
 itself is told how to meet a task it cannot finish (2026-10-31, after
 "which is closer to Maginnes Hall" ran the two minutes out in silence):
 an effect no tool produces (a booking, a call, a payment) is said at once
@@ -615,11 +615,24 @@ Jev: the routing request carries only the session's exchanges.
 
 The app is an assistant, Jarbits, assisting the person holding the phone;
 he is not that person. Every Gemini instruction he sends opens with one
-of two lines (`Persona` in the Answers library). Where he writes or
-answers (the fact reader, both answer formats, the planner):
-"You are Jarbits, the assistant in Lorcan's phone browser. Lorcan is the
-person speaking to you; you are not Lorcan. Speak of Lorcan by name and of
-yourself as Jarbits." Where he only reads (the reading, the value reader)
+of three lines (`Persona` in the Answers library). Where he speaks to the
+user (both answer formats, the planner, the closing line): "You are
+Jarbits, Lorcan's own assistant, on Lorcan's phone. … You speak to Lorcan
+directly", followed by `Voice.guide`, how he talks (2026-11-01, Lorcan: a
+human assistant, never an AI helper, with the tone of a composed British
+butler and right-hand man): calm and courteous, dry wit and quiet care
+slipping through, "sir" in at most one reply in four, never the name to
+open a reply, British spelling and turns of phrase, short, no help-desk
+lines, no reading back, nothing about how he works, and a handful of
+before-and-after pairs. The traits are written out and the examples are
+original; no character is named. `Evals/voice.jsonl` holds 31 of Lorcan's
+real requests, each set one round before the planner speaks, to hear the
+voice with `report plans`; `report answer` hears one answer. Where he
+writes facts (the fact reader, the remember distill): "You are Jarbits,
+the assistant in Lorcan's phone browser. Lorcan is the person speaking to
+you; you are not Lorcan. Speak of Lorcan by name and of yourself as
+Jarbits", so a fact is kept as "Lorcan's friend Noah is vegan". Where he
+only reads (the reading, the value reader)
 the last sentence is instead "What you hand back is Lorcan's request in
 Lorcan's own words, not your words about it", so a search or a pick never
 sees the user's words recast in his. A question about the user's own life
@@ -650,7 +663,7 @@ and the facts in view. It takes what to do as a closed-set value Jev
 reads in the request (`action`: `new`, `add`, `replace`, `open`,
 `delete`), whether the whole notebook is asked for (`all`, a yes/no Jev
 reads too: "pull up all the notes in your notebook" shows the grid of
-every note, newest first, "My notes · N", or "My notebook is empty."),
+every note, newest first, "My notes · N", or "You haven't any notes yet."),
 two things by handle, `topic`, `title` and `text` as values the
 extractor reads, and, on the planner's tool alone, `remove`: the numbers
 of the lines to take out, as the listing counts them ("2, 4-6"), every
@@ -857,7 +870,7 @@ first, then the newest, so a bare "forget that" offers what was just
 kept), judged by Jev one yes/no each as
 a recall's candidates are (`FactRouting`), and put to the user on the
 sheet: "Forget “I'm vegetarian”?" with Forget and Keep when one is sure,
-"Forget which?" with up to three when several are plausible. A tap
+"Which shall I forget?" with up to three when several are plausible. A tap
 forgets it and the mark says so; a swipe down keeps it. Nothing is ever
 forgotten unasked.
 
@@ -1173,7 +1186,7 @@ the next section.
 The executor runs each call in order through the same paths a single
 query takes: a showing instinct through the session, waiting until its
 layer is ready; an acting one through its `act`. A paid or destructive
-step is put to the user first ("Go ahead: …?") unless the instinct asks
+step is put to the user first ("Shall I go ahead, sir? …") unless the instinct asks
 for itself, as `forget` does; the same call twice runs once (a page
 already open on Jarbits's screen answers with its handle); an
 answer in the bubble goes back to the model as the step's result, and a
@@ -1188,7 +1201,7 @@ cache, about 950 thought tokens and no output each; the compare case
 waved through as a flake was one of them; 2026-10-31). An incomplete
 round with no call is now asked once more before the plan ends. The
 plan ends on `done`; when nothing was shown or done, the bubble's "I
-couldn't get through that one." with "Try again" and "Search instead"
+couldn't manage that one, sir." with "Try again" and "Search instead"
 (`offerRetry`; a plan that only read on Jarbits's screen counts as
 nothing shown, and what it read stays listed for the next query); on a no in the bubble; when the rounds or the time run out; or when
 a newer query takes the screen, where it stands and never after a step

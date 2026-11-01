@@ -36,7 +36,7 @@ struct ForgetInstinct: InstinctRunner {
         let candidates = await session.facts.shortlist(about: about)
         guard session.isCurrent(token) else { return .nothing }
         guard !candidates.isEmpty else {
-            return InstinctOutcome(fact: FactSummary(action: "none", candidates: 0), text: "nothing to forget", failed: "I have no fact the words point at")
+            return InstinctOutcome(fact: FactSummary(action: "none", candidates: 0), text: "nothing to forget", failed: "I don't believe you've told me that")
         }
         var offered = candidates
         var judged: Int?
@@ -70,7 +70,7 @@ struct ForgetInstinct: InstinctRunner {
             chosen = offered[0]
         } else {
             let shown = Array(offered.prefix(3))
-            let answer = await session.ask("Forget which?", .options(shown.map(\.text)), token: token)
+            let answer = await session.ask("Which shall I forget?", .options(shown.map(\.text)), token: token)
             guard case let .option(index, _)? = answer, shown.indices.contains(index) else { return declined() }
             chosen = shown[index]
         }

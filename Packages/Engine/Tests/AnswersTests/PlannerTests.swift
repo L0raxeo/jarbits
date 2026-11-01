@@ -68,7 +68,8 @@ import Testing
 
     @Test func theSystemInstructionCarriesTheRulesAndTheFacts() {
         let system = Planner.system(facts: ["Lorcan is vegetarian", "Lorcan lives in Austin"], context: .example, persona: .example)
-        #expect(system.hasPrefix(Persona.example.identityLine))
+        #expect(system.hasPrefix(Persona.example.speakerLine))
+        #expect(system.contains("A fact you keep with remember is not said to anyone: it is written about Lorcan by name"))
         #expect(system.contains("Nothing you write outside a tool call is shown to anyone"))
         #expect(system.contains("call say with it"))
         #expect(system.contains("Never write an answer into a question"))
