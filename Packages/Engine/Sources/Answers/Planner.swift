@@ -48,7 +48,7 @@ public struct Planner: Sendable {
     /// and its options stay as they are.
     public static let removeField = ArgumentSchema.Field(
         name: "remove", kind: .text,
-        description: "the numbers of the lines to take out of the note, as the listing numbers them, separated by commas, a run as 2-5 (\"take eggs off my shopping list\": the eggs line; \"remove everything except the framework and midterms videos\": every other line); every line not named stays exactly as it is, its link included; with it, text is null unless lines are also added",
+        description: "the numbers of the lines to take out of the note, as the listing numbers them, separated by commas, a run as 2-5 (\"take eggs off my shopping list\": the eggs line; \"remove everything except the framework and midterms videos\": every other line); every line not named stays exactly as it is, its link included; with it, text is null unless lines are also added. Taking lines out is never delete: delete removes a whole note and never comes with remove",
         required: false
     )
 

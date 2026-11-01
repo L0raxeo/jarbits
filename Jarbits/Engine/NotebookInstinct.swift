@@ -63,19 +63,22 @@ struct NotebookInstinct: InstinctRunner {
         }
         let named = topic ?? title
 
+        // Lines named by number come out whatever the action says: a whole
+        // note's delete never names lines, so "remove the line about X"
+        // sent as a delete is still lines. The rest stays untouched, and
+        // anything also written goes in after, as add or replace says.
+        if let note = found, !removing.isEmpty {
+            let fewer = await session.notebook.remove(removing, from: note.id)
+            guard session.isCurrent(token), let fewer else { return .nothing }
+            let count = removing.count == 1 ? "a line" : "\(removing.count) lines"
+            if content.isEmpty || action == "delete" || action == "open" {
+                session.showNote(fewer, wrote: "Took \(count) out of \(fewer.title)", context: context)
+                return InstinctOutcome(fact: nil, text: "took \(count) out of my note \"\(fewer.title)\"")
+            }
+        }
+
         switch action {
         case "add", "replace":
-            if let note = found, !removing.isEmpty {
-                // Lines out by number, the rest untouched; anything also
-                // written goes in after, as the action says.
-                let fewer = await session.notebook.remove(removing, from: note.id)
-                guard session.isCurrent(token), let fewer else { return .nothing }
-                let count = removing.count == 1 ? "a line" : "\(removing.count) lines"
-                if content.isEmpty {
-                    session.showNote(fewer, wrote: "Took \(count) out of \(fewer.title)", context: context)
-                    return InstinctOutcome(fact: nil, text: "took \(count) out of my note \"\(fewer.title)\"")
-                }
-            }
             guard let note = found else {
                 // No listed note was it: a note by that name is made.
                 let note = await session.notebook.create(title: title ?? topic, body: content)
