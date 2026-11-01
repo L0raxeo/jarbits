@@ -20,8 +20,10 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     public var engine: EngineSummary?
     /// How the reading beside Jev went, when one was asked; `query` is the words that ran.
     public var reading: ReadingSummary?
+    /// A piece of this query reached the user as a message, the app off screen.
+    public var away: Bool?
 
-    public init(timestamp: Date = .now, query: String, decision: Pick, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: Pick, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil, away: Bool? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
@@ -32,6 +34,7 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
         self.fact = fact
         self.engine = engine
         self.reading = reading
+        self.away = away
     }
 
     public static let encoder: JSONEncoder = {

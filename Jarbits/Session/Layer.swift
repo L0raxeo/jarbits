@@ -22,6 +22,11 @@ final class Layer: Identifiable {
     var asked: String?
     /// Why the plan is what it is; logged with the record.
     var decision: Pick?
+    /// The run an answer streaming into this layer belongs to; released
+    /// when the answer finishes. See `QueryRun`.
+    var runToken: UUID?
+    /// The answer began with the app off screen: one message when it finishes.
+    var messageAtFinish = false
     /// How reading the plan's values out of the words went, when a model
     /// was asked; logged with the record once the layer's result is in.
     var extraction: ExtractionSummary?

@@ -89,6 +89,7 @@ final class Executor {
         while rounds < ReasoningPolicy.maxRounds {
             guard clock.now - start < ReasoningPolicy.timeBudget else { return finish(.budget, webpages: listedWebpages.count) }
             rounds += 1
+            session.planProgress(round: rounds, of: ReasoningPolicy.maxRounds)
             let round = await planner.propose(bundle, transcript: transcript)
             guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
             #if DEBUG
@@ -449,6 +450,7 @@ final class Executor {
                     answered = false
                 }
                 steps.append(EngineSummary.Step(name: call.name, arguments: call.arguments, outcome: outcome, latencyMs: Int((clock.now - stepStart) / .milliseconds(1))))
+                session.planProgress(step: call.name)
                 transcript.append(.functionResult(FunctionResult(callID: call.id, name: call.name, text: result)))
                 if let ended { return finish(ended, webpages: listedWebpages.count) }
             }
@@ -483,7 +485,7 @@ final class Executor {
 
     /// "Shall I go ahead, sir?" on the sheet, for a paid or destructive step.
     private func confirmed(_ spec: InstinctSpec, _ stepQuery: String, token: UUID) async -> Bool {
-        let answer = await session.ask("Shall I go ahead, sir? \u{201C}\(stepQuery)\u{201D}", .options(["Yes", "No"]), token: token)
+        let answer = await session.ask("Shall I go ahead, sir? \u{201C}\(stepQuery)\u{201D}", .options(["Yes", "No"]), guarded: true, token: token)
         if case .option(0, _)? = answer { return true }
         return false
     }

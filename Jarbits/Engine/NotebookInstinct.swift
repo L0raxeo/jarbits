@@ -95,7 +95,7 @@ struct NotebookInstinct: InstinctRunner {
             guard let note = found else {
                 return .failed(named.map { "no note of mine is \"\($0)\"; the notes I have are listed" } ?? "no note was named; the notes I have are listed")
             }
-            let answer = await session.ask("Delete \u{201C}\(note.title)\u{201D}, sir?", .options(["Delete", "Keep"]), token: token)
+            let answer = await session.ask("Delete \u{201C}\(note.title)\u{201D}, sir?", .options(["Delete", "Keep"]), guarded: true, token: token)
             guard session.isCurrent(token) else { return .nothing }
             guard case .option(0, _)? = answer else {
                 // Kept: the note shown as it is, and the plan ends here.

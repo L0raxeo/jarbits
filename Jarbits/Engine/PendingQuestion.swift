@@ -22,13 +22,17 @@ final class PendingQuestion: Identifiable {
     let id = UUID()
     let title: String
     let input: Input
+    /// A destructive or paid step: answered from a notification only with
+    /// the phone unlocked.
+    let guarded: Bool
     private var continuation: CheckedContinuation<AskAnswer?, Never>?
     private var resumed = false
     private var result: AskAnswer?
 
-    init(title: String, input: Input) {
+    init(title: String, input: Input, guarded: Bool = false) {
         self.title = title
         self.input = input
+        self.guarded = guarded
     }
 
     /// The answer, or nil when the sheet was dismissed or the question overtaken.

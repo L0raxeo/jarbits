@@ -19,6 +19,11 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<!-- One continued processing task per query, so a query finishes after the user leaves. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).query.*</string>
+	</array>
 	<key>UIDesignRequiresCompatibility</key>
 	<true/>
 </dict>

@@ -65,12 +65,12 @@ struct ForgetInstinct: InstinctRunner {
         }
         let chosen: Fact
         if offered.count == 1 {
-            let answer = await session.ask("Forget \u{201C}\(offered[0].text)\u{201D}?", .options(["Forget", "Keep"]), token: token)
+            let answer = await session.ask("Forget \u{201C}\(offered[0].text)\u{201D}?", .options(["Forget", "Keep"]), guarded: true, token: token)
             guard case .option(0, _)? = answer else { return declined() }
             chosen = offered[0]
         } else {
             let shown = Array(offered.prefix(3))
-            let answer = await session.ask("Which shall I forget?", .options(shown.map(\.text)), token: token)
+            let answer = await session.ask("Which shall I forget?", .options(shown.map(\.text)), guarded: true, token: token)
             guard case let .option(index, _)? = answer, shown.indices.contains(index) else { return declined() }
             chosen = shown[index]
         }

@@ -58,6 +58,10 @@ final class JarbitsSession {
     let microphone: Microphone
     /// Jarbits's voice: reads each reply as it lands in the bubble.
     let speaker: Speaker
+    /// How he reaches the user when the app is not on screen: messages.
+    let messenger = Messenger.shared
+    /// The query in flight, from sent to nothing still running; see `QueryRun`.
+    private(set) var run: QueryRun?
     /// Passive listening, on the idle screen and over a result; what it
     /// hears is never shown.
     let dictation: DictationSession
@@ -125,6 +129,7 @@ final class JarbitsSession {
             bubbleToken = requestToken
         }
         replies.append(layer)
+        if !layer.lingers { run?.landed = true }
     }
 
     /// One piece out of the stack, the rest staying.
@@ -333,6 +338,7 @@ final class JarbitsSession {
         }
         warmer.warm()
         restoreWebpages()
+        messenger.session = self
     }
 
     // MARK: Open webpages
@@ -472,13 +478,14 @@ final class JarbitsSession {
         stage = .routing
         let token = UUID()
         requestToken = token
+        beginRun(token: token, query: trimmed)
         let routing = Task { await engine.route(trimmed, exchanges: exchanges, current: newest, opened: opened, persona: persona, screen: screenRead) }
         // The fact reader beside the route: every lasting fact the words
         // state, read whatever the query becomes, applied when it is back.
         startFactReading(query: trimmed, exchanges: exchanges.suffix(FactReader.exchangesGiven).map(\.exchange), routing: routing)
         Task {
             let result = await routing.value
-            guard token == requestToken else { return }   // a newer query won, or cancelled
+            guard token == requestToken else { releaseRun(token); return }   // a newer query won, or cancelled
             lastQuery = result.query   // the words that ran: the label, the exchange, the layer and the record carry them
             askedQuery = result.query
             #if DEBUG
@@ -514,15 +521,35 @@ final class JarbitsSession {
     /// the app went back to idle. One question at a time: a new one cancels
     /// the old. `token` is the request asking; a stale one is answered nil
     /// at once.
-    func ask(_ title: String, _ input: PendingQuestion.Input, token: UUID) async -> AskAnswer? {
+    func ask(_ title: String, _ input: PendingQuestion.Input, guarded: Bool = false, token: UUID) async -> AskAnswer? {
         guard token == requestToken else { return nil }
         question?.cancel()
-        let pending = PendingQuestion(title: title, input: input)
+        let pending = PendingQuestion(title: title, input: input, guarded: guarded)
         question = pending
-        speaker.speak(pending.id, text: title)   // the question; its options stay buttons
+        holdRun(token)
+        put(pending, token: token)
         let answer = await pending.wait()
         if question === pending { question = nil }
+        messenger.withdraw(pending.id)
+        releaseRun(token)
         return answer
+    }
+
+    /// The question to the user: spoken over the bubble when the app is on
+    /// screen (its options stay buttons); a message with its options as
+    /// buttons when it is not. A question asked while away also completes
+    /// the run's background task: the plan is waiting on the user, and the
+    /// bar cannot honestly move.
+    private func put(_ pending: PendingQuestion, token: UUID) {
+        if messenger.onScreen {
+            speaker.speak(pending.id, text: pending.title)
+        } else {
+            messenger.ask(pending, token: token, query: lastQuery)
+            if let run, run.token == token {
+                run.away = true
+                run.continued?.finish(success: true)
+            }
+        }
     }
 
     /// The question was put away.
@@ -541,10 +568,11 @@ final class JarbitsSession {
         askedName = true
         let pending = PendingQuestion(title: "What's your name?", input: .text(placeholder: "Your name"))
         question = pending
-        speaker.speak(pending.id, text: pending.title)
+        put(pending, token: requestToken)
         Task {
             let answer = await pending.wait()
             if question === pending { question = nil }
+            messenger.withdraw(pending.id)
             if case let .text(name)? = answer { await setUserName(name) }
         }
     }
@@ -863,10 +891,105 @@ final class JarbitsSession {
         }
         spokenGeneration += 1
         requestToken = UUID()
+        run?.cancel()
+        run = nil
         askedOver = nil
         dismissReply()
         dropEarlyPicture()
         stage = .idle
+    }
+
+    // MARK: The run of a query
+
+    /// A query sent: the run before it is over, and the system is asked to
+    /// keep this one going after the user leaves. The first query of a
+    /// launch asks for notification permission, so messages can reach the
+    /// user when the app is off screen.
+    private func beginRun(token: UUID, query: String) {
+        run?.cancel()
+        let continued = messenger.onScreen ? ContinuedTask(query: query) : nil
+        let run = QueryRun(token: token, query: query, continued: continued)
+        run.hold()   // the route and what it opens; released at the end of `apply`'s paths
+        continued?.onExpire = { [weak self, weak run] in
+            guard let self, let run else { return }
+            runExpired(run)
+        }
+        self.run = run
+        messenger.requestAuthorizationIfNeeded()
+    }
+
+    private func holdRun(_ token: UUID) {
+        guard let run, run.token == token else { return }
+        run.hold()
+    }
+
+    private func releaseRun(_ token: UUID) {
+        guard let run, run.token == token else { return }
+        run.release()
+    }
+
+    /// The system ended the run's task (the user's cancel in its interface,
+    /// or pressure): the plan stops at its next step, the bubble keeps what
+    /// landed, and only when nothing had landed does he say so.
+    private func runExpired(_ run: QueryRun) {
+        guard run.token == requestToken else { return }
+        requestToken = UUID()
+        question?.cancel()
+        if busy { stage = stageBefore }
+        run.cancel()
+        if !run.landed {
+            deliver(UUID(), text: "Cut short before I had anything for you, sir.")
+        }
+    }
+
+    /// A piece the voice would say: spoken when the app is on screen,
+    /// sent as a message when it is not (the volume and call gate do not
+    /// apply; the user cannot hear him).
+    private func deliver(_ id: UUID, text: String) {
+        if messenger.onScreen {
+            speaker.speak(id, text: text)
+        } else {
+            messenger.send(id: id, token: requestToken, query: lastQuery, text: text)
+            run?.away = true
+        }
+    }
+
+    /// The planner's progress, for the system's bar.
+    func planProgress(round: Int, of total: Int) {
+        run?.continued?.advance(by: 12, subtitle: "Round \(round) of \(total): thinking")
+    }
+
+    func planProgress(step name: String) {
+        run?.continued?.advance(by: 3, subtitle: ContinuedTask.words(forStep: name))
+    }
+
+    // MARK: From a message
+
+    /// The user tapped a message: the app is opening. When the bubble no
+    /// longer holds that piece (a newer query, a relaunch) and nothing is
+    /// up, the message's words are shown so the tap lands on something.
+    func openedFromMessage(token: UUID?, layer: UUID?, questionID: UUID?, query: String, text: String) {
+        attention.touched()
+        if let questionID, question?.id == questionID { return }
+        if let token, bubbleToken == token, replyShown { return }
+        guard replies.isEmpty, question == nil, !text.isEmpty else { return }
+        let piece = Layer(plan: .said(query: query, text: text), query: query, decision: nil)
+        piece.asked = query
+        piece.spoken = text
+        append(piece)
+        if stage == .idle || stage == .ready { stage = stageBefore }
+    }
+
+    /// An answer from a question's buttons or reply field. The plan that
+    /// asked is in memory; when it is gone (the app was shut down
+    /// meanwhile, or a newer query took its place) he says so.
+    func answerFromMessage(questionID: UUID, answer: AskAnswer, question title: String) {
+        if let question, question.id == questionID {
+            question.answer(answer)
+            return
+        }
+        messenger.withdraw(questionID)
+        deliver(UUID(), text: "Sorry, sir, I lost my place on that one: \u{201C}\(title)\u{201D}")
     }
 
     // MARK: Layers
@@ -888,7 +1011,10 @@ final class JarbitsSession {
         }
         if !layer.isWeb { layer.drawn = true }
         if layer.asked == nil { layer.asked = askedQuery }
-        if byQuery { askedOver = layer }
+        if byQuery {
+            askedOver = layer
+            run?.landed = true
+        }
         if let leaving = current {
             leaving.answer?.cancel()
             Task { await leaving.page?.pause() }
@@ -971,7 +1097,7 @@ final class JarbitsSession {
             break
         }
         append(layer)
-        if let spoken = layer.spoken { speaker.speak(layer.id, text: spoken) }
+        if let spoken = layer.spoken { deliver(layer.id, text: spoken) }
         stage = stageBefore
         if recording { record(context) }
         return layer
@@ -1129,6 +1255,10 @@ final class JarbitsSession {
         layer.reading = context.reading
         if layer.answer == nil { layer.answer = makeAnswer(for: layer) }
         stage = .loading
+        if let old = layer.runToken { releaseRun(old) }   // a thread's earlier turn, if one was still counted
+        layer.runToken = requestToken
+        layer.messageAtFinish = false
+        holdRun(requestToken)
         layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: factTexts, persona: persona, screen: context.screen)
     }
 
@@ -1459,7 +1589,7 @@ final class JarbitsSession {
             plan(query: query, decision: decision, exchanges: result.chained, reading: result.reading, lead: result.lead, screen: result.screen, token: token)
             return
         }
-        guard let instinct = result.instinct, var context = result.context else { return }
+        guard let instinct = result.instinct, var context = result.context else { releaseRun(token); return }
         context.fact = factSummary
         // An instinct that shows nothing runs over the screen as it stood,
         // asking if it must; a showing one opens its layer and moves the
@@ -1469,7 +1599,7 @@ final class JarbitsSession {
         let chained = result.chained
         Task {
             let outcome = await instinct.run(context, in: self, token: token)
-            guard token == requestToken else { return }
+            guard token == requestToken else { releaseRun(token); return }
             // The instinct could not do the thing: the planner takes the
             // query, told what was tried, under the wave line.
             if let reason = outcome.failed {
@@ -1480,6 +1610,7 @@ final class JarbitsSession {
                 plan(query: query, decision: decision, exchanges: chained, reading: context.reading, lead: Planner.failureLead(reason), screen: context.screen, token: token)
                 return
             }
+            defer { releaseRun(token) }
             guard !shows else { return }
             #if DEBUG
             print("act \(instinct.spec.id): \(outcome.text)")
@@ -1500,6 +1631,7 @@ final class JarbitsSession {
         guard let executor else {
             openPage(QueryParser.searchURL(for: query), query: query, decision: decision)
             record(decision, query: query, reading: reading)
+            releaseRun(token)
             return
         }
         var listed = exchanges
@@ -1513,6 +1645,7 @@ final class JarbitsSession {
         var bubbleNoteID: UUID?
         if case let .note(note)? = inBubble?.plan { bubbleNoteID = note.id }
         Task {
+            defer { releaseRun(token) }
             let bubble = await inBubble?.screen()
             let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, spoken: spoken, token: token)
             guard token == requestToken else { return }
@@ -1553,7 +1686,9 @@ final class JarbitsSession {
     /// search would read as a mishearing.
     private func offerRetry(query: String, decision: Pick, message: String, token: UUID) {
         stage = stageBefore
+        holdRun(token)
         Task {
+            defer { releaseRun(token) }
             let answer = await ask(message, .options(["Try again", "Search instead"]), token: token)
             guard token == requestToken else { return }
             switch answer {
@@ -1698,9 +1833,14 @@ final class JarbitsSession {
         guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
         if replies.contains(where: { $0 === layer }) {
             stage = stageBefore
-            // Read aloud from its first sentence, the rest as it streams. An
-            // answer growing in the full view is the user's to read.
-            if speaker.begin(layer.id) { speaker.add(layer.id, text: answer.displayText) }
+            // Read aloud from its first sentence, the rest as it streams; one
+            // message when it finishes if the app is off screen. An answer
+            // growing in the full view is the user's to read.
+            if !messenger.onScreen {
+                layer.messageAtFinish = true
+            } else if speaker.begin(layer.id) {
+                speaker.add(layer.id, text: answer.displayText)
+            }
         } else if layer === current {
             stage = .ready
         }
@@ -1708,6 +1848,12 @@ final class JarbitsSession {
 
     private func answerFinished(_ summary: AnswerSummary, in layer: Layer) {
         guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
+        defer {
+            if let token = layer.runToken {
+                layer.runToken = nil
+                releaseRun(token)
+            }
+        }
         if let decision = layer.decision {
             record(decision, query: answer.query, answer: summary, extraction: layer.extraction, fact: layer.fact, reading: layer.reading)
         }
@@ -1736,13 +1882,18 @@ final class JarbitsSession {
             }
         case .completed, .partial:
             if replies.contains(where: { $0 === layer }) { layer.spoken = answer.displayText }
-            speaker.add(layer.id, text: answer.displayText)
-            speaker.finish(layer.id)
+            if layer.messageAtFinish {
+                layer.messageAtFinish = false
+                deliver(layer.id, text: answer.displayText)
+            } else {
+                speaker.add(layer.id, text: answer.displayText)
+                speaker.finish(layer.id)
+            }
         }
     }
 
     private func record(_ decision: Pick, query: String, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil) {
-        let record = DecisionRecord(query: query, decision: decision, answer: answer, recall: recall, site: site, extraction: extraction, fact: fact, engine: engine, reading: reading)
+        let record = DecisionRecord(query: query, decision: decision, answer: answer, recall: recall, site: site, extraction: extraction, fact: fact, engine: engine, reading: reading, away: run?.away == true ? true : nil)
         Task { await log.append(record) }
     }
 

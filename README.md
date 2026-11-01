@@ -489,6 +489,57 @@ touched; see "Dictation"). Two limits: a video in his own page is not
 turned down (same app, same session), and from iOS 18 the volume reading
 can go stale after a session cycle, which is why the gate reads it
 before the dip, never after.
+
+## When you leave
+
+A query sent is finished whether or not the app stays on screen
+(2026-11-01). Each `submit` is a `QueryRun` (`Jarbits/Background/`): the
+route and what it opens, every answer still streaming for it and every
+question it has open are counted as work, and the run is over at zero. A
+newer query ends the run before it. Alongside the run, while the app is
+in front, iOS 26's continued processing task (`ContinuedTask`, a
+`BGContinuedProcessingTask` with the identifier `<bundle id>.query.<uuid>`,
+permitted by the wildcard in Info.plist): the system keeps the app running
+after the user leaves for as long as the task reports progress, and shows
+it as a progress bar with a cancel on the lock screen and in the Dynamic
+Island. The bar moves on each planner round (+12, "Round 2 of 6:
+thinking") and each step (+3, with plain words for the tool, "Reading",
+"Writing in my notes"), never past 95 until the run is over; a heartbeat
+every ten seconds adds one while work is open, since a round can run
+longer than the thirty seconds the system allows without progress. The
+task is completed when the run is over, and also when a question is
+asked while the app is off screen: the plan is waiting on the user then,
+and the bar cannot honestly move; the answer from the notification wakes
+the app with the system's ordinary half-minute, in which the plan goes
+on. The system's cancel (the user's, or pressure; the two are not told
+apart) stops the plan at its next step, the bubble keeps what landed, and
+only when nothing had landed does he say "Cut short before I had anything
+for you, sir."
+
+When the app is not on screen, the pieces the voice would have said
+arrive as notifications instead (`Messenger`): the same words, the
+volume and call gate set aside since the user cannot hear him; one
+query's pieces grouped under its thread; a streaming answer begun off
+screen as one message when it finishes, one begun on screen finished
+aloud as the voice does. Note cards, marks and pages are not messaged,
+as they are not spoken. A question arrives with its options as buttons
+on the expanded notification (a reply field for a free-text one), the
+destructive ones (delete, forget, the go-ahead) needing the phone
+unlocked; a tap opens the app with the question up in the bubble;
+either way the answer goes to the plan still waiting. A plan iOS has
+shut down meanwhile gets "Sorry, sir, I lost my place on that one:
+“…”". A tap on any piece opens the app at its bubble; when the bubble no
+longer holds it (a relaunch, a newer query) and nothing is up, the words
+are shown as a piece so the tap lands on something. Permission is asked
+at the first query of a launch; declined, the bubble alone, as before.
+The decision log marks a query that reached the user this way (`away`).
+
+Four limits, stated to Lorcan: the system can end the task under
+pressure; developers report the task pausing on a truly locked phone
+(Apple says fixed in iOS 26.1, one report says not), to be tested on his
+phone; force-quit and a powered-off phone end everything, which only the
+server will fix; and a page the planner opens on his own screen may not
+load in the background, to be tested too.
 On the idle screen it
 stops short of the clay's circle. The page stays live and tappable around
 it. An answer's bubble appears the moment its stream starts, a short bar

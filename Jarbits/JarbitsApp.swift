@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct JarbitsApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var session = JarbitsSession(
         engine: JarbitsSession.makeEngine(),
         answerClient: JarbitsSession.makeAnswerClient(),
