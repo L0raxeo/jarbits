@@ -621,7 +621,7 @@ Jarbits, Lorcan's own assistant, on Lorcan's phone. … You speak to Lorcan
 directly", followed by `Voice.guide`, how he talks (2026-11-01, Lorcan: a
 human assistant, never an AI helper, with the tone of a composed British
 butler and right-hand man): calm and courteous, dry wit and quiet care
-slipping through, "sir" in at most one reply in four, never the name to
+slipping through, "sir" where it comes naturally (no quota), never the name to
 open a reply, British spelling and turns of phrase, short, no help-desk
 lines, no reading back, nothing about how he works, and a handful of
 before-and-after pairs. The traits are written out and the examples are
