@@ -38,14 +38,15 @@ public struct PlanRunner: Sendable {
     /// The first round's request for a case, as the app would send it.
     public static func request(for planCase: PlanCase, model: String = Planner.model) -> InteractionRequest {
         let context = AnswerContext.example
-        let memories = (planCase.memories ?? []).map { $0.record(now: context.now) }
+        // Newest first, as the app lists them.
+        let webpages = (planCase.webpages ?? []).map { $0.webpage(now: context.now) }.sorted { $0.opened > $1.opened }
         let screen = planCase.screen?.screen
         let bundle = PlanBundle(
-            query: planCase.query, exchanges: planCase.exchanges ?? [], facts: planCase.facts ?? [], memories: memories,
+            query: planCase.query, exchanges: planCase.exchanges ?? [], facts: planCase.facts ?? [],
             tools: Planner.tools(for: InstinctSpec.all), context: context, persona: .example, screen: screen
         )
         let notes = (planCase.notes ?? []).map { $0.note(now: context.now) }
-        let things = ThingTable(exchanges: planCase.exchanges ?? [], memories: memories, notes: notes, items: screen?.items ?? [])
+        let things = ThingTable(exchanges: planCase.exchanges ?? [], webpages: webpages, notes: notes, items: screen?.items ?? [])
         let lead = planCase.failure.map(Planner.failureLead) ?? planCase.picked.map(Planner.pickedLead)
         var transcript: [InteractionStep] = [.userText(Planner.input(query: planCase.query, things: things, now: context.now, lead: lead, screen: screen, bubble: planCase.bubble?.screen))]
         // Steps already taken. The API refuses a function_call step the client

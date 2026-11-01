@@ -137,18 +137,18 @@ public enum NoteSearch {
         guard !ranked.isEmpty else { return words }
         let byID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let near = ranked.compactMap { byID[$0] }
-        return MemorySearch.interleave(near, words, limit: limit)
+        return WebpageSearch.interleave(near, words, limit: limit)
     }
 
     static func byWords(_ notes: [Note], topic: String?, limit: Int) -> [Note] {
-        let terms = MemorySearch.terms(of: topic)
+        let terms = WebpageSearch.terms(of: topic)
         let newest = notes.sorted { $0.edited > $1.edited }
         guard !terms.isEmpty else { return Array(newest.prefix(limit)) }
         let scored = newest.compactMap { note -> (note: Note, hits: Int, inTitle: Bool)? in
-            let titleWords = Set(MemorySearch.tokens(of: note.title))
-            let words = Set(MemorySearch.tokens(of: note.haystack))
-            let hits = terms.filter { term in words.contains { MemorySearch.close(term, $0) } }.count
-            let inTitle = terms.contains { term in titleWords.contains { MemorySearch.close(term, $0) } }
+            let titleWords = Set(WebpageSearch.tokens(of: note.title))
+            let words = Set(WebpageSearch.tokens(of: note.haystack))
+            let hits = terms.filter { term in words.contains { WebpageSearch.close(term, $0) } }.count
+            let inTitle = terms.contains { term in titleWords.contains { WebpageSearch.close(term, $0) } }
             return hits > 0 ? (note, hits, inTitle) : nil
         }
         return scored

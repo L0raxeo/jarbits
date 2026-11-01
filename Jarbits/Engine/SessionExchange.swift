@@ -27,9 +27,6 @@ extension Layer {
             return [AnswerTurn(query: query, answer: text, format: .oneLine)]
         case let .said(query, text):
             return [AnswerTurn(query: query, answer: text, format: .narrative)]
-        case let .memory(record) where record.kind == .narrative || record.turns != nil:
-            let kind: Instinct = record.kind == .oneLine ? .oneLine : .narrative
-            return record.turns ?? record.text.map { [AnswerTurn(query: record.query, answer: $0, format: kind)] } ?? []
         default:
             return []
         }
@@ -37,7 +34,7 @@ extension Layer {
 
     /// What this layer got, as exchanges for Jev: one per turn of an
     /// answer, one for the page it ended on (or the results page it shows),
-    /// one for a picture, a grid of memories or a choice of sites. Nothing
+    /// one for a picture, a grid of open webpages or a choice of sites. Nothing
     /// for an answer still streaming.
     var exchanges: [SessionExchange] {
         switch plan {
@@ -52,15 +49,8 @@ extension Layer {
             return [SessionExchange(exchange: .page(query: query, title: title, address: address, own: desk ? true : nil), turn: nil, layerID: id)]
         case .answer, .time, .said:
             return thread.map { SessionExchange(exchange: .answer(query: $0.query, text: $0.answer), turn: $0, layerID: id) }
-        case let .memory(record):
-            // The saved record's id rides along, so a handle for it brings the record back.
-            return thread.map { turn in
-                var exchange = Exchange.answer(query: turn.query, text: turn.answer)
-                exchange.memoryID = record.id
-                return SessionExchange(exchange: exchange, turn: turn, layerID: id)
-            }
-        case let .recallPicker(records, title):
-            return [SessionExchange(exchange: .recall(query: query, title: title, titles: records.map(\.title)), turn: nil, layerID: id)]
+        case let .recallPicker(webpages, title):
+            return [SessionExchange(exchange: .recall(query: query, title: title, titles: webpages.map(\.title)), turn: nil, layerID: id)]
         case let .siteChoices(name, candidates):
             return [SessionExchange(exchange: .site(query: query, name: name, hosts: candidates.map(\.host)), turn: nil, layerID: id)]
         case let .note(note):

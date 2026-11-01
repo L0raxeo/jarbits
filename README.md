@@ -5,7 +5,7 @@ decides what kind of card to show. The router is TypeSafe's Jev, a System One mo
 nine response formats and reports how sure it is. Five providers exist
 behind it: a Google results web view (`web_results`), Gemini answers for
 `narrative` and `one_line`, Google's image results for `image`, the phone's
-own memories for `recall` (something seen before, brought back), and the
+own open webpages for `recall` (the page the user was reading, brought back), and the
 phone's site book for `site` (a website asked for by name, "go to youtube").
 
 The screen is white with a purple gradient clay above the middle that
@@ -226,7 +226,7 @@ reading (see "The reading") in parallel:
   results when Jev's `recent` says the reply may have gone stale; `time`
   answers from the device clock for the place the extractor read, here
   when it read none; `image` loads Google's image results for the words;
-  `video` loads Google's video results for them; `recall` works the memories (see
+  `video` loads Google's video results for them; `recall` finds an open webpage (see
   "Recall"); `site` works the site book and the search (see "Sites");
   `remember` and `forget` work the facts (see "Facts"); `notebook` works
   Jarbits's notes (see "Notebook"). A query whose
@@ -236,7 +236,7 @@ reading (see "The reading") in parallel:
   (query, instinct, confidence, every option's probability, the relevance
   answers and the chain, the reasoning score, model, latency, tokens, the
   reading; for answer plans, the answer summary too; for recalls, how many
-  memories matched; for sites, whether the name was known, searched or
+  webpages matched; for sites, whether the name was known, searched or
   rejected). Nothing leaves the phone unless you export it.
 
 A result that comes back for a query the user has moved on from lands
@@ -284,7 +284,7 @@ after the floor rose to 0.9 (2026-10-29): fifteen cases under it became
 `planned`, and five long dictated stories joined it.
 
 The planner has its own set, `Packages/Engine/Evals/plans.jsonl`: a
-request with the exchanges, facts and memories around it, and the calls
+request with the exchanges, facts and open webpages around it, and the calls
 the first round should make, by name in order, with any argument that
 matters pinned (a handle, say). `swift run --package-path Packages/Engine
 report plans` runs them with the Gemini key, caches each first round by
@@ -372,8 +372,8 @@ as a short bold line (each turn records its format in `AnswerTurn.format`;
 turns kept before that read as narrative), and scrolls the newest query up
 as its answer streams. A turn that brings nothing back, or that needs
 live data, keeps the thread and says so in its place rather than jumping
-to web results for "why?" alone. One memory holds the whole conversation
-under its first query and of its first turn's kind (`MemoryRecord.turns`),
+to web results for "why?" alone. Nothing of an answer is kept once its
+layer is gone (2026-11-01; before, one memory held the whole conversation),
 so recalling it brings the thread back, a one-line conversation included,
 and a follow-up on the recall continues it.
 
@@ -469,7 +469,7 @@ The one idea underneath: a reply is a `Layer` held in `replies` instead of
 pushed onto the stack. So its thread and exchanges reach Jev, the reader
 and the planner as the newest exchanges ("Asked X and got Y"; `focus` is
 the newest reply when one is up, else the current layer), an `AnswerSession`
-streams into it, its memory is written against it, and its record is
+streams into it, and its record is
 kept. The x or a push up puts it away; a new layer opening, a swipe between
 layers, or the circle clears it; a question put away answers nil, as the
 sheet's swipe did. A fresh one-line or narrative answer goes to the
@@ -514,152 +514,97 @@ results page with `tbm=isch`) for the words as they ran, so the search
 engine reads the whole question ("what does green jelly look like in
 Stardew Valley" finds the game item, not the band) and nothing in the app
 has to name the subject. It is a page like any other to the capsule and
-the log, and the memory keeps it as a picture, so "my pictures" and "that
+the log, and the open webpage is a picture search, so "my pictures" and "that
 picture of the pencilvac" bring it back. There is no card: a card needed a
 picture source of its own (Wikipedia, then Brave) and a subject to search
 it for, and the subject was the one place a query could still go wrong
 after Jev; both came out on 2026-10-28.
 
-## Recall
+## Open webpages
 
-`recall` is for something the user saw in this app before and wants back:
-"where's my grocery list", "remember that convo on the dyson pencilvac",
-"pull up that youtube page from earlier". Jev picks it like any other
-format, through the same confidence floor, so there is no phrase list in
-the app and no extra request.
+A webpage is what a browser calls a tab, without a tab strip: a page, or a
+results page (web or image results), that the user opened and has not
+closed (2026-11-01, replacing memories, which kept every page, search,
+answer and plan action for a week and expired them). Every query that
+opens a page opens a new webpage; a site already open is brought forward
+instead, as it stands, unless the user asked for a new one ("open a new
+youtube"); links behave as the site asks (the same webpage, or a new one
+for a link that wants a new window); the edge swipe is back and forward
+inside a webpage; the clay swipe moves between them. Nothing expires. A
+webpage closes only by the user's word ("close this", "close the dyson
+page", "close everything") or when it stood ahead of the one the user was
+on as a new query opened, as browser history goes; later, Jarbits will
+ask about one untouched for a week. Answers, notes, questions and the
+pages Jarbits reads on its own screen are never webpages and leave no
+record once gone; within a session, follow-ups still work from the
+session's own exchanges.
 
-A memory is an ordered list of parts, each one thing of one format: a
-page (address and title), a search (its words), one exchange of an answer
-(question, text, format), a picture, and later a note or a reminder
-attached to one of those. The first part is the head: it decides the
-kind, the tile, the title's default, what a tap opens and what counts as
-the same thing. A memory may point, by id, at the memory that was on
-screen when it was made (`cameFrom`): the results page after a query
-points at nothing, the first page after it at the search, every page
-after at the page before, a search opened from an answer's "Web results"
-at the answer, a page opened from a recalled memory at that memory. A new
-query starts a run with no predecessor. Every memory is short-term and
-goes a week after it was last touched; one flag (`kept`) marks a
-long-term memory that stays until forgotten, shown with a bookmark on its
-tile. Nothing promotes a memory yet; that comes with notes and "remember
-this". Lines in the flat shape from before parts read as parts and are
-rewritten in the current shape as records are refreshed.
+**On disk.** `Application Support/Browser/webpages.jsonl` holds one line
+per open webpage in the row's order (`Webpage`: kind `page`, `search` or
+`images`; the canonical address for a page, the results address for a
+search; the title as it settled; the words that opened it; when it was
+opened and last seen; where in the page it stood), and
+`webpages.current` names the one the user was on. The store
+(`WebpageStore`) gathers writes and lands them a second after the last
+change, and at once when the app leaves the foreground, with the page on
+screen's scroll and video time read first. On launch every open webpage
+comes back as an unloaded layer, the current one current, reloading to
+its spot when reached; the idle circle shows first, and a swipe back on
+the clay brings the last webpage. A page's back and forward history
+within a webpage does not survive a relaunch. A picture of each webpage
+sits beside the file (`webpages/<id>.jpg`, a 360 px JPEG of about 30 KB,
+taken as the user leaves the page, as it settles after loading, and as a
+scroll comes to rest; a YouTube watch page takes the video's own still),
+deleted with the line. Beside the file, `webpages.index` keeps each
+webpage's meaning (`MeaningIndex`, Gemini's embedding of its title, query
+and host), so a request finds one by what it is about and not only by
+the words they share; the index is caught up on first use and is never
+the truth: the file is. A webpage's title goes to Gemini once, to be
+embedded; nothing else leaves the phone.
 
-Every result the user sees is written to `Application Support/Browser/memories.jsonl`
-as it appears: a page (its address and title, reported by the watcher at
-its first look, again when the page changes its address without a load,
-as the next video on YouTube does, and again when the title settles; when
-the document title is empty or only the site's own name, as mobile YouTube
-leaves it on every watch page, the name in the page's `og:title` or meta
-title is the title instead, and failing those, since a tap in YouTube's
-feed leaves no metadata either, the page's first heading, which is the
-video's name), a
-narrative answer (its text), a one-line answer, a picture or a results
-page (the query only). Error pages, redirects and untitled documents are
-skipped. The search that led to a page is attached to the first page
-after it only; pages browsed on from there answer to their own titles and
-addresses, so browsing on from "rick steves" does not make the next video
-answer to "rick steves". Seeing the same thing again within a day refreshes
-its record (date, title and parts; never where it came from or whether it
-is kept); expired short-term memories go on first load and then once a
-day; past 5 000 records the oldest go, which keeps the file in the tens
-of megabytes at most. Nothing in it leaves the phone, and Google's
-interaction storage stays off.
+**Finding one** (`recall`). "That article about Lisbon", "the video I was
+watching", "pull up that reddit thread": Jev picks `recall`, its
+`recall_*` questions in the routing request say which kinds are wanted
+(pages, videos, searches, picture searches; the question about answers
+names nothing open and reads as no kind), whether a thing is named and
+whether a set is wanted; the extractor reads the topic, a count and a
+span. The shortlist (`WebpageSearch.shortlist`) filters the open webpages
+by kind, time and the video flag; a named thing ranks them by the words
+that remain, taking turns with the ones nearest the topic in meaning,
+then the rest newest first, at most ten; nothing named takes the newest.
+Unless a count or a plain set was asked for, the shortlist goes to Jev in
+one request, a yes/no question per webpage ("Is this the webpage the
+query asks for? A web page open since yesterday (m.youtube.com): …"), the
+same judge as before, with no text excerpt and no own-screen line. One
+sure match (0.5 and above) is brought forward as it stands; several
+plausible ones (0.3 and above) go to the grid in Jev's order; nothing
+matching is a failure the planner takes over ("nothing I have open
+matches …"), and a slow or failed judge shows the shortlist in word
+order. "Everything about the dyson" asks per webpage whether it is about
+the thing and shows every yes, newest first; "my last five searches"
+shows the newest so many with no judge; "show me everything I have open"
+shows them all, titled "All webpages". The log's `recall` field keeps the
+shortlist size, the picks and the path. `swift run --package-path
+Packages/Engine report recall <webpages.jsonl> "<query>" [--topic …]`
+replays the shortlist and Jev's verdict offline.
 
-A recall is resolved in four steps. First, Jev's reading of the ask,
-answered inside the routing request itself so a recall costs no second
-round trip (`RecallIntent`, the `recall_*` questions in ENGINE.md): which
-kinds of memory are wanted, whether a particular thing is named, and
-whether a set is wanted. When nothing is named, no word in the query is
-matched against the memories at all, which is what keeps "the last 5
-things we were looking at" from landing on whatever page holds the word
-"were". Second, a count and a span, which the extractor reads out of the
-words on every recall pick against today's date (`count`, `from`, `to`;
-"my last five searches", "yesterday", "three days ago"), and Jev's kinds,
-become the ask over what each record stores (`RecallAsk`): videos are
-pages on a video host (a short list in `MemoryRecord.videoHosts`; a host's
-front page, as "go to youtube" opens it, is the site and not a video) or
-titled as one, answers are answers, a span keeps what was seen then. No
-word list reads the query. The thing to bring back is the extractor's
-`topic` ("that thing about gingivitis again" → "gingivitis"; null when
-the words name nothing), and the records left are ranked by its words, in
-their queries, titles, addresses and text; a name spelt nearly right
-still counts ("hennessy" finds "hennessey", as dictation spells names);
-records holding every word win, then records holding any, then the rest
-of the filtered set newest first; at most ten (`MemorySearch.shortlist`).
-When the meaning index can say (below), the records nearest the topic in
-meaning lead, taking turns with the word matches, so "that car page"
-reaches a page titled "Hennessey Performance" with no word in common;
-a count or nothing named stays by recency whatever the index says.
-With no filter and no topic there is nothing to go on, and the words go
-to the web. Last, the
-shortlist goes to Jev in one request, a yes/no question per memory naming
-its kind, when, its host and its title (`RecallRouting`, see ENGINE.md).
-A memory at or above 0.5 is the one asked for and is shown alone;
-otherwise everything at or above 0.3 is plausible and is shown in Jev's
-order. Nothing ever opens straight away: even a single memory is shown in
-the grid, so the user sees what was found before it takes the screen; nothing
-plausible falls through to a Google search for the topic ("that thing
-about gingivitis again" searches "gingivitis"), or for the words as they
-ran when none was named, so a wrong
-judgement costs nothing visible. A failed or slow Jev request, or no key,
-shows the shortlist in word order instead. The kind words are a preference,
-not a wall: "what you told me about the dyson" prefers an answer, but when
-no answer holds those words and pages or searches do, those are shortlisted.
+**The grid** (`RecallGridView`, `WebpageTile`): a two-wide grid of
+pictures with the kind, the title and since when under each, headed "N
+open" or by the set's title; a tap brings that webpage forward as it
+stands. Several notes go to the same layout.
 
-A query that asks for everything ("pull up everything we talked about with
-the Dyson PencilVac", "all the videos from yesterday") wants a collection,
-not one thing (`RecallAsk.collection`). The kinds become no bar, the
-shortlist is every memory holding any of the topic's words (a span still
-holds), and Jev is asked, per memory, whether it is about the topic
-rather than whether it is the one. Everything at or above 0.5 is shown,
-newest first, in the grid titled "Everything about <topic>"; one alone
-opens; none searches the topic words. The log's `recall` carries
-`collection: true`.
-
-A query that asks for a count ("my last five searches", "the last 5
-things I asked you, including Google searches and AI stuff", "the last few
-pages"; the extractor reads the number, and twenty is the most) wants the
-newest so many, not a thing (`RecallAsk.count`). The kinds and the span
-filter as usual, a topic
-narrows the pool when the query names one, and the newest so many are shown
-in the grid titled "Last 5 searches and answers", even when only one was
-found, with no judge asked, since there is nothing to judge. The log's `recall` carries `count` and the
-path `count`. A set of a kind with nothing named ("all the videos from
-yesterday") is listed the same way, titled "All videos", with the path
-`all`. Try either offline with `report recall <memories.jsonl>
-"everything about the dyson"`, which prints the filters, the shortlist and
-Jev's verdict per memory.
-A page's address is kept without Google's click code or `utm_` tags, so
-the same page tapped twice from results is one memory. The picker is a
-two-wide grid of tiles, like Safari's tab overview: a page shows its
-picture, a screenshot of the page area as the user last saw it (taken
-when the page is left, by a new query, a swipe, a tapped link, the idle
-screen or the app going to the background, and as a backup once the page
-has settled and whenever a scroll rests, a few seconds apart; a 360-px
-JPEG of about 30 KB in `Application Support/Browser/memories/`; a YouTube
-watch or Shorts page gets the video's own thumbnail from `i.ytimg.com`
-instead, framed in black, since no capture can see the video layer; kept for
-the newest 1 000 pages and deleted with its record), a narrative its
-opening lines, the rest a
-symbol; the kind, the title and when sit under each tile. Opening a memory
-reuses the ordinary plans: a page loads its address; a results page loads
-its query's results, no router asked; a narrative shows its saved text
-with its date, no model asked; a one-line answer or a picture asks its
-query again, since those are cheap and may have gone stale, and Jev may
-not answer `recall` for that asking. The results page a recall falls
-through to is not memorised, so the recall phrase never becomes a memory
-that the next recall of the same words would find and loop on; and a
-look through the memories that has not resolved in 3 s goes to the web.
-
-The decision log notes each recall's shortlist size, how many Jev picked,
-which path answered (`jev`, `words`, or the error) and Jev's latency.
-`swift run --package-path Packages/Engine report recall <memories.jsonl>
-"<query>"` runs the filters, the shortlist and, with `TYPESAFE_API_KEY`,
-Jev's judgement from the Mac, so a recall phrasing can be tried against an
-exported memories file. Debug builds show a "Clear memory" link at the top of the idle
-screen that deletes the file and every picture; there is no user-facing
-control yet.
+**The planner's view.** Every open webpage stands in the listing, newest
+first, up to forty (`ReasoningPolicy.webpagesListed`; past that the ones
+nearest the request in meaning, topped up with the newest), each with a
+handle: `w1: A page open since yesterday (www.dyson.com): "Dyson
+PencilVac"`, `w2: A search for "flights to lima", open since today`. A
+page the user saw in this session points at the webpage it is (`p2: Read
+"…" (host) (w1)`), and the thing on screen is named by the webpage's
+handle. `open w1` brings it forward; several handles go to the grid; `look
+w1` reads it when it is loaded; `about: w1` names it for an answer; a
+page-opening tool's `fresh: true` opens a second one of a site already
+open; the `close` tool closes by handle or every one. Nothing here reaches
+Jev: the routing request carries only the session's exchanges.
 
 ## Jarbits and the user
 
@@ -682,14 +627,14 @@ circle is idle (`JarbitsSession.askNameIfNeeded`), once per launch; a
 swipe away asks again at the next launch, and until a name is given the
 prompts say "the person you assist". The name lives in
 `facts.profile.json` beside the facts (`FactStore.userName`) and goes with
-"Clear memory", which asks it again at once. Jev never sees any of this.
+"Close everything", which asks it again at once. Jev never sees any of this.
 
 ## Notebook
 
 Jarbits keeps a notebook: notes the user types into, with bold, italic,
 headings, bullets, numbered lists and checkboxes, kept as Markdown files
 on the device (`Application Support/Browser/Notebook/<id>.md`: the first
-line `# Title`, a blank line, the body), permanent, not memories. There
+line `# Title`, a blank line, the body), permanent, not webpages. There
 are no folders and no tags: the user asks for a note and Jarbits finds
 it. He speaks of "my notebook" and "my notes": it is his way of keeping
 things for the user.
@@ -759,7 +704,7 @@ mark are exactly a title linked in the note before becomes that link again
 (`NoteMarkdown.relinked`); a title linked to two addresses is left as
 written. An opened note's exchange carries the note's id
 (`Exchange.noteID`, cleared for Jev as `own` is), as a saved answer's
-carries its memory's (`memoryID`), so a handle resolves to the same note
+did its memory's until memories went (2026-11-01), so a handle resolves to the same note
 or record whichever list it came from: the thing on screen, the session's
 history or the notebook. A write leaves
 the screen where it was: the bubble shows where it wrote ("Added to Watch
@@ -809,20 +754,20 @@ the file never holds a marker. A page kept in a note is a link, the
 seventh form: the file holds `[title](url)` and the editor shows the
 title, tappable. Anything else is kept as plain
 text. Opening or changing a note is an exchange (`note`), so "what
-does it say" works and the planner sees it; notes are never memories and
+does it say" works and the planner sees it; notes are never webpages and
 recall never searches them. The planner's listing holds every note as
-`n1, n2…`, newest first, beside the memories; nothing thins it. "Clear
-memory" leaves the notebook alone.
+`n1, n2…`, newest first, beside the open webpages; nothing thins it.
+"Close everything" leaves the notebook alone.
 
 **Finding by meaning.** `MeaningIndex` in the Engine library keeps,
 beside a store, the meaning of each thing as a vector from an `Embedder`
 and answers "the nearest to this request" by cosine; `NoteSearch.shortlist`
-and `MemorySearch.shortlist` take its order (`ranked`) and put the nearest
-first, taking turns with the word matches. The memories have one
-(`Application Support/Browser/memories.index`, a compact binary file of
+and `WebpageSearch.shortlist` take its order (`ranked`) and put the nearest
+first, taking turns with the word matches. The open webpages have one
+(`Application Support/Browser/webpages.index`, a compact binary file of
 id and vector, rewritten a second after the last change, only ever a
-cache of the memories file): every record kept is embedded from its
-title, query, host and first words (`MemoryRecord.indexText`), a forget
+cache of the webpages file): every webpage is embedded from its
+title, query and host (`Webpage.indexText`), a close
 or a flush removes it, and the first look after a load catches up on
 anything kept before the index existed or while offline, a hundred at a
 time. The embedder is Gemini's (`GeminiEmbedder` in the Answers library,
@@ -835,7 +780,7 @@ it: the sentence embedding ranked "add this to my watchlist" nearer
 "Ideas" and "Packing list" than "Watch List", and "shopping list" nearer
 "Packing list" than "Shopping"; the word embedding did better on notes
 but put "Watch List" first for "open my grocery list" and knows no names
-(Hennessey, Dyson), so memories ranked wrong. `swift run --package-path
+(Hennessey, Dyson), so webpages ranked wrong. `swift run --package-path
 Packages/Engine report nearest "<request>" "<text>"...` prints Gemini's
 ranking of a few texts for a request, from the Mac.
 
@@ -843,8 +788,9 @@ ranking of a few texts for a request, from the Mac.
 
 A fact is one thing Jarbits knows about the user, noted from his point of
 view: "Lorcan is allergic to peanuts", "Lorcan's friend Noah is vegan",
-"Lorcan's mom Jasmine is 50". Facts are the second memory store, beside
-the memories of things seen: few, short, and never expiring on their own.
+"Lorcan's mom Jasmine is 50". Facts are the one store of things about the
+user, beside the open webpages and the notes: few, short, and never
+expiring on their own.
 Every fact goes into every answer (`AnswerPrompt`'s "What Jarbits knows
 about Lorcan" block, after the context and the earlier exchanges; the
 prompts say to let them shape the answer when they bear on it and never to
@@ -919,7 +865,7 @@ changed, with its latency); `report decisions` summarises both. The
 reader's own set is `Evals/facts.jsonl`, run by `report facts` (cached
 under `.evalcache/facts/` by the request body, like the planner's). The facts live in
 `Application Support/Browser/facts.jsonl` (`FactStore`, in the package so
-it is tested against a file of its own); Debug builds' "Clear memory"
+it is tested against a file of its own); Debug builds' "Close everything"
 empties it with the rest.
 
 ## Advanced reasoning
@@ -1114,8 +1060,9 @@ exchange like any other, listed in time order with the user's layers and
 marked `on my screen` in the planner's listing (`Exchange.own`, nil for
 everything the user saw, so every existing request encodes as before);
 Jev is sent the exchange without the mark (`Exchange.forJev`), so routing
-reads exactly as it did. Its memory carries the same mark
-(`MemoryRecord.own`), shown to the planner (", read on my screen") and to
+reads exactly as it did. A page on Jarbits's screen is no open webpage
+until it is brought forward (2026-11-01; before, its memory carried the
+same mark, shown to the planner and to
 recall's judge ("I read it on my own screen; the user did not see it"),
 and cleared once the user has seen the page themselves; nothing on the
 device filters by it. The answer models never saw the plan's pages before
@@ -1159,31 +1106,31 @@ delete done; the rules say asking changes nothing on its own, 2026-10-31),
 `say` shows the planner's own text in the bubble as it is,
 `open` shows a thing by its handle, `look` reads a thing in full by its
 handle (a page's text further down, links, outline or tables by its own
-script; a note's lines, links or headings; an answer's or a memory's text
+script; a note's lines, links or headings; an answer's text; an open webpage when it is loaded
 by paragraph or by turn, `Looking`; numbered, `from` continuing, the links
 as `s` handles; 2026-10-31, so that what the listing does not show is one
 look away and never a guess, at the cost of an extra round when the model
 reads what it already had), and
 `done` ends the plan. `say` is for what the planner already holds in full
-(the facts, the memories shown to it, earlier steps' results), including
+(the facts, the open webpages listed, earlier steps' results), including
 "I don't know that yet"; a question needing knowledge beyond that goes
 through `narrative` or `one_line` with a question the planner writes,
 folding in what earlier steps returned, never an answer written into a
 question. And `say` never retells a thing the listing holds (a note's
 lines, a page, an earlier answer): those are shown as themselves with
 `open`, and the user reads on into them; `say` is for a fact with no
-thing to show (a memory, a count, whether a line is in a note), and a
+thing to show (a count, whether a line is in a note), and a
 question about a thing that must be worked out is an answer with it in
 `about` (the shown / told / worked-out triples in the eval set hold this,
 2026-10-29). A said card is styled as a narrative whatever its length, the
-capsule shows the user's words, and it is kept as a narrative memory so
+capsule shows the user's words (until 2026-11-01 it was kept as a narrative memory so
 "that story you told me" brings it back. It is told the classifier was unsure or saw
 several steps, so the request may need one tool or many; and a request
 about the user's own life is served from what it knows of them (remember,
 recall, answer from the facts, or say it does not know), never made up.
 The first turn carries the request, the exchanges it depends on (the
 chain) with the layer on screen always among them, so "this" is a thing
-the planner can point at, the five memories nearest the request in
+the planner can point at, every open webpage (newest first, forty at most, else the nearest the request in
 meaning (the newest, without the index; recall is its tool for anything
 beyond them), every note of the notebook, a line each, and last the
 screen as the user sees it, its links in view as `s` handles, the thing
@@ -1240,18 +1187,18 @@ plan that opens results and then answers keeps the results under the
 bubble and never returns to the circle.
 
 **Things and handles.** The first turn tags each earlier exchange of the
-session (`p1`, `p2`, oldest first), each memory shown (`m1`, `m2`), each
+session (`p1`, `p2`, oldest first), each open webpage (`w1`, `w2`, newest first), each
 note (`n1`, `n2`) and each link in view on the screen (`s1`, `s2`): a
 handle (`ThingTable` in the Engine library). The planner points at a
 thing by its handle and never sees or writes an address; the device knows
 each thing exactly (a page's address, a search's term, an answer's text, a
-memory's record) and swaps the handle for it before a step runs. A tool
+webpage's address) and swaps the handle for it before a step runs. A tool
 field of kind thing takes a handle: `open.thing`, and an answer's
 optional `about`, which puts the thing in the answer's context block. In
 a plan, `recall` shows nothing: its result names what it found by handle
 ("found m6: A page from yesterday (dyson.com): …"), minted into the
 listing, so the next step can `open` one or several (several of a kind,
-notes or memories, go to a grid, which the tool's description says is how
+notes or open webpages, go to a grid, which the tool's description says is how
 the user sees more than one at once), `say` something about it, or
 answer with it in view; "find that car page again and tell me where the
 nearest dealer is" is a recall, then an open or an answer, in one plan. A
@@ -1263,10 +1210,10 @@ Handles are for things only the device can recover exactly; a search
 term, a fact, a place name stay as words.
 
 Every step a plan did with no screen of its own (a fact kept; later, a
-call made) is a memory of kind `action`, chained from what was on screen,
+call made) was a memory of kind `action` until 2026-11-01; now nothing is kept of it beyond the log,
 so "what did you just do" can find it. The decision log carries `engine`
 on the query's line (model, rounds, each step with its outcome and
-latency, tokens, the facts and memories given, the outcome); each step the
+latency, tokens, the facts and open webpages given, the outcome); each step the
 plan showed is a line of its own with source `plan`; `report decisions`
 summarises the plans. `report plan "<query>" --dry-run` prints the first
 request with every tool; with the key it makes one round and prints the
@@ -1319,8 +1266,8 @@ zillow", "I'm looking for a different website" forget the name and show
 the choices again, so the next tap replaces the entry; "open youtube" is a
 new site request and anything else runs as picked (see "How a query
 runs"). Nothing overrules a sure pick; an unsure one is planned. The results page a
-site request falls through to is not memorised as a search, so "go to
-lobsters" never becomes a search memory. Debug builds' "Clear memory"
+site request falls through to keeps the site decision, so "go to
+lobsters" reads as a site, not a search. Debug builds' "Close everything"
 resets the book to the seed.
 
 `swift run --package-path Packages/Engine report sites "<name>"` prints
@@ -1332,62 +1279,65 @@ rejection judgement.
 
 Results are kept the way Safari keeps tabs. Every query opens a layer; a
 follow-up that continues the conversation on screen grows the current
-layer instead. A layer that shows a page keeps that page live when the
-user moves on, so coming back finds a video where it was and a form as
-filled; its "last page" is whatever was on screen when it was left (web
-results, then three sites ending on YouTube, is one layer, ending on
-YouTube). A tap that turns a card into a page (an answer's "Web results",
-a picture's site, a site choice, a tile in the recall grid) opens a new
-layer, so the card stays one swipe back. Asking for a page again is a
-fresh load, never the old layer.
+layer instead. A layer that shows a page is an open webpage (see "Open
+webpages"): it stays as long as the app runs, so coming back finds a
+video where it was and a form as filled; its "last page" is whatever was
+on screen when it was left (web results, then three sites ending on
+YouTube, is one layer, ending on YouTube). A tap that turns a card into a
+page (an answer's "Web results", a picture's site, a site choice) opens a
+new layer, so the card stays one swipe back. Asking for a site already
+open brings that webpage forward instead of loading it again; a tile in
+the grid does the same (2026-11-01; before, every ask was a fresh load).
 
 A swipe across the clay capsule at the foot of a result goes back a layer
 (left to right) and forward again (right to left); the result cross-fades,
 the capsule contracts from the side the swipe started on and its text
-fades, and the microphone is off while the finger moves. Swiping
-inside a page stays the page's own back and forward. A new query from the
-middle of the stack drops the layers ahead, like browser history. Recall,
-the grid and tile taps are unchanged; there is no spoken "back".
+fades, and the microphone is off while the finger moves. From the idle
+circle a swipe back brings the webpage the user was on, as Safari
+relaunches on its last tab. Swiping inside a page stays the page's own
+back and forward (WebKit's edge gesture). A new query from the middle of
+the stack drops the layers ahead, like browser history, which closes
+those webpages. There is no spoken "back".
 
-The current layer and the newest three others stay live
-(`JarbitsSession.maxLive`); past that the oldest shown go, pages in use
-last (a video part way through, a form typed into, which the watcher
-reports as `pageUse`). A background page idle for thirty minutes goes
-too, and a memory warning takes every background page not in use, the
-rest on a second warning within a minute. Leaving a layer pauses its
-media. An unloaded layer keeps notes (`PageNotes`: address, scroll, how
-far into its video) read from the watcher as the page goes, and a swipe
-back to it reloads to that spot (a YouTube watch page takes the time in
-its address). The pages on Jarbits's own screen are a stack apart
-(`desk`): the newest two stay live (`maxDeskLive`), the same sweep and
-memory-warning rules apply, and one brought forward joins the user's
-stack as it is. Each layer keeps its own answer stream, pictures, opened
-site and memory chain, so a follow-up over a layer swiped back to
-continues that conversation and a page opened from it is memorised as
-coming from it. Nothing of this outlives the app.
+Pages stay loaded while the app runs (2026-11-01; before, the newest four
+stayed live and a swipe back reloaded the rest): only a memory warning
+takes every background page not in use, the rest on a second warning
+within a minute, and a background page idle for six hours goes. Pages in
+use (a video part way through, a form typed into, which the watcher
+reports as `pageUse`) go last. Leaving a layer pauses its media. An
+unloaded layer keeps notes (`PageNotes`: address, scroll, how far into
+its video) read from the watcher as the page goes, kept on the webpage
+too, and a swipe back to it reloads to that spot (a YouTube watch page
+takes the time in its address). The pages on Jarbits's own screen are a
+stack apart (`desk`): the newest two stay live (`maxDeskLive`), the same
+sweep and memory-warning rules apply, and one brought forward joins the
+user's stack as it is, becoming an open webpage. Each layer keeps its own
+answer stream, pictures and opened site, so a follow-up over a layer
+swiped back to continues that conversation. The web layers outlive the
+app as open webpages; card layers do not.
 
 ## Where things live
 
 | Path | Role |
 |---|---|
-| `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the memories (`Memory`, `MemorySearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the screen as the models see it (`Screen`, `ScreenItem`: the text, the links as things, the one rule), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
+| `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the open webpages (`Webpage`, `WebpageSearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the screen as the models see it (`Screen`, `ScreenItem`: the text, the links as things, the one rule), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
 | `Jarbits/Engine/Engine.swift` | The cognitive engine's first stage: an address as typed, else one Jev request over the registry carrying the session's exchanges with the reading beside it, the extractor for every value the pick declares, and the instinct to run with what it needs; or the hand-off to the executor when the reasoning score says the query needs several steps. Also `JarbitsSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Jarbits/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat, opening pages on Jarbits's own screen unless the planner said the user's, and sending every result back to the planner until `done` or the bounds. |
-| `Jarbits/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the memories and Jev's judge. |
+| `Jarbits/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the open webpages and Jev's judge. |
 | `Jarbits/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |
 | `Jarbits/Engine/FactInstincts.swift` | The two instincts that show nothing: `remember` keeps a fact, `forget` judges which one the words mean and asks in the bubble. |
 | `Jarbits/Engine/PendingQuestion.swift` | One question put to the user in the bubble and the wait on its answer, resumed once by a tap, a return or a cancel. |
 | `Jarbits/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
-| `Jarbits/Memory/MemoryStore.swift` | The memories file: load once, append as results appear, refresh a repeat within a day, drop the oldest past the cap, search by words (`MemorySearch` in the package). |
+| `Jarbits/Memory/WebpageStore.swift` | The open webpages file: the row in order and the current one, written a second after a change and when the app leaves, pictures beside it, the meaning index; search by words and meaning (`WebpageSearch` in the package). |
 | `Jarbits/Memory/SiteStore.swift` | The site book on disk: seeded on first load, written whole on each learn, touch, forget or clear. |
 | `Jarbits/Home/ReplyBubble.swift`, `RememberedMark.swift` | The bubble (see "The bubble"): a reply in a line or a card above the clay, a question with its buttons or a line to type, "Read on" to the full view; and the mark's type, the quiet line shown in it for a moment after a fact is kept or dropped. |
 | `Jarbits/Engine/DecisionLog.swift` | JSON Lines log of every decision and answer. |
 | `Jarbits/Engine/Secrets.swift` | Reads the keys from Info.plist (`TypeSafeAPIKey`, `GeminiAPIKey`, `BraveAPIKey`). |
 | `Jarbits/Engine/CardPlan.swift` | The renderable plans. One enum case per card type. |
-| `Jarbits/Session/JarbitsSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the engine, applies the plan (a recall through the memories, a site through the book or the search) or runs an instinct that shows nothing, keeps the facts and the mark, holds the reply in the bubble and puts a question there and waits for it, opens, swipes between, unloads and reloads layers under the live cap, memorises what each layer shows, writes the log. |
-| `Jarbits/Session/Layer.swift` | One query's result: its plan, its live page (`PageHost`) or the notes left by an unload, its own answer stream and pictures, the page it ended on (for the engine's exchanges), its opened site and memory chain, when it was last shown. |
+| `Jarbits/Session/JarbitsSession.swift` | Owns the layers (one per query, the current one on screen; see "Layers"), runs queries through the engine, applies the plan (a recall through the open webpages, a site through the book or the search) or runs an instinct that shows nothing, keeps the facts and the mark, holds the reply in the bubble and puts a question there and waits for it, opens, swipes between, unloads and reloads layers, keeps the open webpages' row and restores it on launch, writes the log. |
+| `Jarbits/Session/Layer.swift` | One query's result: its plan, its live page (`PageHost`) or the notes left by an unload, its own answer stream and pictures, the page it ended on (for the engine's exchanges), its opened site and the open webpage it is, when it was last shown. |
 | `Jarbits/Web/PageHost.swift` | One live web page: the `WebPage` with its watcher, what it pins to its edges, whether it loads or plays or is in use, the navigation watch and the document bookkeeping behind the chrome, the notes read as it goes and the restore when it comes back. |
-| `Jarbits/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, address changes for the memories, audio, and whether the page is in use), the page's notes for an unload, the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
+| `Jarbits/Web/` | `PageChrome.js`, the watcher installed in every page (hit tests along both edges, bar or floating or none, the bar's colour composited until opaque or flagged as a guess for the app to sample, a `MutationObserver` so overlays and in-page changes report too, rules that keep a bar's verdict while its element lives, pinned itself or inside a pinned box, and hold every look until the scroll has rested, so nothing resizes under the finger or between two Shorts); `PageChrome.swift`, the state the app keeps, the message handler (chrome reports, address changes for the open webpages, audio, and whether the page is in use), the page's notes for an unload, the edge sampler (a 64-point-wide export of a three-point strip just inside the page's edge, accepted when near-uniform) and the page configuration that installs the script and lets video play inline (the iPhone default sends every playing `<video>`, YouTube's feed previews included, into the system full-screen player). Debug builds print each page's chrome verdict to Xcode's console. The page is never made inspectable: an inspectable page under SwiftUI's `WebView` crashes UIKit's touch delivery on the first tap (iOS 26 and 27). |
 | `Jarbits/Home/` | The screen: `HomeView` (white background, focus state, the stage-driven cross-fade), `Clay` (the mesh-gradient circle that morphs into the capsule field and the wave line), `KeyboardHint` (the nodding chevron over a keyboard icon), `ResultView` (the web page or the answer text with its "Web results" link, under a frosted status bar; the page bounces sideways only when it is wider than the screen, since the web view's default rubber-bands sideways on every page and a vertical drag with a little drift wobbles it) `ClayCapsule` (Safari's minimised bar: the query at the foot of a result, which becomes the follow-up field above the keyboard, and swipes between layers) and `QueryField` (the text field the clay and the capsule share). No system toolbars, so no Liquid Glass. |
 | `Jarbits/Info.plist` | Merged into the generated Info.plist. Holds what Xcode will not take as `INFOPLIST_KEY_` settings: the three API keys and `UIDesignRequiresCompatibility`. Light mode is forced by `INFOPLIST_KEY_UIUserInterfaceStyle` in the project and `preferredColorScheme(.light)` at the root. |
 | `Config/` | xcconfigs. `Debug`/`Release` optionally include the untracked `Secrets.xcconfig`. |
@@ -1395,7 +1345,7 @@ coming from it. Nothing of this outlives the app.
 Two names keep the project's old one, on purpose: the app's bundle id,
 `com.lorcancheng.browser`, and the folder its files live in on the phone,
 `Application Support/Browser/`. A new bundle id installs as a second app
-with nothing in it, and a new folder leaves every memory, fact and note
+with nothing in it, and a new folder leaves every webpage, fact and note
 behind in the old one.
 
 ## The engine contract
@@ -1442,7 +1392,7 @@ fixed instant); the site book's seed, learning and forgetting, the
 the recall ask and shortlist; the facts (the store against a file of its
 own, the forget judge's request and picks, the shortlist); the reading's
 request and what each kind of reply comes to; the gate into advanced reasoning, a plan's
-bounds, the action memory part and the plan summary on a log line; and
+bounds and the plan summary on a log line; and
 for Gemini, the request body and key order (and that no tool is sent for
 an answer), the per-format prompts and budgets, the context block, the
 planner's tools, system instruction, first turn and request, a canned
@@ -1453,7 +1403,7 @@ simulator.
 ## Deliberately absent
 
 Dark mode, Markdown in answers, the Debug ribbon (the log still records every decision; summarise
-it with the report CLI), tabs, history, bookmarks, content blocking, reader
+it with the report CLI), a tab strip, history, bookmarks, content blocking, reader
 mode, the map and stock cards, live search behind answers (see
 "Answer cards" for why Google's grounding was removed), location, the
 backend (the Jev and Gemini requests move behind it later, taking the keys

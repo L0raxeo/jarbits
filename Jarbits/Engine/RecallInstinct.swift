@@ -1,32 +1,32 @@
 import Foundation
 import Engine
 
-/// Something seen before, from the memories. Jev's recall questions give
-/// the kinds, the name and the set; the extractor gives the topic (the
-/// thing to bring back), the count and the span. The shortlist is judged
-/// by Jev when it can be, and what was found goes to the grid, even one
-/// thing; nothing found goes to the web as a search for the topic, or for
-/// the words as they ran when none was named.
+/// One of the open webpages, found and brought forward: the page, video or
+/// search the user was reading. Jev's recall questions give the kinds, the
+/// name and the set; the extractor gives the topic (the thing to bring
+/// back), the count and the span. The shortlist is judged by Jev when it
+/// can be; one sure match comes forward as it stands, several go to the
+/// grid, and nothing found is a failure the planner takes over.
 struct RecallInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .recall)
 
-    /// A look through the memories that has not resolved by then goes to
-    /// the web, so the wave line never waits on it.
+    /// A look through the open webpages that has not resolved by then shows
+    /// the shortlist, so the wave line never waits on it.
     static let timeout: Duration = .seconds(3)
 
     func run(_ context: InstinctContext, in session: JarbitsSession, token: UUID) async -> InstinctOutcome {
         let query = context.query
         let ask = Self.ask(from: context)
         let topic = Self.topic(from: context)
-        let shortlist = await session.memory.shortlist(topic: topic, ask: ask)
+        let shortlist = await session.webpages.shortlist(topic: topic, ask: ask)
         guard session.isCurrent(token) else { return .nothing }
         // In a plan the recall finds and hands back; the plan shows.
-        func deliver(_ found: [MemoryRecord], shortlisted: Int?, source: String, latencyMs: Int? = nil) -> InstinctOutcome {
+        func deliver(_ found: [Webpage], shortlisted: Int?, source: String, latencyMs: Int? = nil) -> InstinctOutcome {
             if context.lookup { return InstinctOutcome(fact: nil, text: "", found: found) }
             // Nothing matched: not a card, a failure for the planner to reason over.
             if found.isEmpty, !source.hasPrefix("error") {
                 session.record(context, recall: RecallSummary(matches: 0, collection: ask.collection, count: ask.count, shortlisted: shortlisted, source: source, latencyMs: latencyMs))
-                return .failed(topic.map { "nothing in my memories matches \($0)" } ?? "nothing in my memories matches that")
+                return .failed(topic.map { "nothing I have open matches \($0)" } ?? "nothing I have open matches that")
             }
             Self.recalled(found, shortlisted: shortlisted, source: source, latencyMs: latencyMs, ask: ask, context: context, in: session)
             return .nothing
@@ -52,7 +52,7 @@ struct RecallInstinct: InstinctRunner {
         guard let recall = session.recall else {
             return deliver(shortlist, shortlisted: shortlist.count, source: "words")
         }
-        // "everything about the dyson": every memory about it, not the one.
+        // "everything about the dyson": every open webpage about it, not the one.
         let collection = ask.collection
         let verdict = await recall.resolve(query, candidates: shortlist, collection: collection)
         guard session.isCurrent(token) else { return .nothing }
@@ -62,8 +62,8 @@ struct RecallInstinct: InstinctRunner {
             // picker, so an unsure Jev leaves the choice to the user. A
             // collection is everything Jev said was about it, newest first.
             let sure = picks.filter { $0.probability >= RecallRouting.recallThreshold }
-            let shown = collection ? picks.map(\.record).sorted { $0.date > $1.date }
-                : sure.count == 1 ? [sure[0].record] : picks.map(\.record)
+            let shown = collection ? picks.map(\.webpage).sorted { $0.opened > $1.opened }
+                : sure.count == 1 ? [sure[0].webpage] : picks.map(\.webpage)
             return deliver(shown, shortlisted: shortlist.count, source: "jev", latencyMs: latencyMs)
         case let .failed(reason):
             // Jev's own timeout is shorter than ours: the shortlist stands in, in word order.
@@ -91,13 +91,12 @@ struct RecallInstinct: InstinctRunner {
         return RecallAsk(intent: context.decision.recall, count: count, window: window)
     }
 
-    /// What a recall found, in the order to show: nothing, so the topic
-    /// goes to the web as a plain search ("that thing about gingivitis
-    /// again" searches "gingivitis"), or the words as they ran when none
-    /// was named; anything found, the grid, even one thing, titled by the
-    /// topic when everything about it was asked for.
-    /// Either way a new layer. `source` says which path chose them, for the log.
-    private static func recalled(_ found: [MemoryRecord], shortlisted: Int?, source: String, latencyMs: Int? = nil, ask: RecallAsk, context: InstinctContext, in session: JarbitsSession) {
+    /// What a recall found: one sure match comes forward as it stands,
+    /// loaded or reloaded to where it was; several go to the grid, titled
+    /// by the set when a set was asked for; nothing found with an error on
+    /// the way shows web results for the topic. `source` says which path
+    /// chose them, for the log.
+    private static func recalled(_ found: [Webpage], shortlisted: Int?, source: String, latencyMs: Int? = nil, ask: RecallAsk, context: InstinctContext, in session: JarbitsSession) {
         let query = context.query
         #if DEBUG
         print("recall \"\(query)\" by \(source): \(found.count) of \(shortlisted.map(String.init) ?? "?") \(found.map { "\($0.kind.rawValue) \"\($0.title)\"" })")
@@ -109,10 +108,10 @@ struct RecallInstinct: InstinctRunner {
         )
         session.record(context, recall: summary)
         let title = ask.countTitle ?? ask.allTitle ?? (ask.collection && !topic.isEmpty ? "Everything about \(topic)" : nil)
-        // Never opened straight away: even one memory is shown in the grid,
-        // so the user sees what was found before it takes the screen.
         if found.isEmpty {
             session.openPage(QueryParser.searchURL(for: topic.isEmpty ? query : topic), context: context, recording: false)
+        } else if found.count == 1, title == nil, let layer = session.layer(forWebpage: found[0].id) {
+            session.bringForward(layer, context: context)
         } else {
             session.showCard(.recallPicker(found, title: title), context: context, recording: false)
         }

@@ -1,7 +1,7 @@
 import SwiftUI
 import Engine
 
-/// Several of Jarbits's notes the words may mean, in the recall grid's
+/// Several of Jarbits's notes the words may mean, in the open-webpages grid's
 /// layout: text tiles with the first lines, the title and when it was
 /// edited; the heading in his voice. A tap opens the note.
 struct NotesGridView: View {
@@ -54,7 +54,7 @@ struct NotesGridView: View {
                     .multilineTextAlignment(.leading)
                     .padding(12)
             }
-            .aspectRatio(MemoryTile.aspect, contentMode: .fit)
+            .aspectRatio(WebpageTile.aspect, contentMode: .fit)
             .clipShape(shape)
             .overlay(shape.strokeBorder(Color.black.opacity(0.06)))
             .shadow(color: .black.opacity(0.10), radius: 10, y: 4)

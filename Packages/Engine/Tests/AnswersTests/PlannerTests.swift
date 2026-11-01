@@ -5,12 +5,12 @@ import Testing
 
 /// Advanced reasoning's request: every instinct as a tool with a query
 /// field, the executor's own ask and done, the facts in the system
-/// instruction, the exchanges and memories in the first turn, and the
+/// instruction, the exchanges and open webpages in the first turn, and the
 /// wire shape the app sends.
 @Suite struct PlannerTests {
     @Test func everyInstinctIsAToolWithAQueryFieldThenAskSayOpenLookAndDone() throws {
         let tools = Planner.tools(for: InstinctSpec.all)
-        #expect(tools.map(\.name) == InstinctSpec.all.map(\.id) + ["ask", "say", "open", "look", "done"])
+        #expect(tools.map(\.name) == InstinctSpec.all.map(\.id) + ["ask", "say", "open", "look", "close", "done"])
         let recall = try #require(tools.first { $0.name == "recall" })
         #expect(recall.description.contains("In a plan it shows nothing: its result names what it found, by handle"))
         let open = try #require(tools.first { $0.name == "open" })
@@ -21,7 +21,7 @@ import Testing
         #expect(open.description.contains("is open with its handle, never a retelling of it in say"))
         #expect(Planner.sayTool.description.contains("Never to retell something the listing holds as a thing"))
         #expect(Planner.sayTool.description.contains("say is for a fact with no thing to show"))
-        for tool in tools.dropLast(5) {
+        for tool in tools.dropLast(6) {
             let requiredNames = tool.parameters["required"]?.arrayValue?.compactMap { $0.stringValue }
             let required = try #require(requiredNames)
             #expect(required.contains("query"), "\(tool.name) takes a query")
@@ -76,7 +76,7 @@ import Testing
         #expect(system.contains("There are two screens. Lorcan has theirs, where everything they see goes: narrative, one_line, time, notebook, say and open put their result there, each staying under the one before until the next request: so never say what a step has already shown (a note card says what was written, an answer answers), and after a step that showed something call done unless something is still missing (a caveat, a question). I have a screen of my own, where I read: web_results, map, stock, image, site, video open their page there unless screen is user, and nothing on my screen is seen by Lorcan."))
         #expect(system.contains("open brings it forward to Lorcan's screen as it is"))
         #expect(!system.contains("Show at most one thing"))
-        #expect(system.contains("The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2)"))
+        #expect(system.contains("The listing tags each earlier thing of this session (p1, p2), each open webpage (w1, w2; what a browser calls tabs, open until Lorcan closes them), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2)"))
         #expect(system.contains("never one you made up"))
         #expect(system.contains("in a note it is never written out: the handle in braces is the link"))
         #expect(Planner.describe(InstinctSpec.spec(for: .notebook)).contains("a link always goes into a note as the thing's handle in braces"))
@@ -132,21 +132,25 @@ import Testing
         #expect(!Planner.input(query: "q", things: ThingTable(), now: AnswerContext.example.now).contains("Tried first"))
     }
 
-    @Test func theFirstTurnHasTheRequestTheExchangesAndTheMemories() {
+    @Test func theFirstTurnHasTheRequestTheExchangesAndTheOpenWebpages() {
         let now = AnswerContext.example.now
-        let memories = [
-            MemoryRecord(date: now.addingTimeInterval(-86_400), kind: .page, query: "hennessey", title: "Hennessey Performance", url: URL(string: "https://www.hennesseyperformance.com/")),
-            MemoryRecord(date: now.addingTimeInterval(-60), kind: .narrative, query: "what is a venom f5", text: "A car."),
+        let hennessey = Webpage(kind: .page, address: URL(string: "https://www.hennesseyperformance.com/")!, title: "Hennessey Performance", query: "hennessey", opened: now.addingTimeInterval(-86_400))
+        let webpages = [
+            Webpage(kind: .search, address: QueryParser.searchURL(for: "venom f5 price"), query: "venom f5 price", opened: now.addingTimeInterval(-60)),
+            hennessey,
         ]
         let input = Planner.input(
             query: "find a dealer near me for it",
-            exchanges: [.search(query: "hennessey venom", term: "hennessey venom")],
-            memories: memories, now: now, calendar: Calendar(identifier: .gregorian)
+            exchanges: [.search(query: "hennessey venom", term: "hennessey venom"), .page(query: "hennessey", title: "Hennessey Performance", address: URL(string: "https://www.hennesseyperformance.com/?utm_source=x")!)],
+            webpages: webpages, now: now, calendar: Calendar(identifier: .gregorian)
         )
         #expect(input.hasPrefix("Request: find a dealer near me for it\n\nEarlier in this session (oldest first):\n- p1: "))
         #expect(input.contains("hennessey venom"))
-        #expect(input.contains("Seen in this app before, the newest (recall finds the rest):\n- m1: A page from yesterday (www.hennesseyperformance.com): \"Hennessey Performance\"\n- m2: An answer from today: \"what is a venom f5\""))
-        let bare = Planner.input(query: "x", exchanges: [], memories: [], now: now)
+        #expect(input.contains("- p2: Read \"Hennessey Performance\" (www.hennesseyperformance.com) (w2)"), "a page the user saw points at the open webpage it is")
+        #expect(input.contains("Open webpages, newest first (what the user has open, kept until closed; open brings one forward, close closes; recall finds one by what it is about):\n- w1: A search for \"venom f5 price\", open since today\n- w2: A page open since yesterday (www.hennesseyperformance.com): \"Hennessey Performance\""))
+        let things = ThingTable(exchanges: [], webpages: webpages)
+        #expect(things.screenHandle(for: Screen(kind: .page, title: "Hennessey Performance", address: URL(string: "https://www.hennesseyperformance.com/?utm_source=x"))) == "w2", "the page on screen is the open webpage it is")
+        let bare = Planner.input(query: "x", exchanges: [], webpages: [], now: now)
         #expect(bare == "Request: x\n\nIn my notebook: no notes yet.", "an empty notebook is said, so a write makes a note instead of asking which")
     }
 
@@ -185,7 +189,7 @@ import Testing
         let picture = Data([0xFF, 0xD8, 0xFF])
         let turn = Planner.firstTurn("words", picture: picture)
         #expect(turn == .userParts([.text("words"), .image(picture, mimeType: "image/jpeg")]))
-        let bundle = PlanBundle(query: "q", exchanges: [], facts: [], memories: [], tools: [], context: .example, screen: screen)
+        let bundle = PlanBundle(query: "q", exchanges: [], facts: [], tools: [], context: .example, screen: screen)
         let body = try Planner.request(bundle: bundle, transcript: [turn]).jsonData()
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         let steps = try #require(json["input"] as? [[String: Any]])
@@ -196,14 +200,14 @@ import Testing
     }
 
     @Test func theRequestIsOneWholeBodyCallWithEveryToolAndToolChoiceAny() throws {
-        let bundle = PlanBundle(query: "q", exchanges: [], facts: ["f"], memories: [], tools: Planner.tools(for: InstinctSpec.all), context: .example)
-        let transcript: [InteractionStep] = [.userText(Planner.input(query: "q", exchanges: [], memories: [], now: AnswerContext.example.now))]
+        let bundle = PlanBundle(query: "q", exchanges: [], facts: ["f"], tools: Planner.tools(for: InstinctSpec.all), context: .example)
+        let transcript: [InteractionStep] = [.userText(Planner.input(query: "q", exchanges: [], webpages: [], now: AnswerContext.example.now))]
         let request = Planner.request(bundle: bundle, transcript: transcript)
         #expect(request.model == Planner.model)
         #expect(request.stream == false)
         #expect(request.toolChoice == .any)
-        #expect(request.tools.count == InstinctSpec.all.count + 5)
-        #expect(request.tools.suffix(5).map(\.name) == ["ask", "say", "open", "look", "done"])
+        #expect(request.tools.count == InstinctSpec.all.count + 6)
+        #expect(request.tools.suffix(6).map(\.name) == ["ask", "say", "open", "look", "close", "done"])
         #expect(Planner.sayTool.parameters["required"]?.arrayValue?.first?.stringValue == "text")
         #expect(request.maxOutputTokens == Planner.maxOutputTokens)
         #expect(request.thinkingLevel == Planner.thinkingLevel)
@@ -211,7 +215,7 @@ import Testing
         #expect(json["model"] as? String == "gemini-3.1-flash-lite")
         #expect(json["stream"] as? Bool == false)
         #expect(json["store"] as? Bool == false)
-        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 5)
+        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 6)
         let config = try #require(json["generation_config"] as? [String: Any])
         #expect(config["tool_choice"] as? String == "any")
         #expect(config["thinking_level"] as? String == "high", "accuracy over speed: the planner thinks")
@@ -221,7 +225,7 @@ import Testing
     }
 
     @Test func aRoundReplaysTheModelStepsAndTheResults() throws {
-        let bundle = PlanBundle(query: "q", exchanges: [], facts: [], memories: [], tools: [], context: .example)
+        let bundle = PlanBundle(query: "q", exchanges: [], facts: [], tools: [], context: .example)
         let call = FunctionCall(id: "call_1", name: "remember", arguments: ["query": "I'm vegetarian", "fact": "I'm vegetarian"])
         let transcript: [InteractionStep] = [
             .userText("Request: q"),

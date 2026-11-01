@@ -21,13 +21,11 @@ enum CardPlan: Hashable, Sendable {
     /// What the planner said in its own words, shown as it is: no model
     /// reads it. `query` is the user's words, the capsule's.
     case said(query: String, text: String)
-    /// Several memories matched; a card lists them and a tap replays one.
-    /// `title` says what they are when the query asked for a set
-    /// ("Everything about Dyson PencilVac", "Last 5 searches"); nil for a
-    /// plain choice between candidates.
-    case recallPicker([MemoryRecord], title: String?)
-    /// A remembered narrative, shown from its saved text with its date.
-    case memory(MemoryRecord)
+    /// Several open webpages matched, or all were asked for; a grid lists
+    /// them and a tap brings one forward. `title` says what they are when
+    /// the query asked for a set ("Everything about Dyson PencilVac", "Last
+    /// 5 searches", "All webpages"); nil for a plain choice.
+    case recallPicker([Webpage], title: String?)
     /// The sites a name might mean; a tap learns one and opens it.
     case siteChoices(name: String, [SiteCandidate])
     /// One of Jarbits's notes, open for typing.
@@ -46,7 +44,6 @@ enum CardPlan: Hashable, Sendable {
         case let .time(query, _): "answer:" + query   // the thread grown from it is the same card
         case let .said(query, _): "answer:" + query
         case .recallPicker: "picker"
-        case let .memory(record): "memory:\(record.id)"
         case .siteChoices: "choices"
         case let .note(note): "note:\(note.id)"
         case .notes: "notes"

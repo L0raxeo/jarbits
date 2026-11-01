@@ -132,21 +132,21 @@ public enum EngineReport {
         return out
     }
 
-    /// How a `recall` pick is resolved: the filters and shortlist on the
-    /// device, then one yes/no question per candidate, quoted from the same
-    /// builder the app uses.
+    /// How a `recall` pick is resolved: the filters and shortlist over the
+    /// open webpages on the device, then one yes/no question per candidate,
+    /// quoted from the same builder the app uses.
     private static func recallSection() -> [String] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/Chicago")!
         let now = Date(timeIntervalSince1970: 1_792_685_600)
-        let sample = MemoryRecord(
-            date: now.addingTimeInterval(-86_400), kind: .page, query: "rick steves lisbon",
-            title: "Rick Steves' Europe: Lisbon", url: URL(string: "https://m.youtube.com/watch?v=a")
+        let sample = Webpage(
+            kind: .page, address: URL(string: "https://m.youtube.com/watch?v=a")!,
+            title: "Rick Steves' Europe: Lisbon", query: "rick steves lisbon", opened: now.addingTimeInterval(-86_400)
         )
         var out: [String] = []
         out.append("## After routing: recall")
         out.append("")
-        out.append("A `recall` pick is resolved in this order. First, Jev's reading of the ask, answered in the routing request itself (the `recall_*` questions above, so a recall costs no second round trip): which kinds of memory are wanted (`recall_pages`, `recall_answers`, `recall_pictures`, `recall_searches`, `recall_videos`), whether a particular thing is named (`recall_named`) and whether a set is wanted (`recall_all`), each a yes at or above \(RecallIntent.threshold.formatted()). The intent is read only when `recall` was the pick, and logged with the decision. Second, the count (\"last five\", \"recent\") and the time words (\"yesterday\", \"this morning\", \"three days ago\") from the query itself, since a number and a day are not judgments. Third, the shortlist (`RecallFilters`, `MemorySearch.shortlist`): the kinds, the time and the video flag filter the memories; when a thing is named, the records are ranked by the words that remain, then the rest of the filtered set newest first, at most \(MemorySearch.limit), with the kind a preference, not a wall; when nothing is named, no word is matched at all and the newest of the filtered set are taken. Without an intent (no key, a failed request, an older log) the kind words in the query (\"video\", \"answer\", \"picture\") and the collection words stand in, and with no filter and no content word there is nothing to go on, so the words go to web results. Last, unless a count or a set of a kind with nothing named was asked for (those are listed as they are, no judge needed), the shortlist goes to Jev in one request, a yes/no question per memory:")
+        out.append("A `recall` pick finds one of the open webpages (what a browser calls tabs: the pages and results pages the user opened and has not closed; 2026-11-01, replacing memories) and brings it forward, or shows several in a grid. It is resolved in this order. First, Jev's reading of the ask, answered in the routing request itself (the `recall_*` questions above, so a recall costs no second round trip): which kinds are wanted (`recall_pages`, `recall_pictures` for image results, `recall_searches`, `recall_videos`; `recall_answers` names nothing open and is read as no kind), whether a particular thing is named (`recall_named`) and whether a set is wanted (`recall_all`), each a yes at or above \(RecallIntent.threshold.formatted()). The intent is read only when `recall` was the pick, and logged with the decision. Second, the count (\"last five\", \"recent\") and the time words (\"yesterday\", \"this morning\") the extractor reads out of the query. Third, the shortlist (`WebpageSearch.shortlist`): the kinds, the time and the video flag filter the open webpages; when a thing is named, they are ranked by the words that remain, taking turns with the ones nearest the topic in meaning (the index), then the rest of the filtered set newest first, at most \(WebpageSearch.limit), with the kind a preference, not a wall; when nothing is named, no word is matched at all and the newest of the filtered set are taken. Last, unless a count or a set of a kind with nothing named was asked for (those are listed as they are, no judge needed), the shortlist goes to Jev in one request, a yes/no question per webpage:")
         out.append("")
         out.append("> " + RecallRouting.instructions(for: sample, now: now, calendar: calendar))
         out.append("")
@@ -155,11 +155,11 @@ public enum EngineReport {
         out.append("| yes | \(RecallRouting.recallCriteria.yes) |")
         out.append("| no | \(RecallRouting.recallCriteria.no) |")
         out.append("")
-        out.append("A memory at or above \(RecallRouting.recallThreshold.formatted()) is the one asked for and is shown alone. Otherwise every memory at or above \(RecallRouting.maybeThreshold.formatted()) is plausible and is shown in Jev's order, so an unsure Jev leaves the choice to the user. Nothing ever opens straight away: even a single memory is shown in the grid before it takes the screen; none goes to web results for the query's content words (\"that thing about gingivitis again\" searches \"gingivitis\"). A failed or slow request, or no key, shows the shortlist in word order. The record's `recall` logs the shortlist size, how many were plausible, the path (`jev`, `words`, or the error) and the latency.")
+        out.append("A webpage at or above \(RecallRouting.recallThreshold.formatted()) is the one asked for and is brought forward as it is. Otherwise every webpage at or above \(RecallRouting.maybeThreshold.formatted()) is plausible and is shown in the grid in Jev's order, so an unsure Jev leaves the choice to the user; a tap brings that one forward. None found is a failure the planner takes over. A failed or slow request, or no key, shows the shortlist in word order. The record's `recall` logs the shortlist size, how many were plausible, the path (`jev`, `words`, or the error) and the latency.")
         out.append("")
         out.append("### Everything about something")
         out.append("")
-        out.append("A query that asks for everything wants a collection, not one thing: \"pull up everything we talked about with the dyson pencilvac\". `recall_all` says so, and a collection needs a named thing (`recall_named`): the per-memory question below is about that thing. The kinds become no bar (every memory about it is wanted; a span the extractor read still holds), the shortlist is the word matches, and each memory is asked a different question:")
+        out.append("A query that asks for everything wants a collection, not one thing: \"pull up everything I have open about the dyson pencilvac\". `recall_all` says so, and a collection needs a named thing (`recall_named`): the per-webpage question below is about that thing. The kinds become no bar, the shortlist is the word matches, and each webpage is asked a different question:")
         out.append("")
         out.append("> " + RecallRouting.instructions(for: sample, now: now, calendar: calendar, collection: true))
         out.append("")
@@ -168,11 +168,11 @@ public enum EngineReport {
         out.append("| yes | \(RecallRouting.collectionCriteria.yes) |")
         out.append("| no | \(RecallRouting.collectionCriteria.no) |")
         out.append("")
-        out.append("Every memory at or above \(RecallRouting.collectionThreshold.formatted()) is shown, newest first, in a picker titled by the topic; one alone opens; none goes to web results for the topic words. The record's `recall` carries `collection: true`. A set of a kind with nothing named (\"all the videos from yesterday\") is listed as it is, newest first up to \(MemorySearch.limit), titled \"All videos\", with no judge asked, logged with the path `all`.")
+        out.append("Every webpage at or above \(RecallRouting.collectionThreshold.formatted()) is shown, newest first, in a grid titled by the topic. A set of a kind with nothing named (\"all the videos I have open\", \"show me everything I have open\") is listed as it is, newest first up to \(WebpageSearch.limit), titled \"All videos\" or \"All webpages\", with no judge asked, logged with the path `all`.")
         out.append("")
         out.append("### The last so many")
         out.append("")
-        out.append("A query that asks for a count (\"my last five searches\", \"the last 5 things I asked you\", \"latest three pictures\"; the extractor reads the number, at most \(RecallAsk.maxCount)) wants the newest so many, not a thing: the kinds Jev read and the span the extractor read still filter, the word matches narrow when the query names something too, and the newest so many are shown as a picker titled \"Last 5 searches and answers\", even when only one was found, with no judge asked, since there is nothing to judge. The record's `recall` carries `count` and the path `count`. The extractor reads a recall's `count`, `from` and `to` on every recall pick, against today's date.")
+        out.append("A query that asks for a count (\"my last five searches\"; the extractor reads the number, at most \(RecallAsk.maxCount)) wants the newest so many, not a thing: the kinds Jev read and the span the extractor read still filter, the word matches narrow when the query names something too, and the newest so many are shown as a grid titled \"Last 5 searches\", with no judge asked. The record's `recall` carries `count` and the path `count`. The extractor reads a recall's `count`, `from` and `to` on every recall pick, against today's date.")
         out.append("")
         return out
     }

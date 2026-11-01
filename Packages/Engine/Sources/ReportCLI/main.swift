@@ -7,7 +7,7 @@ import Sites
 // Usage:
 //   swift run --package-path Packages/Engine report engine > ENGINE.md
 //   swift run --package-path Packages/Engine report decisions path/to/decisions.jsonl
-//   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Engine report recall path/to/memories.jsonl "the videos from yesterday"
+//   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Engine report recall path/to/webpages.jsonl "the videos from yesterday"
 //     (with the key, Jev's reading of the ask from one routing call; then the filters, the shortlist and
 //     Jev's probability for each candidate; without it, the word lists decide)
 //   TYPESAFE_API_KEY=… swift run --package-path Packages/Engine report route "some query"
@@ -74,15 +74,15 @@ case "decisions":
         fail("could not read \(arguments[1]): \(error)")
     }
 case "recall":
-    guard arguments.count == 3 || (arguments.count == 5 && arguments[3] == "--topic") else { fail("usage: report recall <memories.jsonl> <query> [--topic <thing to bring back>]") }
+    guard arguments.count == 3 || (arguments.count == 5 && arguments[3] == "--topic") else { fail("usage: report recall <webpages.jsonl> <query> [--topic <thing to bring back>]") }
     let query = arguments[2]
     let topic: String? = arguments.count == 5 ? arguments[4] : nil
-    var records: [MemoryRecord] = []
+    var records: [Webpage] = []
     do {
         let data = try Data(contentsOf: URL(fileURLWithPath: arguments[1]))
         records = try String(decoding: data, as: UTF8.self)
             .split(separator: "\n", omittingEmptySubsequences: true)
-            .map { try DecisionRecord.decoder.decode(MemoryRecord.self, from: Data($0.utf8)) }
+            .map { try DecisionRecord.decoder.decode(Webpage.self, from: Data($0.utf8)) }
     } catch {
         fail("could not read \(arguments[1]): \(error)")
     }
@@ -106,10 +106,10 @@ case "recall":
     let kinds = filters.kinds.map { $0.map(\.rawValue).sorted().joined(separator: ",") } ?? "any"
     print("ask: kinds \(kinds), video \(filters.video)\(filters.collection ? ", everything about \"\(topic ?? query)\"" : "")")
     // In the app the topic is the extractor's value; here --topic gives it, else the words stand in.
-    let shortlist = MemorySearch.shortlist(records, topic: topic ?? query, ask: filters)
+    let shortlist = WebpageSearch.shortlist(records, topic: topic ?? query, ask: filters)
     print("shortlist: \(shortlist.count) of \(records.count)")
     for (index, record) in shortlist.enumerated() {
-        print("  m\(index) \(record.kind.rawValue) \(record.date.formatted(date: .abbreviated, time: .omitted)) \"\(record.title)\"")
+        print("  w\(index) \(record.kind.rawValue) \(record.opened.formatted(date: .abbreviated, time: .omitted)) \"\(record.title)\"")
     }
     guard !shortlist.isEmpty else { exit(0) }
     if let title = filters.countTitle {
@@ -133,7 +133,7 @@ case "recall":
         let sure = all.filter { $0.probability >= RecallRouting.recallThreshold }
         let maybe = all.filter { $0.probability >= RecallRouting.maybeThreshold }
         let shown = filters.collection ? all.filter { $0.probability >= RecallRouting.collectionThreshold } : sure.count == 1 ? sure : maybe
-        let verdict = shown.count == 1 ? "opens \"\(shown[0].record.title)\""
+        let verdict = shown.count == 1 ? "brings forward \"\(shown[0].webpage.title)\""
             : shown.isEmpty ? "none of these: web results for \"\(topic ?? query)\""
             : "picker with \(shown.count)"
         let thresholds = filters.collection ? "about it at \(RecallRouting.collectionThreshold.formatted())" : "opens at \(RecallRouting.recallThreshold.formatted()), shown at \(RecallRouting.maybeThreshold.formatted())"
@@ -141,7 +141,7 @@ case "recall":
         for pick in all {
             let mark = filters.collection ? (pick.probability >= RecallRouting.collectionThreshold ? "*" : " ")
                 : pick.probability >= RecallRouting.recallThreshold ? "*" : pick.probability >= RecallRouting.maybeThreshold ? "?" : " "
-            print("  \(mark) \(pick.probability.formatted(.number.precision(.fractionLength(2)))) \(pick.record.kind.rawValue) \"\(pick.record.title)\"")
+            print("  \(mark) \(pick.probability.formatted(.number.precision(.fractionLength(2)))) \(pick.webpage.kind.rawValue) \"\(pick.webpage.title)\"")
         }
     case let .failed(reason):
         print("jev failed: \(reason)")
@@ -286,13 +286,13 @@ case "extract":
         print("failed (\(summary.latencyMs) ms against a \(budget.formatted()) s budget): \(summary.outcome)")
     }
 case "plan":
-    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--page <earlier query> <title> <url>]... [--fact <text>]... [--memory <page|search|narrative> <title> <url or ->]... [--screen <title> <url> <visible text>] [--link <text> <url>]... [--screen-data <lines>] [--picture <jpeg path>] [--timeout <seconds>] [--dry-run]"
+    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--page <earlier query> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--screen <title> <url> <visible text>] [--link <text> <url>]... [--screen-data <lines>] [--picture <jpeg path>] [--timeout <seconds>] [--dry-run]"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
     var exchanges: [Exchange] = []
     var facts: [String] = []
-    var memories: [MemoryRecord] = []
+    var webpages: [Webpage] = []
     var dryRun = false
     var roundTimeout = ReasoningPolicy.roundTimeout
     var screenTitle: String?
@@ -333,11 +333,11 @@ case "plan":
             guard rest.count >= 4, let url = URL(string: rest[3]) else { fail(usage) }
             exchanges.append(.page(query: rest[1], title: rest[2], address: url))
             rest.removeFirst(4)
-        case "--memory":
-            guard rest.count >= 4, let kind = MemoryRecord.Kind(rawValue: rest[1]) else { fail(usage) }
-            let url = rest[3] == "-" ? nil : URL(string: rest[3])
-            memories.append(MemoryRecord(date: Date.now.addingTimeInterval(-86_400), kind: kind, query: rest[2], title: rest[2], url: url, text: kind == .narrative ? "…" : nil))
-            rest.removeFirst(4)
+        case "--webpage":
+            guard rest.count >= 3, let url = URL(string: rest[2]) else { fail(usage) }
+            let kind: Webpage.Kind = QueryParser.isImageResults(url) ? .images : QueryParser.isSearchResults(url) ? .search : .page
+            webpages.append(Webpage(kind: kind, address: url, title: rest[1], query: kind == .page ? "" : (QueryParser.searchTerm(in: url) ?? rest[1]), opened: Date.now.addingTimeInterval(-86_400)))
+            rest.removeFirst(3)
         case "--timeout":
             guard rest.count >= 2, let seconds = Double(rest[1]), seconds > 0 else { fail(usage) }
             roundTimeout = .milliseconds(Int(seconds * 1000))
@@ -349,8 +349,8 @@ case "plan":
         }
     }
     let screen: Screen? = screenTitle.map { Screen(kind: .page, title: $0, address: screenURL, visible: screenVisible, items: links, data: screenData, picture: picture) }
-    let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, memories: memories, tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), persona: .example, screen: screen)
-    let things = ThingTable(exchanges: exchanges, memories: memories, items: links)
+    let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), persona: .example, screen: screen)
+    let things = ThingTable(exchanges: exchanges, webpages: webpages, items: links)
     let transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: .now, screen: screen), picture: picture)]
     let request = Planner.request(bundle: bundle, transcript: transcript)
     if !things.handles.isEmpty { print("things: " + things.entries.map { ThingTable.line($0, now: .now) }.joined(separator: " | ")) }
@@ -683,5 +683,5 @@ case "sample":
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report engine | decisions <decisions.jsonl> | recall <memories.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--memory <kind> <title> <url or ->]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }

@@ -63,7 +63,7 @@ struct AnswerInstinct: InstinctRunner {
 
 /// Google's image results for the words as they ran: the search engine
 /// reads the whole question, so nothing here has to. A results page like
-/// any other to the capsule and the log; the memory keeps it as a picture.
+/// any other to the capsule and the log; the open webpage is a picture search.
 struct ImageInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .image)
 

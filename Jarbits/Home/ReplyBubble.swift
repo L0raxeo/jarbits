@@ -448,7 +448,6 @@ extension CardPlan {
     var replyText: String {
         switch self {
         case let .time(_, text), let .said(_, text): text
-        case let .memory(record): record.text ?? record.title
         case let .note(note): note.body
         default: ""
         }

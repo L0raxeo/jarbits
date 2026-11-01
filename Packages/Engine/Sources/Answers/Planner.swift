@@ -2,7 +2,7 @@ import Foundation
 import Engine
 
 /// Advanced reasoning's one call shape: the request, its earlier
-/// exchanges, the facts and the memories the words point at go to Gemini
+/// exchanges, the facts and the open webpages go to Gemini
 /// with every instinct as a tool, and back come the calls to make. The
 /// model's own words are never shown: it speaks through the narrative and
 /// one-line instincts, with a query it writes, and asks through the sheet.
@@ -52,6 +52,14 @@ public struct Planner: Sendable {
         required: false
     )
 
+    /// On the page-opening tools, with `screen`: a site already open comes
+    /// forward instead of opening again, unless the user asked for a new one.
+    public static let freshField = ArgumentSchema.Field(
+        name: "fresh", kind: .boolean,
+        description: "true only when the user asked for a new one of a site already open (\"open a new youtube\", \"another tab for amazon\"); otherwise a page already open among the webpages is brought forward as it stands, and this is false or left out",
+        required: false
+    )
+
     public static let screenField = ArgumentSchema.Field(
         name: "screen", kind: .choice(["mine", "user"]),
         description: "which screen the page opens on. mine: my own screen, where only I read it, to find something out before I answer; the user never sees it, and the result gives it a handle for look and open (\"when does lehigh pizza open\", \"what's the price of the kilburn two\", \"is this video's advice sound\": results on my screen, a look, then one_line or narrative). user: the user's screen, where it shows at once, when they asked to see the page or the results themselves (\"pull up youtube\", \"look up flights to lima\", \"show me pictures of capybaras\"). Every page step says which.",
@@ -81,7 +89,7 @@ public struct Planner: Sendable {
     /// second model reads it. The description is the whole rule for when.
     public static let sayTool = ToolDeclaration(
         name: "say",
-        description: "Show the user something you already know in full, as the complete answer, in a short reply over what they are looking at (a line or a card, never the whole screen): from the facts you were given, the memories shown to you, or earlier steps' results (what I read on my screen included), including \"I don't know that yet\" when the facts hold nothing on a question about their life. Never to retell something the listing holds as a thing: a note's lines, a page's content, an earlier answer's text. Those are shown as themselves with open (a note's lines as a card, a page, an answer), and the user reads on into them; say is for a fact with no thing to show (a memory, a count, a yes or no read off a note, a line of your own), or to tell the user what you could not do and what would, while you keep checking, and a question about a thing that must be worked out goes through narrative with about. In your own voice to them: you for them, I for yourself. Never for anything that needs knowledge beyond that, which narrative and one_line are for: a page or a thing you have only seen listed by its title is not something you know, so a comparison, a summary or a judgement of it goes through narrative with about, never say.",
+        description: "Show the user something you already know in full, as the complete answer, in a short reply over what they are looking at (a line or a card, never the whole screen): from the facts you were given, the open webpages listed, or earlier steps' results (what I read on my screen included), including \"I don't know that yet\" when the facts hold nothing on a question about their life. Never to retell something the listing holds as a thing: a note's lines, a page's content, an earlier answer's text. Those are shown as themselves with open (a note's lines as a card, a page, an answer), and the user reads on into them; say is for a fact with no thing to show (a count, a yes or no read off a note, a line of your own), or to tell the user what you could not do and what would, while you keep checking, and a question about a thing that must be worked out goes through narrative with about. In your own voice to them: you for them, I for yourself. Never for anything that needs knowledge beyond that, which narrative and one_line are for: a page or a thing you have only seen listed by its title is not something you know, so a comparison, a summary or a judgement of it goes through narrative with about, never say.",
         parameters: [
             "type": "object",
             "properties": ["text": ["type": "string", "description": "what to show, complete, a sentence or a few"]],
@@ -93,10 +101,10 @@ public struct Planner: Sendable {
     /// search, or shows the saved answer. The model never carries the address.
     public static let openTool = ToolDeclaration(
         name: "open",
-        description: "Show things from the listing or from a step's result, by handle. One thing: a page loads, a search loads its results, an answer or a note is shown as it is. Several of the same kind (notes, or memories) are shown together in a grid, which is how the user sees more than one at once; a tap opens one. Puts its result on the user's screen. A page a step opened on my screen (p3 in its result, or listed as read on my screen) is brought forward to the user's screen as it is, already loaded: how the user gets to see what I found. A request for a thing the listing holds (\"what's on my watchlist\", \"show me that Lisbon article\", \"what did you say about the retainer\") is open with its handle, never a retelling of it in say: the user gets the thing as it is, and reads on into it. A question about the thing (\"was that article any good\", \"is it worth reading\", \"which of these is cheapest\") is not a request for it: that is an answer with the thing in about (after a look, when the page holds more than the block shows), not open.",
+        description: "Show things from the listing or from a step's result, by handle. One thing: a page loads, a search loads its results, an answer or a note is shown as it is. Several of the same kind (notes, or open webpages) are shown together in a grid, which is how the user sees more than one at once; a tap opens one. An open webpage (w2) is brought forward as it stands, loaded or reloaded to where it was, never opened again. Puts its result on the user's screen. A page a step opened on my screen (p3 in its result, or listed as read on my screen) is brought forward to the user's screen as it is, already loaded: how the user gets to see what I found. A request for a thing the listing holds (\"what's on my watchlist\", \"show me that Lisbon article\", \"what did you say about the retainer\") is open with its handle, never a retelling of it in say: the user gets the thing as it is, and reads on into it. A question about the thing (\"was that article any good\", \"is it worth reading\", \"which of these is cheapest\") is not a request for it: that is an answer with the thing in about (after a look, when the page holds more than the block shows), not open.",
         parameters: [
             "type": "object",
-            "properties": ["things": ["type": "array", "items": ["type": "string"], "description": "the handles of the things to show, such as [\"m2\"] or [\"n1\", \"n2\", \"n3\"]"]],
+            "properties": ["things": ["type": "array", "items": ["type": "string"], "description": "the handles of the things to show, such as [\"w2\"] or [\"n1\", \"n2\", \"n3\"]"]],
             "required": ["things"],
             "additionalProperties": false,
         ]
@@ -106,15 +114,28 @@ public struct Planner: Sendable {
     /// finds become `s` handles like the ones in view.
     public static let lookTool = ToolDeclaration(
         name: "look",
-        description: "Read a thing in full, by its handle, when the request asks for what the listing or the screen block does not hold. A page: the text further down (text, numbered by paragraph; from continues it), every link on it (links, in screen order, each with a handle to open or keep), its headings with their paragraph numbers (outline), its tables (tables). A note: its lines numbered (text), its links as handles (links), its headings (outline). An answer or a memory: its text (text, numbered by paragraph or by turn). The block already holds what is in view, the rest of a page's text up to its cap and its own data, and the listing holds every note up to its cap: when the answer is there, do not look; when it is not, look before you guess, never after. For how a page looks (a colour, a position, a layout), read the picture instead. With thing left out, reads the newest page on my screen from this plan, else whatever is on the user's screen, page, note or answer; thing names another by handle: a page on my screen from a step's result (p3), anything in the listing (p1, n2, m1); a link (s2) is not an open thing: open it first.",
+        description: "Read a thing in full, by its handle, when the request asks for what the listing or the screen block does not hold. A page: the text further down (text, numbered by paragraph; from continues it), every link on it (links, in screen order, each with a handle to open or keep), its headings with their paragraph numbers (outline), its tables (tables). A note: its lines numbered (text), its links as handles (links), its headings (outline). An answer: its text (text, numbered by paragraph). An open webpage: as a page, when it is loaded; else open it first. The block already holds what is in view, the rest of a page's text up to its cap and its own data, and the listing holds every note up to its cap: when the answer is there, do not look; when it is not, look before you guess, never after. For how a page looks (a colour, a position, a layout), read the picture instead. With thing left out, reads the newest page on my screen from this plan, else whatever is on the user's screen, page, note or answer; thing names another by handle: a page on my screen from a step's result (p3), anything in the listing (p1, n2, w1); a link (s2) is not an open thing: open it first.",
         parameters: [
             "type": "object",
             "properties": [
-                "thing": ["type": "string", "description": "the handle of the thing to read, when it is not the one I would read by default: p3 from a step's result, p1, n2 or m1 from the listing; omit for the newest page on my screen from this plan, else whatever is on the user's screen"],
+                "thing": ["type": "string", "description": "the handle of the thing to read, when it is not the one I would read by default: p3 from a step's result, p1, n2 or w1 from the listing; omit for the newest page on my screen from this plan, else whatever is on the user's screen"],
                 "what": ["type": "string", "enum": ["text", "links", "outline", "tables"], "description": "what to read"],
                 "from": ["type": "integer", "description": "the paragraph or link number to continue from, as the last result numbered them; omit to start at the top"],
             ],
             "required": ["what"],
+            "additionalProperties": false,
+        ]
+    )
+
+    /// Open webpages closed by handle, or every one: the one way a webpage
+    /// goes besides a new query from the middle of the row.
+    public static let closeTool = ToolDeclaration(
+        name: "close",
+        description: "Close open webpages, by handle (w2) or every one (all), when the user asks to close, get rid of, or clear them (\"close this\", \"close the dyson page\", \"close everything\", \"close all the youtube ones\"). Nothing else closes a webpage: an answer, a note or a question is not one. The user sees the webpage go; the one they were on moves to its neighbour.",
+        parameters: [
+            "type": "object",
+            "properties": ["things": ["type": "array", "items": ["type": "string"], "description": "the handles to close, such as [\"w2\"] or [\"w1\", \"w4\"], or [\"all\"] for every open webpage"]],
+            "required": ["things"],
             "additionalProperties": false,
         ]
     )
@@ -131,18 +152,18 @@ public struct Planner: Sendable {
         self.client = client
     }
 
-    /// Every instinct as a tool, in registry order, then `ask`, `say`, `open` and `done`.
+    /// Every instinct as a tool, in registry order, then `ask`, `say`, `open`, `look`, `close` and `done`.
     public static func tools(for registry: [InstinctSpec]) -> [ToolDeclaration] {
         registry.map { spec in
             let schema = ArgumentSchema(fields: fields(for: spec))
             return ToolDeclaration(name: spec.id, description: describe(spec), parameters: schema.jsonSchema())
-        } + [askTool, sayTool, openTool, lookTool, doneTool]
+        } + [askTool, sayTool, openTool, lookTool, closeTool, doneTool]
     }
 
-    /// A tool's fields: the query, the screen for a page-opening tool, then
-    /// the instinct's own. The executor validates a call against the same.
+    /// A tool's fields: the query, the screen and fresh for a page-opening
+    /// tool, then the instinct's own. The executor validates a call against the same.
     public static func fields(for spec: InstinctSpec) -> [ArgumentSchema.Field] {
-        [queryField] + (opensPage(spec) ? [screenField] : []) + spec.arguments.fields + (spec.instinct == .notebook ? [removeField] : [])
+        [queryField] + (opensPage(spec) ? [screenField, freshField] : []) + spec.arguments.fields + (spec.instinct == .notebook ? [removeField] : [])
     }
 
     static func describe(_ spec: InstinctSpec) -> String {
@@ -172,11 +193,11 @@ public struct Planner: Sendable {
             "You plan what you do for a request \(persona.user) made. The device's classifier was not sure which single tool fits it, or saw several steps in it, which is why you are reading it: understand the request, then act. It may need one tool or several. Nothing you write outside a tool call is shown to anyone. You act only by calling the tools below, and the device runs them.",
             "",
             "Rules:",
-            "- To tell \(persona.user) something you already know in full (from the facts below, the memories shown to you, or earlier steps' results), call say with it. To tell them something you would have to work out or look up, call narrative or one_line with a complete, self-contained question in its query, with whatever you learned from earlier steps folded in; the device answers it. Never write an answer into a question.",
+            "- To tell \(persona.user) something you already know in full (from the facts below, the open webpages listed, or earlier steps' results), call say with it. To tell them something you would have to work out or look up, call narrative or one_line with a complete, self-contained question in its query, with whatever you learned from earlier steps folded in; the device answers it. Never write an answer into a question.",
             "- To confirm something, to choose, or to get a value the request leaves out, call ask; the answer comes back as the result, with the question beside it. ask does nothing itself: after a yes-like answer (\"Delete\", \"Yes\", \"Go ahead\") call the step that does it; after a no-like one (\"Keep\", \"No\", \"Leave it\") say in a line that nothing was changed, or end; never report something done that no step did.",
             "- A tool that costs money or cannot be undone is confirmed with \(persona.user) by the device before it runs, not by you.",
             "- There are two screens. \(persona.user) has theirs, where everything they see goes: \(InstinctSpec.all.filter { $0.showsLayer && $0.instinct != .recall && !pageTools.contains($0.instinct) }.map(\.id).joined(separator: ", ")), say and open put their result there, each staying under the one before until the next request: so never say what a step has already shown (a note card says what was written, an answer answers), and after a step that showed something call done unless something is still missing (a caveat, a question). I have a screen of my own, where I read: \(InstinctSpec.all.filter { opensPage($0) }.map(\.id).joined(separator: ", ")) open their page there unless screen is user, and nothing on my screen is seen by \(persona.user). A page on my screen comes back in the step's result with a handle (p3): look reads it (thing: p3), open brings it forward to \(persona.users) screen as it is, notebook's item keeps it, and an answer's about names it. A question is read on my screen and answered in a line or a card; a page or results \(persona.user) asked to see open on theirs.",
-            "- The listing tags each earlier thing of this session (p1, p2), each memory (m1, m2), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. The last block names what is on the screen by its handle (\"On screen, n1: my note …\"): \"this\", \"these notes\", \"this page\", \"the one I'm looking at\" is that handle, whatever kind of thing it is, and a step takes it as any other handle. Two places are in view at once when the bubble holds a reply over the screen, and the listing names both (\"On screen, n1: …\" and \"In the bubble, n3: …\"). In view means named in those two blocks, nothing else: the notebook's other notes and the session's earlier things are not in view. When the request points at a thing without naming it (\"this\", \"these\", \"the bullet points\") and more than one thing in view fits, ask which before any step that writes, with the things' titles as the options (\"Which note? Watchlist, or AI project?\"); when one thing is in view, it is that thing, and asking would be a nuisance. Ask which, never whether: a step that needs confirming (a delete, a payment) is confirmed by the device when it runs, so asking first would ask twice. What a handle does not show in the listing is one look away (look with that handle): a note's lines past the cap, an answer's or a memory's text, a page's text further down. Never guess what a thing holds. recall's result names what it found by handle. When the request asks for a thing in the listing, open shows it as itself; say tells a fact that has no thing to show (a memory, a count, whether a line is in a note); an answer with about works something out about one. Never retell a thing you could show. A follow-up to the answer \(persona.user) is reading (\"could that be why?\", \"why?\", \"and in km?\") is narrative or one_line with that answer in about and the follow-up itself as the query, not reworded: the device grows the conversation with the reply as its next turn.",
+            "- The listing tags each earlier thing of this session (p1, p2), each open webpage (w1, w2; what a browser calls tabs, open until \(persona.user) closes them), each note of my notebook (n1, n2) and each link in view on the screen (s1, s2). A tool that takes a thing takes its handle, and only a handle from the listing or from a step's result, never one you made up. The last block names what is on the screen by its handle (\"On screen, n1: my note …\"): \"this\", \"these notes\", \"this page\", \"the one I'm looking at\" is that handle, whatever kind of thing it is, and a step takes it as any other handle. Two places are in view at once when the bubble holds a reply over the screen, and the listing names both (\"On screen, n1: …\" and \"In the bubble, n3: …\"). In view means named in those two blocks, nothing else: the notebook's other notes and the session's earlier things are not in view. When the request points at a thing without naming it (\"this\", \"these\", \"the bullet points\") and more than one thing in view fits, ask which before any step that writes, with the things' titles as the options (\"Which note? Watchlist, or AI project?\"); when one thing is in view, it is that thing, and asking would be a nuisance. Ask which, never whether: a step that needs confirming (a delete, a payment) is confirmed by the device when it runs, so asking first would ask twice. What a handle does not show in the listing is one look away (look with that handle): a note's lines past the cap, an answer's text, a loaded webpage's text, a page's text further down. Never guess what a thing holds. recall's result names what it found by handle. When the request asks for a thing in the listing, open shows it as itself; say tells a fact that has no thing to show (a count, whether a line is in a note); an answer with about works something out about one. Never retell a thing you could show. A follow-up to the answer \(persona.user) is reading (\"could that be why?\", \"why?\", \"and in km?\") is narrative or one_line with that answer in about and the follow-up itself as the query, not reworded: the device grows the conversation with the reply as its next turn.",
             "- \(Screen.rule) \(Screen.pictureRule) A link in view is opened by its handle (open with s2), kept by its handle (notebook's item), and its address, which the listing gives, may be said when \(persona.user) asks for the link; in a note it is never written out: the handle in braces is the link.",
             "- look reads more of an open page than the screen block holds; what it finds comes back as its result, and the links it lists carry handles (s5, s6) used like any other: opened, kept, or said. Look once for what is asked, continue with from only when the result says it was cut, and never look for what the block already shows.",
             "- Every lasting fact the request itself states is read and kept by the device as the words arrive, with a mark: never call remember for what the request says. Call remember for something lasting about \(persona.users) own life that came out of an answer or of ask, never for a decision or detail inside something they are making (a project's mascot, a logo's colour): the work keeps that.",
@@ -195,10 +216,10 @@ public struct Planner: Sendable {
         return lines.joined(separator: "\n")
     }
 
-    /// The request, the exchanges it depends on, and the memories the
-    /// words point at, as the plan's first turn, each tagged with its handle.
-    public static func input(query: String, exchanges: [Exchange], memories: [MemoryRecord], now: Date, calendar: Calendar = .current) -> String {
-        input(query: query, things: ThingTable(exchanges: exchanges, memories: memories), now: now, calendar: calendar)
+    /// The request, the exchanges it depends on, and the open webpages, as
+    /// the plan's first turn, each tagged with its handle.
+    public static func input(query: String, exchanges: [Exchange], webpages: [Webpage], now: Date, calendar: Calendar = .current) -> String {
+        input(query: query, things: ThingTable(exchanges: exchanges, webpages: webpages), now: now, calendar: calendar)
     }
 
     /// `lead` is the one line before the request that says why the planner
@@ -215,13 +236,14 @@ public struct Planner: Sendable {
             lines.append("")
             lines.append("Earlier in this session (oldest first):")
             let noteHandles = things.noteHandles
-            lines += exchanges.map { "- " + ThingTable.line($0, now: now, calendar: calendar, noteHandles: noteHandles) }
+            let webpageHandles = things.webpageHandles
+            lines += exchanges.map { "- " + ThingTable.line($0, now: now, calendar: calendar, noteHandles: noteHandles, webpageHandles: webpageHandles) }
         }
-        let memories = things.memoryEntries
-        if !memories.isEmpty {
+        let webpages = things.webpageEntries
+        if !webpages.isEmpty {
             lines.append("")
-            lines.append("Seen in this app before, the newest (recall finds the rest):")
-            lines += memories.map { "- " + ThingTable.line($0, now: now, calendar: calendar) }
+            lines.append("Open webpages, newest first (what the user has open, kept until closed; open brings one forward, close closes; recall finds one by what it is about):")
+            lines += webpages.map { "- " + ThingTable.line($0, now: now, calendar: calendar) }
         }
         let notes = things.noteEntries
         lines.append("")
@@ -340,18 +362,16 @@ public struct PlanBundle: Sendable {
     public var query: String
     public var exchanges: [Exchange]
     public var facts: [String]
-    public var memories: [MemoryRecord]
     public var tools: [ToolDeclaration]
     public var context: AnswerContext
     public var persona: Persona
     /// What is on screen as the request is made, when it could be read.
     public var screen: Screen?
 
-    public init(query: String, exchanges: [Exchange], facts: [String], memories: [MemoryRecord], tools: [ToolDeclaration], context: AnswerContext, persona: Persona = Persona(), screen: Screen? = nil) {
+    public init(query: String, exchanges: [Exchange], facts: [String], tools: [ToolDeclaration], context: AnswerContext, persona: Persona = Persona(), screen: Screen? = nil) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
-        self.memories = memories
         self.tools = tools
         self.context = context
         self.persona = persona

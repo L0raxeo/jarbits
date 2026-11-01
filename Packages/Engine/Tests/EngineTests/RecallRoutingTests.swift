@@ -11,11 +11,11 @@ import Testing
         calendar.timeZone = TimeZone(identifier: "America/Chicago")!
         return calendar
     }
-    private var video: MemoryRecord {
-        MemoryRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, date: now.addingTimeInterval(-86_400), kind: .page, query: "", title: "Rick Steves' Europe: Lisbon", url: URL(string: "https://m.youtube.com/watch?v=a"))
+    private var video: Webpage {
+        Webpage(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, kind: .page, address: URL(string: "https://m.youtube.com/watch?v=a")!, title: "Rick Steves' Europe: Lisbon", opened: now.addingTimeInterval(-86_400))
     }
-    private var recipe: MemoryRecord {
-        MemoryRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, date: now.addingTimeInterval(-3_600), kind: .narrative, query: "how do you make hot chocolate", text: "You **heat milk** and whisk in ==cocoa==.")
+    private var recipe: Webpage {
+        Webpage(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, kind: .search, address: QueryParser.searchURL(for: "how do you make hot chocolate"), query: "how do you make hot chocolate", opened: now.addingTimeInterval(-3_600))
     }
 
     private func answers(_ values: [String: Double]) -> String {
@@ -23,17 +23,17 @@ import Testing
         return "{ \"model\": \"jev-1.13.0\", \"answers\": { \(pairs) }, \"usage\": { \"input_tokens\": 300, \"output_tokens\": 4 } }"
     }
 
-    @Test func aCollectionAsksWhetherEachMemoryIsAboutTheTopic() throws {
+    @Test func aCollectionAsksWhetherEachWebpageIsAboutTheTopic() throws {
         let request = RecallRouting.request(for: "everything about lisbon", candidates: [video, recipe], now: now, locale: Locale(identifier: "en_US"), calendar: calendar, collection: true)
         let json = try #require(JSONSerialization.jsonObject(with: try request.jsonData()) as? [String: Any])
         let questions = try #require(json["questions"] as? [String: Any])
         let first = try #require(questions["m0"] as? [String: Any])
         let text = try #require(first["instructions"] as? String)
-        #expect(text.hasPrefix("Is this memory about what the query asks for everything about? A web page from yesterday (m.youtube.com)"), "got: \(text)")
+        #expect(text.hasPrefix("Is this webpage about what the query asks for everything about? A web page open since yesterday (m.youtube.com)"), "got: \(text)")
         #expect((first["criteria"] as? [String: String])?["true"] == RecallRouting.collectionCriteria.yes)
         let plain = RecallRouting.request(for: "the video from yesterday", candidates: [video], now: now, locale: Locale(identifier: "en_US"), calendar: calendar)
         let plainText = try #require(((try JSONSerialization.jsonObject(with: try plain.jsonData()) as? [String: Any])?["questions"] as? [String: Any])?["m0"] as? [String: Any])["instructions"] as? String
-        #expect(plainText?.hasPrefix("Is this the memory the query asks for?") == true)
+        #expect(plainText?.hasPrefix("Is this the webpage the query asks for?") == true)
     }
 
     @Test func oneYesNoQuestionPerCandidate() throws {
@@ -45,10 +45,9 @@ import Testing
         let first = try #require(questions["m0"] as? [String: Any])
         #expect(first["type"] as? String == "noul")
         let text = try #require(first["instructions"] as? String)
-        #expect(text.contains("web page from yesterday (m.youtube.com): \"Rick Steves' Europe: Lisbon\""), "got: \(text)")
+        #expect(text.contains("web page open since yesterday (m.youtube.com): \"Rick Steves' Europe: Lisbon\""), "got: \(text)")
         let second = try #require((questions["m1"] as? [String: Any])?["instructions"] as? String)
-        #expect(second.contains("written answer from today"), "got: \(second)")
-        #expect(second.contains("It begins: \"You heat milk and whisk in cocoa.\""), "markup stripped")
+        #expect(second == "Is this the webpage the query asks for? A search open since today: \"how do you make hot chocolate\".", "a search has no host and no excerpt; got: \(second)")
         #expect(Set((first["criteria"] as? [String: String])?.keys.map { $0 } ?? []) == ["true", "false"])
     }
 
@@ -60,12 +59,12 @@ import Testing
     }
 
     @Test func picksAreTheYesesSurestFirst() throws {
-        let candidates = [video, recipe, MemoryRecord(kind: .search, query: "can you use water?")]
+        let candidates = [video, recipe, Webpage(kind: .search, address: QueryParser.searchURL(for: "can you use water?"), query: "can you use water?")]
         let response = try JSONDecoder().decode(SystemOneResponse.self, from: Data(answers(["m0": 0.2, "m1": 0.9, "m2": RecallRouting.maybeThreshold]).utf8))
         let picks = RecallRouting.picks(from: response, candidates: candidates)
-        #expect(picks.map(\.record.kind) == [.narrative, .search], "surest first; the plausible bar is inclusive")
+        #expect(picks.map(\.webpage.query) == ["how do you make hot chocolate", "can you use water?"], "surest first; the plausible bar is inclusive")
         #expect(picks.map(\.probability) == [0.9, RecallRouting.maybeThreshold])
         let missing = try JSONDecoder().decode(SystemOneResponse.self, from: Data(answers(["m0": 0.9]).utf8))
-        #expect(RecallRouting.picks(from: missing, candidates: candidates).map(\.record) == [video], "a missing answer is a no")
+        #expect(RecallRouting.picks(from: missing, candidates: candidates).map(\.webpage) == [video], "a missing answer is a no")
     }
 }

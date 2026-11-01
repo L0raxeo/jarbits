@@ -36,11 +36,8 @@ public struct Exchange: Codable, Sendable, Hashable {
     /// on screen resolves to the notebook's note as the notebook's own
     /// handle does; nil for everything else. Jev is never sent it.
     public var noteID: UUID?
-    /// The saved memory an answer shown from the store was, so its handle
-    /// brings the record back; nil for everything else. Jev is never sent it.
-    public var memoryID: UUID?
 
-    public init(query: String, kind: Kind, title: String? = nil, host: String? = nil, address: String? = nil, text: String? = nil, own: Bool? = nil, noteID: UUID? = nil, memoryID: UUID? = nil) {
+    public init(query: String, kind: Kind, title: String? = nil, host: String? = nil, address: String? = nil, text: String? = nil, own: Bool? = nil, noteID: UUID? = nil) {
         self.query = query
         self.kind = kind
         self.title = title
@@ -49,7 +46,6 @@ public struct Exchange: Codable, Sendable, Hashable {
         self.text = text
         self.own = own
         self.noteID = noteID
-        self.memoryID = memoryID
     }
 
     public static func answer(query: String, text: String) -> Exchange {
@@ -71,7 +67,6 @@ public struct Exchange: Codable, Sendable, Hashable {
         var copy = self
         copy.own = nil
         copy.noteID = nil
-        copy.memoryID = nil
         return copy
     }
 

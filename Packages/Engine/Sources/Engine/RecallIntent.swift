@@ -1,9 +1,11 @@
 import Foundation
 
 /// What Jev read into a recall ask, answered inside the routing request
-/// itself, so a recall costs no second round trip: which kinds of memory
+/// itself, so a recall costs no second round trip: which kinds of webpage
 /// are wanted, whether a particular thing is named, and whether a set is
-/// wanted rather than one thing. The probabilities are kept for the log;
+/// wanted rather than one thing. The five kind questions are Jev's as they
+/// were; answers no longer name anything open, so that question is read
+/// as no kind. The probabilities are kept for the log;
 /// the derived values are what the shortlist acts on (`RecallAsk`).
 public struct RecallIntent: Codable, Sendable, Equatable {
     /// The five kind questions, by the suffix of their question id.
@@ -60,13 +62,13 @@ public struct RecallIntent: Codable, Sendable, Equatable {
 
     /// As `RecallAsk.kinds` takes them; nil when no kind clears the
     /// threshold, which means every kind is wanted. Videos are pages on a
-    /// video host, so videos and pages together still mean only videos.
-    public var kinds: Set<MemoryRecord.Kind>? {
-        var kinds = Set<MemoryRecord.Kind>()
+    /// video host, so videos and pages together still mean only videos;
+    /// pictures are image results pages; answers are nothing open.
+    public var kinds: Set<Webpage.Kind>? {
+        var kinds = Set<Webpage.Kind>()
         let wanted = wanted
         if wanted.contains(.pages) || wanted.contains(.videos) { kinds.insert(.page) }
-        if wanted.contains(.answers) { kinds.formUnion([.narrative, .oneLine]) }
-        if wanted.contains(.pictures) { kinds.insert(.image) }
+        if wanted.contains(.pictures) { kinds.insert(.images) }
         if wanted.contains(.searches) { kinds.insert(.search) }
         return kinds.isEmpty ? nil : kinds
     }

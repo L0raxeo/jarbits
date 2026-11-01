@@ -7,7 +7,7 @@ import Foundation
 /// The pick is a shortcut for a request Jev is near-certain about
 /// (`EngineRequest.confidenceFloor`). Everything else is reasoned: the
 /// planner reads the request with every instinct as a tool, the facts and
-/// the memories in view, and calls what fits. Accuracy over speed: the
+/// the open webpages in view, and calls what fits. Accuracy over speed: the
 /// bounds are wide, and the model thinks.
 public enum ReasoningPolicy {
     /// A reasoning score at or above this leans to the top level, several
@@ -22,8 +22,9 @@ public enum ReasoningPolicy {
     public static let timeBudget: Duration = .seconds(120)
     /// One round's wait for the model, with room to think.
     public static let roundTimeout: Duration = .seconds(45)
-    /// The most memories a plan is shown: the newest; recall finds the rest.
-    public static let memoriesGiven = 5
+    /// The most open webpages a plan's listing holds, newest first; past
+    /// that, the ones nearest the request in meaning, and recall finds the rest.
+    public static let webpagesListed = 40
 
     /// An unsure pick is always planned; a sure one when its reasoning
     /// score says it needs several steps, or when its instinct has not

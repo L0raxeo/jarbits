@@ -99,17 +99,8 @@ struct ResultView: View {
             AnswerView(spans: AnswerMarkup.styled(text, for: .oneLine), stoppedEarly: false, format: .oneLine, clayY: clayY, barCompact: $barCompact)
         case let .said(_, text):
             AnswerView(spans: AnswerMarkup.styled(text, for: .narrative), stoppedEarly: false, format: .narrative, clayY: clayY, barCompact: $barCompact, sources: layer.sources)
-        case let .memory(record):
-            // A remembered conversation shows its earlier turns and ends on its last.
-            let turns = record.turns ?? []
-            let format = turns.last?.format ?? (record.kind == .oneLine ? .oneLine : .narrative)
-            AnswerView(
-                spans: AnswerMarkup.styled(turns.last?.answer ?? record.text ?? "", for: format), stoppedEarly: false, format: format,
-                clayY: clayY, barCompact: $barCompact, recalledOn: record.date,
-                history: Array(turns.dropLast()), query: turns.count > 1 ? turns.last?.query : nil
-            )
-        case let .recallPicker(records, title):
-            RecallGridView(records: records, title: title, topInset: topInset, barCompact: $barCompact)
+        case let .recallPicker(webpages, title):
+            RecallGridView(webpages: webpages, title: title, topInset: topInset, barCompact: $barCompact)
         case let .siteChoices(name, candidates):
             SiteChoicesView(name: name, candidates: candidates, clayY: clayY)
         case let .note(note):
@@ -374,16 +365,16 @@ private struct AnswerView: View {
     }
 }
 
-/// Several memories matched a recall: a two-wide grid of tiles, like
-/// Safari's tab overview. A page shows the picture taken when it was
-/// memorised, a narrative its opening lines, the rest a symbol; the kind
-/// and the title sit under each tile, and a tap replays that one. Laid out
-/// under the frost like the other cards.
+/// Several open webpages matched a recall, or all of them were asked for:
+/// a two-wide grid of tiles, like Safari's tab overview. Each shows the
+/// picture taken of it, the kind and the title under it, and a tap brings
+/// that webpage forward as it stands. Laid out under the frost like the
+/// other cards.
 private struct RecallGridView: View {
     @Environment(JarbitsSession.self) private var session
-    let records: [MemoryRecord]
+    let webpages: [Webpage]
     /// What the set is, when a set was asked for ("Everything about Dyson
-    /// PencilVac", "Last 5 searches"); nil for a plain choice.
+    /// PencilVac", "Last 5 searches", "All webpages"); nil for a plain choice.
     let title: String?
     let topInset: CGFloat
     @Binding var barCompact: Bool
@@ -391,7 +382,7 @@ private struct RecallGridView: View {
     private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
 
     private var heading: String {
-        let count = records.count == 1 ? "1 memory" : "\(records.count) memories"
+        let count = webpages.count == 1 ? "1 open" : "\(webpages.count) open"
         guard let title else { return count }
         return "\(title) · \(count)"
     }
@@ -404,8 +395,8 @@ private struct RecallGridView: View {
                         .font(.footnote)
                         .foregroundStyle(Palette.quiet)
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 20) {
-                        ForEach(records) { record in
-                            Button { session.replay(record) } label: { MemoryTile(record: record) }
+                        ForEach(webpages) { webpage in
+                            Button { session.bringForward(webpage: webpage.id) } label: { WebpageTile(webpage: webpage) }
                                 .buttonStyle(.plain)
                         }
                     }
@@ -428,11 +419,11 @@ private struct RecallGridView: View {
     }
 }
 
-/// One memory in the grid: a portrait tile and, under it, the kind's
-/// symbol, the title on one line, and when.
-struct MemoryTile: View {
+/// One open webpage in the grid: a portrait tile and, under it, the
+/// kind's symbol, the title on one line, and since when it has been open.
+struct WebpageTile: View {
     @Environment(JarbitsSession.self) private var session
-    let record: MemoryRecord
+    let webpage: Webpage
     /// The page area's proportions on the phone, as the pictures are.
     static let aspect: CGFloat = 0.56
     @State private var picture: UIImage?
@@ -445,33 +436,23 @@ struct MemoryTile: View {
                 .aspectRatio(Self.aspect, contentMode: .fit)
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(Color.black.opacity(0.06)))
-                .overlay(alignment: .topTrailing) {
-                    // Long-term: it will not be flushed.
-                    if record.kept != nil {
-                        Image(systemName: "bookmark.fill")
-                            .font(.caption)
-                            .foregroundStyle(Palette.quiet)
-                            .padding(8)
-                    }
-                }
                 .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
             HStack(spacing: 6) {
-                Image(systemName: record.kind.symbol)
+                Image(systemName: webpage.kind.symbol)
                     .font(.footnote)
                     .foregroundStyle(Palette.quiet)
-                Text(record.title)
+                Text(webpage.title)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Palette.ink)
                     .lineLimit(1)
             }
-            Text(record.date.formatted(.relative(presentation: .named)))
+            Text(webpage.opened.formatted(.relative(presentation: .named)))
                 .font(.footnote)
                 .foregroundStyle(Palette.quiet)
         }
         .contentShape(Rectangle())
-        .task(id: record.id) {
-            guard record.kind == .page else { return }
-            let url = session.memory.pictureURL(for: record.id)
+        .task(id: webpage.id) {
+            let url = session.webpages.pictureURL(for: webpage.id)
             picture = await Task.detached { UIImage(contentsOfFile: url.path(percentEncoded: false)) }.value
         }
     }
@@ -481,27 +462,13 @@ struct MemoryTile: View {
         GeometryReader { proxy in
             ZStack {
                 Color.white
-                switch record.kind {
-                case .page:
-                    if let picture {
-                        Image(uiImage: picture)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                    } else {
-                        placeholder(record.url?.host() ?? "")
-                    }
-                case .narrative, .oneLine where record.text != nil:
-                    Text(AnswerMarkup.plain(record.text ?? ""))
-                        .font(.footnote)
-                        .foregroundStyle(Palette.ink)
-                        .multilineTextAlignment(.leading)
-                        .padding(12)
-                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-                case .action:
-                    placeholder(record.text ?? record.title)
-                case .oneLine, .image, .search:
-                    placeholder(record.query)
+                if let picture {
+                    Image(uiImage: picture)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                } else {
+                    placeholder(webpage.kind == .page ? (webpage.address.host() ?? "") : webpage.query)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -511,7 +478,7 @@ struct MemoryTile: View {
 
     private func placeholder(_ caption: String) -> some View {
         VStack(spacing: 10) {
-            Image(systemName: record.kind.symbol)
+            Image(systemName: webpage.kind.symbol)
                 .font(.system(size: 34, weight: .light))
                 .foregroundStyle(Palette.quiet)
             if !caption.isEmpty {

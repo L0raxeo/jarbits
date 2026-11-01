@@ -6,28 +6,28 @@ import Engine
 /// is where the choice of tool and of handle is made; later rounds depend
 /// on what the device did, which is the phone's to check.
 public struct PlanCase: Codable, Equatable, Sendable {
-    /// A memory shown to the planner, in the little a case needs to say.
-    public struct Memory: Codable, Equatable, Sendable {
-        public var kind: MemoryRecord.Kind
+    /// An open webpage listed to the planner, in the little a case needs to say.
+    public struct OpenWebpage: Codable, Equatable, Sendable {
+        public var kind: Webpage.Kind?
         public var title: String
-        public var url: URL?
-        public var text: String?
-        /// How long before the example date it was seen.
+        public var url: URL
+        /// How long before the example date it was opened.
         public var daysAgo: Double?
 
-        public init(kind: MemoryRecord.Kind, title: String, url: URL? = nil, text: String? = nil, daysAgo: Double? = nil) {
+        public init(kind: Webpage.Kind? = nil, title: String, url: URL, daysAgo: Double? = nil) {
             self.kind = kind
             self.title = title
             self.url = url
-            self.text = text
             self.daysAgo = daysAgo
         }
 
-        /// The record, dated against `now`; the id is fixed by the title so
+        /// The webpage, dated against `now`; the id is fixed by the title so
         /// the request bytes are stable across runs.
-        public func record(now: Date) -> MemoryRecord {
+        public func webpage(now: Date) -> Webpage {
             let id = UUID(uuidString: "00000000-0000-4000-8000-" + String(format: "%012x", abs(title.hashValue) % 0xFFFF_FFFF_FFFF)) ?? UUID()
-            return MemoryRecord(id: id, date: now.addingTimeInterval(-(daysAgo ?? 0) * 86_400), kind: kind, query: title, title: title, url: url, text: text)
+            let kind = kind ?? (QueryParser.isImageResults(url) ? .images : QueryParser.isSearchResults(url) ? .search : .page)
+            let query = kind == .page ? "" : (QueryParser.searchTerm(in: url) ?? title)
+            return Webpage(id: id, kind: kind, address: url, title: title, query: query, opened: now.addingTimeInterval(-(daysAgo ?? 0) * 86_400))
         }
     }
 
@@ -121,7 +121,7 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var query: String
     public var exchanges: [Exchange]?
     public var facts: [String]?
-    public var memories: [Memory]?
+    public var webpages: [OpenWebpage]?
     public var notes: [NoteCase]?
     public var screen: ScreenCase?
     /// The reply in the bubble over the screen, when one is up: a second
@@ -140,11 +140,11 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var picked: Instinct?
     public var note: String?
 
-    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, memories: [Memory]? = nil, notes: [NoteCase]? = nil, screen: ScreenCase? = nil, bubble: ScreenCase? = nil, prior: [PriorStep]? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
+    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, webpages: [OpenWebpage]? = nil, notes: [NoteCase]? = nil, screen: ScreenCase? = nil, bubble: ScreenCase? = nil, prior: [PriorStep]? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
-        self.memories = memories
+        self.webpages = webpages
         self.notes = notes
         self.screen = screen
         self.bubble = bubble
@@ -160,7 +160,7 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var name: String {
         var name = query
         if let facts, !facts.isEmpty { name += " knowing \(facts.count)" }
-        if let memories, !memories.isEmpty { name += " with \(memories.count) memories" }
+        if let webpages, !webpages.isEmpty { name += " with \(webpages.count) open" }
         if let notes, !notes.isEmpty { name += " with \(notes.count) notes" }
         if let last = exchanges?.last { name += " after \"\(last.query)\"" }
         if let screen { name += " over \"\(screen.title)\"" }

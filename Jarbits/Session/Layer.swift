@@ -46,20 +46,13 @@ final class Layer: Identifiable {
     /// The name the next page teaches the site book, while the results
     /// page stands in for the choices: the first site tapped off it.
     var learningSite: String?
-    /// The search that led to the next page memorised, and to that one
-    /// only: pages browsed on from it are remembered by what they are.
-    var queryForNextPage: String?
-    /// The memory on screen, as the write that produced it: what the next
-    /// memory points at as `cameFrom`. Nil at the start of a layer, set by
-    /// every write and by a recall; writes are chained on it, so they land
-    /// in order and each knows the id before.
-    var currentMemory: Task<UUID?, Never>?
+    /// The open webpage this layer is, on the user's stack: set when the
+    /// layer joins the row, kept across launches; nil for a card and for a
+    /// page on Jarbits's own screen.
+    var webpageID: UUID?
     /// When the layer was last on screen; the live policy keeps the newest.
     var lastShown = Date.now
-    /// The page memory on screen in this layer, whose picture a screenshot
-    /// goes to; nil on a results page or an untitled one.
-    var pictureID: UUID?
-    /// When that memory's picture was last taken.
+    /// When the webpage's picture was last taken.
     var lastPicture: Date?
     /// The picture is the video's own thumbnail (a YouTube page): no
     /// screenshots, which would only show the player's black box.
@@ -90,8 +83,9 @@ final class Layer: Identifiable {
     /// user's stack while this is set.
     var desk = false
     /// When the layer was made: the order the user's layers and Jarbits's
-    /// pages are listed in, as one session.
-    let created = Date.now
+    /// pages are listed in, as one session; a restored webpage's is when it
+    /// was opened.
+    var created = Date.now
     /// The pages Jarbits read on its own screen for this answer, oldest
     /// first; the full view lists them, and a tap brings one forward.
     var sources: [Layer] = []
@@ -119,10 +113,8 @@ final class Layer: Identifiable {
             let turns = thread
             let last = turns.last
             return Screen(kind: .answer, title: last?.query ?? query, visible: text.isEmpty ? (last?.answer ?? "") : text)
-        case let .memory(record):
-            return Screen(kind: .answer, title: record.title, address: record.url, visible: record.text ?? "")
-        case let .recallPicker(records, title):
-            return Screen(kind: .grid, title: title ?? "Memories", visible: records.map { "\($0.kind.label): \($0.title)" }.joined(separator: "\n"))
+        case let .recallPicker(webpages, title):
+            return Screen(kind: .grid, title: title ?? "Open webpages", visible: webpages.map { "\($0.kind.label): \($0.title)" }.joined(separator: "\n"))
         case let .siteChoices(name, candidates):
             return Screen(kind: .grid, title: name, visible: candidates.map(\.host).joined(separator: "\n"))
         }

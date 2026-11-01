@@ -2,9 +2,9 @@ import Foundation
 import Engine
 
 /// The site book on disk: what each name the user opens a site by means.
-/// One JSON file beside the memories, loaded once, written whole on every
+/// One JSON file beside the open webpages, loaded once, written whole on every
 /// change (it holds a few dozen entries). The first load seeds it with
-/// well-known sites; "Clear memory" brings it back to that seed.
+/// well-known sites; "Close everything" brings it back to that seed.
 actor SiteStore {
     static let shared = SiteStore()
 

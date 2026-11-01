@@ -12,7 +12,7 @@ public enum SideEffects: String, Codable, Sendable {
 /// The values an instinct takes, declared once: Jev reads the closed-set
 /// ones as questions in the routing request, a small model call reads the
 /// free-form ones out of the words, a plan passes either, and a thing (a
-/// page, a search, an answer, a memory) is named by its handle in a plan
+/// page, a search, an answer, an open webpage) is named by its handle in a plan
 /// and resolved by the device, never read by a model.
 public struct ArgumentSchema: Sendable, Equatable {
     public struct Field: Sendable, Equatable {
@@ -22,7 +22,7 @@ public struct ArgumentSchema: Sendable, Equatable {
             case integer
             case boolean
             case choice([String])
-            /// A thing from the plan's listing, by handle (`p1`, `m2`); on
+            /// A thing from the plan's listing, by handle (`p1`, `w2`); on
             /// the pick path, what the query leans on. See `ThingTable`.
             case thing
         }
@@ -91,7 +91,7 @@ public struct ArgumentSchema: Sendable, Equatable {
                 property["enum"] = .array(options.map(JSONValue.string))
             case .thing:
                 type = "string"
-                property["description"] = .string(field.description + " (a handle from the listing or a step's result, such as p1 or m2)")
+                property["description"] = .string(field.description + " (a handle from the listing or a step's result, such as p1 or w2)")
             }
             property["type"] = field.required ? .string(type) : .array([.string(type), .string("null")])
             properties[field.name] = .object(property)
@@ -204,7 +204,7 @@ public struct InstinctSpec: Sendable, Identifiable {
     public let questions: @Sendable (RequestContext) -> [(id: String, question: Question)]
 
     /// The thing an answer is about, when the request leans on one: a page
-    /// read, a search made, an earlier answer, a memory. The device puts it
+    /// read, a search made, an earlier answer, an open webpage. The device puts it
     /// in the answer's context; the model never sees an address.
     public static let aboutField = ArgumentSchema.Field(name: "about", kind: .thing, description: "the thing this is about, when the request leans on one that was listed; a follow-up to the answer the user is reading (the newest answer listed, p2) names that answer here, with query as the follow-up itself, and the device makes the reply its next turn", required: false)
 

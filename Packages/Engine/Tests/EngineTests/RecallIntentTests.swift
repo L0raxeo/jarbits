@@ -82,31 +82,31 @@ import Testing
         let counted = RecallAsk(intent: RecallIntent(named: false, all: true), count: 5)
         #expect(counted.count == 5)
         #expect(!counted.all && !counted.collection, "a count says how many")
-        #expect(counted.countTitle == "Last 5 memories")
+        #expect(counted.countTitle == "Last 5 webpages")
         #expect(RecallAsk(count: 100).count == RecallAsk.maxCount, "a count is clamped")
         let none = RecallAsk()
         #expect(none.kinds == nil && none.named == nil && !none.all && none.isEmpty, "no intent, no count, no span: the words alone decide")
     }
 
     @Test func anUnnamedAskIgnoresEveryWord() {
-        func record(_ kind: MemoryRecord.Kind, _ query: String, minutesAgo: Int, title: String? = nil, url: String? = nil) -> MemoryRecord {
-            MemoryRecord(date: now.addingTimeInterval(-Double(minutesAgo) * 60), kind: kind, query: query, title: title, url: url.flatMap(URL.init))
+        func page(_ query: String, minutesAgo: Int, title: String, url: String) -> Webpage {
+            Webpage(kind: .page, address: URL(string: url)!, title: title, query: query, opened: now.addingTimeInterval(-Double(minutesAgo) * 60))
         }
-        let peeking = record(.page, "insta", minutesAgo: 3000, title: "Peeking at Instagram", url: "https://www.instagram.com/p/x/")
-        let s1 = record(.search, "dyson pencilvac", minutesAgo: 5)
-        let p1 = record(.page, "dyson", minutesAgo: 10, title: "Dyson PencilVac | Dyson", url: "https://www.dyson.com/pencilvac")
-        let a1 = record(.narrative, "capital of peru", minutesAgo: 20)
-        let v1 = record(.page, "muse", minutesAgo: 30, title: "Muse - Hysteria", url: "https://m.youtube.com/watch?v=1")
-        let all = [peeking, s1, p1, a1, v1]
+        let peeking = page("insta", minutesAgo: 3000, title: "Peeking at Instagram", url: "https://www.instagram.com/p/x/")
+        let s1 = Webpage(kind: .search, address: QueryParser.searchURL(for: "dyson pencilvac"), query: "dyson pencilvac", opened: now.addingTimeInterval(-5 * 60))
+        let p1 = page("dyson", minutesAgo: 10, title: "Dyson PencilVac | Dyson", url: "https://www.dyson.com/pencilvac")
+        let v1 = page("muse", minutesAgo: 30, title: "Muse - Hysteria", url: "https://m.youtube.com/watch?v=1")
+        let all = [peeking, s1, p1, v1]
         let unnamed = RecallIntent(named: false, all: true)
-        #expect(MemorySearch.shortlist(all, topic: "peeking", ask: RecallAsk(intent: unnamed)) == [s1, p1, a1, v1, peeking], "nothing named: a topic read anyway does not matter")
-        #expect(MemorySearch.shortlist(all, topic: nil, ask: RecallAsk(intent: unnamed)) == [s1, p1, a1, v1, peeking], "no filter and nothing named: the newest, for the judge")
-        #expect(MemorySearch.shortlist(all, topic: "peeking") == [peeking], "with no intent the topic still matches: this is the bug the intent prevents")
-        #expect(MemorySearch.shortlist(all, topic: nil).isEmpty, "with no intent and no topic there is nothing to go on")
+        #expect(WebpageSearch.shortlist(all, topic: "peeking", ask: RecallAsk(intent: unnamed)) == [s1, p1, v1, peeking], "nothing named: a topic read anyway does not matter")
+        #expect(WebpageSearch.shortlist(all, topic: nil, ask: RecallAsk(intent: unnamed)) == [s1, p1, v1, peeking], "no filter and nothing named: the newest, for the judge")
+        #expect(WebpageSearch.shortlist(all, topic: "peeking") == [peeking], "with no intent the topic still matches: this is the bug the intent prevents")
+        #expect(WebpageSearch.shortlist(all, topic: nil).isEmpty, "with no intent and no topic there is nothing to go on")
         let videos = RecallIntent(kinds: [.videos], named: false, all: true)
-        #expect(MemorySearch.shortlist(all, topic: nil, ask: RecallAsk(intent: videos)) == [v1], "a set of a kind keeps the kind")
-        let named = RecallIntent(kinds: [.answers], named: true, all: false)
-        #expect(MemorySearch.shortlist(all, topic: "dyson", ask: RecallAsk(intent: named)) == [s1, p1], "named: word matches; the kind is a preference, not a wall")
-        #expect(MemorySearch.shortlist(all, topic: nil, ask: RecallAsk(intent: named)) == [a1], "named but no topic read: the allowed set, newest first")
+        #expect(WebpageSearch.shortlist(all, topic: nil, ask: RecallAsk(intent: videos)) == [v1], "a set of a kind keeps the kind")
+        let named = RecallIntent(kinds: [.searches], named: true, all: false)
+        #expect(WebpageSearch.shortlist(all, topic: "dyson", ask: RecallAsk(intent: named)) == [s1], "named: the search holds the word; the kind holds while something of it matches")
+        #expect(WebpageSearch.shortlist(all, topic: "muse", ask: RecallAsk(intent: named)) == [v1], "no search holds the word: the kind is a preference, not a wall")
+        #expect(WebpageSearch.shortlist(all, topic: nil, ask: RecallAsk(intent: named)) == [s1], "named but no topic read: the allowed set, newest first")
     }
 }

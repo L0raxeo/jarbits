@@ -2,7 +2,7 @@ import Foundation
 import Engine
 
 /// Jarbits's notebook: every note a Markdown file in `Notebook/` under
-/// Application Support, permanent, not a memory. The title is the file's
+/// Application Support, permanent, not a webpage. The title is the file's
 /// first line, the dates are the file's. Every replace or append first
 /// copies the text as it was to `.versions/<id>/`, so an edit can be
 /// undone; a delete moves the file to `.trash/`, which is never shown or

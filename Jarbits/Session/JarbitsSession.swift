@@ -46,7 +46,7 @@ final class JarbitsSession {
     /// Live pages kept on Jarbits's own screen: the newest two.
     static let maxDeskLive = 2
     /// A background page untouched for this long is unloaded.
-    static let idleWindow: TimeInterval = 30 * 60
+    static let idleWindow: TimeInterval = 6 * 60 * 60
     /// How often background pages are looked over for idleness.
     private static let sweepInterval: Duration = .seconds(60)
 
@@ -62,12 +62,9 @@ final class JarbitsSession {
     /// Whether the user is doing anything; over a result the microphone
     /// listens only while they are not.
     let attention = Attention()
-    /// Every result the user saw, for `recall` queries; the grid reads
-    /// pictures from it.
-    let memory: MemoryStore
-    /// A memory's query being asked again: Jev may not answer `recall` for
-    /// it, or a memory could replay itself forever.
-    private var replayingQuery: String?
+    /// The open webpages: every web layer on the user's stack is one, kept
+    /// across launches until closed; the grid reads pictures from it.
+    let webpages: WebpageStore
     /// What each site name the user asks for means; the site instinct's own.
     let sites: SiteStore
     /// Jarbits's notebook: the notes, as files.
@@ -75,7 +72,7 @@ final class JarbitsSession {
     /// Brave's web search for the sites an unknown name might mean; nil
     /// shows the Google results page for the name instead.
     let siteSearch: SiteSearch?
-    /// A page's picture for the recall grid: this wide in points (three
+    /// A webpage's picture for the grid: this wide in points (three
     /// times that in pixels), as a JPEG at this quality, a few tens of KB.
     private let pictureWidth: CGFloat = 120
     private let pictureQuality: CGFloat = 0.6
@@ -90,7 +87,7 @@ final class JarbitsSession {
     /// nothing shown for the query is removed until the next query's first
     /// piece replaces the stack (`bubbleToken`), the way a spoken sentence
     /// cannot be unsaid. Each is a layer all the same, so its thread, its
-    /// exchanges, its memory and its record work as for any other;
+    /// exchanges and its record work as for any other;
     /// `promoteReply` puts the one read on into the stack as the full
     /// view. Empty when nothing is up. See `ReplyBubble`.
     private(set) var replies: [Layer] = []
@@ -169,7 +166,7 @@ final class JarbitsSession {
             guard layer.isWeb, let address = layer.webAddress else { return false }
             switch reference.kind {
             case .page:
-                return reference.address.map { MemoryRecord.canonical($0) == MemoryRecord.canonical(address) } ?? false
+                return reference.address.map { Webpage.canonical($0) == Webpage.canonical(address) } ?? false
             case .search:
                 guard QueryParser.isSearchResults(address) else { return false }
                 let term = (reference.term ?? reference.title).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -246,7 +243,7 @@ final class JarbitsSession {
     /// The facts' words, for the answer prompts; refreshed after every change.
     private(set) var factTexts: [String] = []
     /// The user's name, asked on the sheet when the app is first installed
-    /// or its memory is cleared; nil until given.
+    /// or everything is cleared; nil until given.
     private(set) var userName: String?
     /// Jarbits and the user, for every Gemini prompt.
     var persona: Persona { Persona(userName: userName) }
@@ -283,11 +280,11 @@ final class JarbitsSession {
     /// A Gemini key is configured, so an answer can be shown.
     var canAnswer: Bool { answerClient != nil }
 
-    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, closing: Closing? = nil, log: DecisionLog = .shared, memory: MemoryStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared) {
+    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, closing: Closing? = nil, log: DecisionLog = .shared, webpages: WebpageStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared) {
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
-        self.memory = memory
+        self.webpages = webpages
         self.recall = recall
         self.siteSearch = siteSearch
         self.sites = sites
@@ -320,11 +317,112 @@ final class JarbitsSession {
         memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.memoryWarning() }
         }
-        // Leaving the app: the page as last seen, before iOS takes its own snapshot.
+        // Leaving the app: the page as last seen, before iOS takes its own
+        // snapshot; where it stood, and the row, written now.
         resignObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.takePicture(reason: "leave") }
+            MainActor.assumeIsolated {
+                self?.takePicture(reason: "leave")
+                self?.leaveWebpages()
+            }
         }
         warmer.warm()
+        restoreWebpages()
+    }
+
+    // MARK: Open webpages
+
+    /// The row as it was when the app last left: every open webpage back as
+    /// an unloaded layer, the one the user was on current, reloading when
+    /// reached; the idle circle shows first, as always. Card layers are not
+    /// kept, nor a page's back and forward history.
+    private func restoreWebpages() {
+        Task { [weak self] in
+            guard let self else { return }
+            let row = await webpages.all()
+            let currentID = await webpages.current()
+            guard !row.isEmpty, layers.isEmpty else { return }
+            layers = row.map { webpage in
+                let layer = Layer(plan: .web(webpage.address), query: webpage.query, decision: nil)
+                layer.webpageID = webpage.id
+                layer.pageAddress = webpage.address
+                layer.pageTitle = webpage.title
+                layer.notes = PageNotes(address: webpage.address, scrollY: webpage.scrollY ?? 0, videoTime: webpage.videoTime)
+                layer.created = webpage.opened
+                layer.lastShown = webpage.lastSeen
+                layer.pictureFixed = PageShot.youTubeThumbnail(for: webpage.address) != nil
+                return layer
+            }
+            index = layers.firstIndex { $0.webpageID == currentID } ?? layers.count - 1
+            #if DEBUG
+            print("webpages restored: \(layers.count), current \(index + 1)")
+            #endif
+        }
+    }
+
+    /// The webpage a web layer on the user's stack is, opened in the store
+    /// when the layer joins the row; nothing for a card or a desk page.
+    private func openWebpage(for layer: Layer) {
+        guard layer.isWeb, !layer.desk, layer.webpageID == nil, let address = layer.webAddress else { return }
+        let kind: Webpage.Kind = QueryParser.isImageResults(address) ? .images : QueryParser.isSearchResults(address) ? .search : .page
+        let term = QueryParser.searchTerm(in: address)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let query = kind == .page ? layer.query : (term.isEmpty ? layer.query : term)
+        let webpage = Webpage(kind: kind, address: address, title: layer.pageTitle, query: query, opened: layer.created, lastSeen: layer.lastShown)
+        layer.webpageID = webpage.id
+        layer.pictureFixed = PageShot.youTubeThumbnail(for: address) != nil
+        let position = layers.firstIndex { $0 === layer }
+        Task { [webpages] in await webpages.open(webpage, at: position) }
+        syncWebpages()
+    }
+
+    /// The store's row and current one follow the layers.
+    private func syncWebpages() {
+        let ids = layers.compactMap(\.webpageID)
+        let currentID = current?.webpageID
+        Task { [webpages] in await webpages.order(ids, current: currentID) }
+    }
+
+    /// The app is leaving: where the page on screen stands, and the row, written now.
+    private func leaveWebpages() {
+        let shown = current
+        Task { [webpages] in
+            if let shown, let id = shown.webpageID, let host = shown.page, let notes = await host.notes() {
+                await webpages.update(id, lastSeen: .now, scrollY: .some(notes.scrollY), videoTime: .some(notes.videoTime))
+            }
+            await webpages.flush()
+        }
+    }
+
+    /// Webpages closed by the user's word: gone from the row and the store;
+    /// the one on screen moves to its neighbour, and an empty row goes idle.
+    func close(_ ids: [UUID]) {
+        let gone = Set(ids)
+        guard layers.contains(where: { $0.webpageID.map(gone.contains) ?? false }) else { return }
+        let wasCurrent = current
+        for layer in layers where layer.webpageID.map(gone.contains) ?? false { layer.page?.close(); layer.page = nil }
+        layers.removeAll { $0.webpageID.map(gone.contains) ?? false }
+        Task { [webpages] in await webpages.close(ids) }
+        #if DEBUG
+        print("webpages closed \(ids.count); \(layers.count) left")
+        #endif
+        if layers.isEmpty {
+            index = 0
+            syncWebpages()
+            reset()
+            return
+        }
+        if let wasCurrent, let at = layers.firstIndex(where: { $0 === wasCurrent }) {
+            index = at
+            syncWebpages()
+        } else {
+            index = min(max(index - 1, 0), layers.count - 1)
+            syncWebpages()
+            if stage != .idle { move(to: index) }
+        }
+    }
+
+    /// The layer an open webpage is, by its id.
+    func layer(forWebpage id: UUID) -> Layer? {
+        layers.first { $0.webpageID == id }
     }
 
     /// The capsule took focus, or speech was heard: a query is likely. The
@@ -592,22 +690,8 @@ final class JarbitsSession {
         guard let layer = askedOver ?? current else { return nil }
         switch layer.plan {
         case let .note(note): return await notebook.note(id: note.id).map { .note($0) } ?? .note(note)
-        case .answer, .time, .said, .memory: return layer.exchanges.last.map { .exchange($0.exchange) }
+        case .answer, .time, .said: return layer.exchanges.last.map { .exchange($0.exchange) }
         default: return nil
-        }
-    }
-
-    /// A plan step that did something with no screen of its own becomes a
-    /// memory of its own, so "what did you just do" finds it.
-    func noteAction(name: String, arguments: JSONValue, result: String, query: String) {
-        let from = current?.currentMemory
-        Task { [memory] in
-            var record = MemoryRecord(query: query, parts: [MemoryPart(.action(name: name, arguments: arguments, result: result))])
-            record.cameFrom = await from?.value   // chained from what was on screen, which keeps its own memory
-            #if DEBUG
-            print("memory action \(name) \"\(result)\" for \"\(query)\"")
-            #endif
-            _ = await memory.remember(record)
         }
     }
 
@@ -737,7 +821,7 @@ final class JarbitsSession {
     /// from the site choices, the results for the name, and the first site
     /// tapped off them is learned as a choice would have been. A new layer:
     /// the card stays one swipe back. The layer keeps the decision, so the
-    /// results a recall fell through to are not memorised as a search.
+    /// results a recall fell through to keep that decision.
     func showWebResults() {
         guard let layer = current, !layer.query.isEmpty else { return }
         if case let .siteChoices(name, _) = layer.plan {
@@ -798,14 +882,18 @@ final class JarbitsSession {
             Task { await leaving.page?.pause() }
         }
         if index + 1 < layers.count {
-            for dropped in layers[(index + 1)...] { dropped.page?.close() }
+            // Ahead of the one the user was on: closed, as browser history goes.
+            let dropped = Array(layers[(index + 1)...])
+            for layer in dropped { layer.page?.close() }
             layers.removeSubrange((index + 1)...)
+            let ids = dropped.compactMap(\.webpageID)
+            if !ids.isEmpty { Task { [webpages] in await webpages.close(ids) } }
         }
         layers.append(layer)
         index = layers.count - 1
         layer.lastShown = .now
-        // The search that led to the next page memorised, and to that one only.
-        if layer.queryForNextPage == nil { layer.queryForNextPage = layer.query }
+        openWebpage(for: layer)
+        syncWebpages()
         enforceLive()
         #if DEBUG
         print("layer \(index + 1)/\(layers.count) \(layer.plan.cardID) \"\(layer.query)\"; live \(layers.filter(\.isLive).count)")
@@ -826,6 +914,12 @@ final class JarbitsSession {
     /// On Jarbits's own screen when the plan said so.
     func openPage(_ url: URL, context: InstinctContext, recording: Bool = true) {
         if context.desk { openOnDesk(url, context: context, recording: recording); return }
+        // A page already open comes forward as it stands, as a browser would,
+        // unless the user asked for a new one; a search is always fresh results.
+        if !context.fresh, !QueryParser.isSearchResults(url), let open = layer(for: Reference(kind: .page, title: "", address: url)), !open.desk {
+            bringForward(open, context: context)
+            return
+        }
         let layer = Layer(plan: .web(url), query: context.query, decision: context.decision)
         layer.extraction = context.extraction
         layer.fact = context.fact
@@ -890,33 +984,29 @@ final class JarbitsSession {
     /// plan goes on.
     func open(_ reference: Reference, context: InstinctContext) async {
         lastQuery = context.query
-        // A page or search Jarbits has open on its own screen comes forward
-        // as it is, already loaded, instead of loading again.
-        if reference.kind == .page || reference.kind == .search, let mine = layer(for: reference), mine.desk {
+        // An open webpage comes forward as it stands; so does a page or
+        // search Jarbits has open on its own screen, already loaded.
+        if let id = reference.webpageID, let open = layer(forWebpage: id) {
+            bringForward(open, context: context)
+            return
+        }
+        if reference.kind == .page || reference.kind == .search, let mine = layer(for: reference), mine.desk || !context.fresh {
             bringForward(mine, context: context)
             return
         }
         switch reference.kind {
         case .page where reference.address != nil:
             openPage(reference.address!, context: context)
-        case .search:
-            openPage(QueryParser.searchURL(for: reference.term ?? reference.title), context: context)
+        case .search, .images:
+            openPage(reference.kind == .images ? QueryParser.imageSearchURL(for: reference.term ?? reference.title) : QueryParser.searchURL(for: reference.term ?? reference.title), context: context)
         case .note:
             if let id = reference.noteID, let note = await notebook.note(id: id) {
                 showNote(note, context: context)
             } else {
                 showReply(.said(query: context.query, text: "I no longer have that note in my notebook."), context: context)
             }
-        case .answer, .action, .picture, .page, .recall, .site:
-            var saved: MemoryRecord?
-            if let id = reference.memoryID { saved = await memory.record(id: id) }
-            if let saved, saved.kind == .narrative || saved.kind == .action || saved.turns != nil {
-                let layer = Layer(plan: .memory(saved), query: context.query, decision: context.decision)
-                layer.currentMemory = Task { saved.id }
-                open(layer)
-                stage = .ready
-                record(context)
-            } else if let text = reference.text, !text.isEmpty {
+        case .answer, .page, .recall, .site:
+            if let text = reference.text, !text.isEmpty {
                 showReply(.said(query: context.query, text: text), context: context)
             } else {
                 openPage(QueryParser.searchURL(for: reference.term ?? reference.title), context: context)
@@ -977,14 +1067,12 @@ final class JarbitsSession {
         showedByUser()
     }
 
-    /// What the planner said, in the bubble as it is, and kept as a
-    /// narrative memory so it can be brought back.
+    /// What the planner said, in the bubble as it is.
     func showSaid(_ text: String, context: InstinctContext) {
         lastQuery = context.query   // the capsule shows the user's words, not the planner's
         let layer = showReply(.said(query: context.query, text: text), context: context)
         layer.sources = readThisQuery
         layer.spoken = text
-        remember(MemoryRecord(kind: .narrative, query: context.query, text: text), in: layer)
     }
 
     /// An answer streamed from Gemini. A fresh one goes to the bubble: a
@@ -1074,9 +1162,6 @@ final class JarbitsSession {
     private func openOnDesk(_ url: URL, query: String, decision: Pick?) -> Layer {
         let layer = Layer(plan: .web(url), query: query, decision: decision)
         layer.desk = true
-        // Memories written from this page follow the one on the user's screen.
-        layer.currentMemory = (askedOver ?? current)?.currentMemory
-        layer.queryForNextPage = query
         desk.append(layer)
         readThisQuery.append(layer)
         let host = makeHost(for: layer)
@@ -1120,7 +1205,10 @@ final class JarbitsSession {
     /// is false for the user's own tap under an answer.
     func bringForward(_ layer: Layer, context: InstinctContext? = nil, byQuery: Bool = true) {
         if let at = layers.firstIndex(where: { $0 === layer }) {
-            if at != index { move(to: at) }
+            if let context { lastQuery = context.query }
+            if at != index { move(to: at) } else if stage == .idle { move(to: at) }
+            if byQuery { askedOver = layer; if layer.drawn { stage = .ready } }
+            if let context { record(context) }
             return
         }
         desk.removeAll { $0 === layer }
@@ -1186,7 +1274,6 @@ final class JarbitsSession {
         }
         host.onDocumentFinished = { [weak self, weak layer] in
             guard let self, let layer else { return }
-            rememberPage(in: layer)
             // A backup picture once the page has had a moment to draw.
             Task { [weak self, weak layer] in
                 try? await Task.sleep(for: .seconds(2))
@@ -1242,13 +1329,16 @@ final class JarbitsSession {
         return answer
     }
 
-    var canSwipeBack: Bool { screenShown && index > 0 }
+    /// From the idle circle a swipe back brings the row's current webpage
+    /// back, as Safari relaunches on its last tab.
+    var canSwipeBack: Bool { screenShown ? index > 0 : (stage == .idle && !layers.isEmpty) }
     var canSwipeForward: Bool { screenShown && index + 1 < layers.count }
 
-    /// A swipe back on the clay: the previous layer, as it was left.
+    /// A swipe back on the clay: the previous layer, as it was left; from
+    /// the idle circle, the one the user was on.
     func swipeBack() {
         guard canSwipeBack else { return }
-        move(to: index - 1)
+        move(to: screenShown ? index - 1 : index)
     }
 
     /// A swipe forward on the clay: the layer swiped away from.
@@ -1275,6 +1365,8 @@ final class JarbitsSession {
         let layer = layers[target]
         layer.lastShown = .now
         lastQuery = layer.query
+        if let id = layer.webpageID { Task { [webpages] in await webpages.update(id, lastSeen: .now) } }
+        syncWebpages()
         #if DEBUG
         print("layer swipe \(direction) → \(index + 1)/\(layers.count) \(layer.plan.cardID) \"\(layer.query)\"\(layer.isLive || !layer.isWeb ? "" : ", reloading")")
         #endif
@@ -1289,33 +1381,26 @@ final class JarbitsSession {
         enforceLive()
     }
 
-    /// Live pages back under `maxLive`: the current layer never goes; of the
-    /// rest, pages merely read go before pages in use, oldest shown first.
-    private func enforceLive() {
-        var excess = layers.filter(\.isLive).count - Self.maxLive
-        guard excess > 0 else { return }
-        let background = layers.filter { $0.isLive && $0 !== current }
-            .sorted { ($0.inUse ? 1 : 0, $0.lastShown) < ($1.inUse ? 1 : 0, $1.lastShown) }
-        for layer in background where excess > 0 {
-            unload(layer)
-            excess -= 1
-        }
-    }
+    /// Pages stay loaded while the app runs, as Safari keeps its tabs, so a
+    /// swipe back finds the page as it was. Only a memory warning and the
+    /// idle sweep unload (2026-11-01; before, the newest four stayed live).
+    private func enforceLive() {}
 
-    /// The page goes, its notes stay. The notes are read from the page
-    /// first, so the page is let go a moment after the layer stops counting
-    /// as live.
+    /// The page goes, its notes stay, and the store keeps where it stood.
+    /// The notes are read from the page first, so the page is let go a
+    /// moment after the layer stops counting as live.
     private func unload(_ layer: Layer) {
         guard let host = layer.page else { return }
         layer.page = nil
         #if DEBUG
         print("\(layer.desk ? "desk" : "layer") unload \(layer.plan.cardID) \"\(layer.query)\"\(host.inUse ? " (in use)" : "")")
         #endif
-        Task {
+        Task { [webpages] in
             let notes = await host.notes()
             host.close()
             // Still unloaded: a swipe back meanwhile has given the layer a new page.
             if layer.page == nil { layer.notes = notes }
+            if let id = layer.webpageID, let notes { await webpages.update(id, scrollY: .some(notes.scrollY), videoTime: .some(notes.videoTime)) }
         }
     }
 
@@ -1345,10 +1430,6 @@ final class JarbitsSession {
     private func apply(_ result: EngineResult, token: UUID) {
         let query = lastQuery
         let decision = result.decision
-        // A memory's query asked again is never a recall of itself; the
-        // mark is read once, whatever the query routed to.
-        let replaying = replayingQuery
-        replayingQuery = nil
         // A lasting fact the words stated is the fact reader's, which runs
         // beside every query and logs its own line; nothing is kept here.
         let factSummary: FactSummary? = nil
@@ -1358,11 +1439,6 @@ final class JarbitsSession {
         }
         guard let instinct = result.instinct, var context = result.context else { return }
         context.fact = factSummary
-        if decision.instinct == .recall, query == replaying {
-            // A replayed query is never a recall of itself: web results.
-            openPage(QueryParser.searchURL(for: query), context: context)
-            return
-        }
         // An instinct that shows nothing runs over the screen as it stood,
         // asking if it must; a showing one opens its layer and moves the
         // stage itself.
@@ -1485,77 +1561,18 @@ final class JarbitsSession {
         layer.openedSite = OpenedSite(name: Words.key(name), host: url.host() ?? "")
     }
 
-    // MARK: Memories
+    // MARK: Pictures and the page's place
 
-    /// Shows a memory again, in a new layer, the grid one swipe back. A page
-    /// loads; a results page loads its query's results, no router asked; a
-    /// narrative shows its saved text, no model asked; a one-line answer or
-    /// a picture asks its query again, since those are cheap and may have
-    /// gone stale. The capsule and the "Web results" link follow the
-    /// memory's own query. The layer keeps the recall's decision, so a
-    /// replayed search is not memorised again as a search.
-    func replay(_ record: MemoryRecord) {
-        let query = record.query.isEmpty ? record.title : record.query
-        lastQuery = query
-        let decision = current?.decision
-        switch record.kind {
-        case .page, .search:
-            let url = record.kind == .search ? QueryParser.searchURL(for: record.query) : record.url ?? QueryParser.searchURL(for: record.query)
-            let layer = Layer(plan: .web(url), query: query, decision: decision)
-            // What follows (a link tapped on the recalled page) came from it.
-            layer.currentMemory = Task { record.id }
-            open(layer, byQuery: false)
-            show(url, in: layer, byQuery: false)
-        case .narrative, .action, .oneLine where record.turns != nil:
-            // A conversation that began with one line replays from its turns, like a narrative; an action from what it came to.
-            let layer = Layer(plan: .memory(record), query: query, decision: decision)
-            layer.currentMemory = Task { record.id }
-            open(layer, byQuery: false)
-            showedByUser()
-        case .oneLine, .image:
-            replayingQuery = record.query
-            submit(record.query)
-        }
-    }
-
-    /// Writes a memory after the one before it in `layer`, pointing at the
-    /// memory on screen there when it was queued; the task's value is the id
-    /// kept (the existing record's on a repeat). The write becomes the
-    /// layer's current memory.
-    @discardableResult
-    private func remember(_ record: MemoryRecord, in layer: Layer) -> Task<UUID?, Never> {
-        let from = layer.currentMemory
-        let own = layer.desk
-        let task = Task { [memory] () -> UUID? in
-            var record = record
-            if own { record.own = true }   // read on Jarbits's screen, unseen by the user
-            if record.cameFrom == nil { record.cameFrom = await from?.value }
-            #if DEBUG
-            print("memory \(record.kind.rawValue) \"\(record.title)\" \(record.url?.absoluteString ?? "") for \"\(record.query)\"" + (record.cameFrom.map { " ← \($0.uuidString.prefix(8))" } ?? ""))
-            #endif
-            return await memory.remember(record)
-        }
-        layer.currentMemory = task
-        return task
-    }
-
-    /// The document that just finished in `layer`, when it is a results
-    /// page: a `search` memory by its query. Not the results page a recall
-    /// fell through to: that would memorise the recall phrase itself, and
-    /// the next recall of the same words would find it and loop. Ordinary
-    /// pages are memorised from the watcher's reports, which carry the title
-    /// as it settles; `WebPage.title` can still be empty or stale here.
-    private func rememberPage(in layer: Layer) {
-        guard let url = layer.page?.page.url, QueryParser.isSearchResults(url) else { return }
-        rememberSearch(url, in: layer)
+    /// A webpage from the grid, brought forward as it stands.
+    func bringForward(webpage id: UUID) {
+        guard let layer = layer(forWebpage: id) else { return }
+        bringForward(layer, byQuery: false)
     }
 
     /// The watcher's report of a page's address and title: at its first
     /// look, when the page changes its address without loading (the next
-    /// video on YouTube), and when the title settles; the store refreshes
-    /// the record each time. Error pages and untitled documents are not
-    /// worth remembering. The search that led here is attached only to
-    /// the first page after it; later pages answer to their own titles.
+    /// video on YouTube), and when the title settles; the webpage follows
+    /// each time. Error pages are not worth a line.
     private func addressChanged(to url: URL, title: String, in layer: Layer) {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return }
         // The page the layer ended on, kept past an unload: what the engine
@@ -1565,9 +1582,7 @@ final class JarbitsSession {
         layer.pageAddress = url
         let settledTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !settledTitle.isEmpty { layer.pageTitle = settledTitle } else if moved { layer.pageTitle = nil }
-        if QueryParser.isSearchResults(url) {
-            rememberSearch(url, in: layer)
-        } else {
+        if !QueryParser.isSearchResults(url) {
             // The first site reached from the results page that stood in for
             // the site choices is what the name meant. Google's own pages on
             // the way (a click redirect, an AMP viewer) are not it.
@@ -1575,33 +1590,28 @@ final class JarbitsSession {
                 layer.learningSite = nil
                 learned(name, url: url, in: layer)
             }
-            let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !title.isEmpty else { return }
-            let url = MemoryRecord.canonical(url)
-            let record = MemoryRecord(kind: .page, query: layer.queryForNextPage ?? "", title: title, url: url)
-            layer.queryForNextPage = nil
-            let write = remember(record, in: layer)
-            // Pictures taken from now on go to this memory; a different
-            // address meanwhile means they go to no one until its own write lands.
-            layer.pictureID = nil
+        }
+        guard !layer.desk else { return }
+        if moved {
             layer.lastPicture = nil
-            let thumbnail = PageShot.youTubeThumbnail(for: url)
-            layer.pictureFixed = thumbnail != nil
-            Task { [weak self, weak layer] in
-                guard let layer, let id = await write.value, layer.currentMemory == write else { return }
-                layer.pictureID = id
-                if let thumbnail { await self?.saveThumbnail(thumbnail, for: id) }
-            }
+            layer.pictureFixed = PageShot.youTubeThumbnail(for: url) != nil
+        }
+        if layer.webpageID == nil { openWebpage(for: layer) }
+        guard let id = layer.webpageID else { return }
+        let thumbnail = moved ? PageShot.youTubeThumbnail(for: url) : nil
+        Task { [webpages, weak self] in
+            await webpages.update(id, address: moved ? url : nil, title: settledTitle.isEmpty ? nil : settledTitle, lastSeen: .now)
+            if let thumbnail { await self?.saveThumbnail(thumbnail, for: id) }
         }
     }
 
     /// YouTube's still for the video, framed as a tile, in place of a
     /// screenshot that could only show the player black. A failed download
-    /// leaves whatever picture the memory had.
+    /// leaves whatever picture the webpage had.
     private func saveThumbnail(_ thumbnail: URL, for id: UUID) async {
         let width = pictureWidth
         let quality = pictureQuality
-        let aspect = MemoryTile.aspect
+        let aspect = WebpageTile.aspect
         let still = await Task.detached(priority: .utility) { () -> UIImage? in
             guard let (data, response) = try? await URLSession.shared.data(from: thumbnail),
                   (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
@@ -1609,20 +1619,20 @@ final class JarbitsSession {
         }.value
         // Framing is a tile-sized draw, a moment on the main thread.
         guard let still, let jpeg = PageShot.framed(still, width: width, aspect: aspect).jpegData(compressionQuality: quality) else { return }
-        await memory.savePicture(jpeg, for: id)
+        await webpages.savePicture(jpeg, for: id)
     }
 
-    /// The page as the user sees it, for the recall grid: the current
-    /// layer's page, when it shows a memorised page. `reason` is "leave"
-    /// (taken as the first thing, before the screen changes, and never
-    /// skipped), "rest" or "settled" (backups, spaced by `pictureGap`).
+    /// The page as the user sees it, for the grid: the current layer's
+    /// page, when it is a webpage. `reason` is "leave" (taken as the first
+    /// thing, before the screen changes, and never skipped), "rest" or
+    /// "settled" (backups, spaced by `pictureGap`).
     private func takePicture(reason: String) {
         guard let layer = current else { return }
         takePicture(of: layer, reason: reason)
     }
 
     private func takePicture(of layer: Layer, reason: String) {
-        guard layer === current, layer.drawn, layer.isWeb, layer.page != nil, !layer.pictureFixed, let id = layer.pictureID else { return }
+        guard layer === current, layer.drawn, layer.isWeb, layer.page != nil, !layer.pictureFixed, let id = layer.webpageID else { return }
         let now = Date.now
         if reason != "leave", let last = layer.lastPicture, now.timeIntervalSince(last) < Self.pictureGap { return }
         let reserve = ClayCapsule.footprint(compact: false) + bottomInset
@@ -1632,18 +1642,22 @@ final class JarbitsSession {
         print("picture \(reason) → \(id.uuidString.prefix(8))")
         #endif
         let quality = pictureQuality
-        Task.detached(priority: .utility) { [memory] in
+        Task.detached(priority: .utility) { [webpages] in
             guard let jpeg = image.jpegData(compressionQuality: quality) else { return }
-            await memory.savePicture(jpeg, for: id)
+            await webpages.savePicture(jpeg, for: id)
         }
     }
 
     #if DEBUG
-    /// Forgets every memory and picture, every learned site, every fact and
+    /// Closes every webpage and forgets every learned site, every fact and
     /// the user's name, which is asked again. A Debug control until a real one exists.
-    func clearMemory() {
+    func clearWebpages() {
+        for layer in layers { layer.page?.close() }
+        layers = []
+        index = 0
+        reset()
         Task {
-            await memory.clear()
+            await webpages.clear()
             await sites.clear()
             await facts.clear()
             factTexts = []
@@ -1653,19 +1667,6 @@ final class JarbitsSession {
         }
     }
     #endif
-
-    /// Remembered by the page's own term, not the spoken words: "google
-    /// steve jobs" searched "steve jobs", and a replay searches that again.
-    /// A search typed into Google's box on the page remembers its own words
-    /// the same way.
-    private func rememberSearch(_ url: URL, in layer: Layer) {
-        // Nor the results page a site request fell through to: "go to lobsters" is not a search.
-        guard !layer.query.isEmpty, layer.decision?.instinct != .recall, layer.decision?.instinct != .site else { return }
-        let term = QueryParser.searchTerm(in: url)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Google's image results are a picture memory, so "my pictures" finds them.
-        let kind: MemoryRecord.Kind = QueryParser.isImageResults(url) ? .image : .search
-        remember(MemoryRecord(kind: kind, query: term?.isEmpty == false ? term! : layer.query), in: layer)
-    }
 
     /// First answer text arrived: fade the line out, the text in. For a
     /// reply, the screen goes back to where it stood and the bubble shows.
@@ -1702,17 +1703,6 @@ final class JarbitsSession {
             }
         case .completed:
             if answer.format == .oneLine { layer.spoken = answer.text }
-            let turns = answer.history + [AnswerTurn(query: answer.query, answer: answer.text, format: answer.format)]
-            if turns.count > 1, let first = turns.first {
-                // One memory per conversation, under its first query and of
-                // its first turn's kind: the store's repeat rule updates it in
-                // place as the thread grows.
-                remember(MemoryRecord(kind: first.format == .oneLine ? .oneLine : .narrative, query: first.query, text: first.answer, turns: turns), in: layer)
-            } else if answer.format == .narrative {
-                remember(MemoryRecord(kind: .narrative, query: answer.query, text: answer.text), in: layer)
-            } else {
-                remember(MemoryRecord(kind: .oneLine, query: answer.query), in: layer)
-            }
         case .partial:
             break
         }

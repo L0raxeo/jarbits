@@ -59,7 +59,7 @@ import Testing
 
     @Test func aNoteIsAThingWithAHandle() {
         let note = Note(title: "Packing list", body: "passport", created: now.addingTimeInterval(-86_400))
-        var table = ThingTable(exchanges: [], memories: [], notes: [note])
+        var table = ThingTable(exchanges: [], webpages: [], notes: [note])
         #expect(table.handles == ["n1"])
         #expect(table.mint(notes: [note, Note(title: "Ideas", created: now)]) == ["n1", "n2"])
         #expect(ThingTable.line(table.entries[0], now: now) == "n1: My note \"Packing list\", edited yesterday:\n    1| passport")

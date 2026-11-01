@@ -4,34 +4,34 @@ import Foundation
 /// question per candidate in a single request, and the picks read back.
 /// No I/O here; `RecallResolver` sends it.
 public enum RecallRouting {
-    /// At or above this, a memory is the one asked for: alone, it opens.
+    /// At or above this, a webpage is the one asked for: alone, it comes forward.
     public static let recallThreshold = 0.5
 
-    /// Below `recallThreshold` but at or above this, a memory is plausible:
-    /// shown in the picker for the user to choose, never opened unasked.
+    /// Below `recallThreshold` but at or above this, a webpage is plausible:
+    /// shown in the grid for the user to choose, never brought forward unasked.
     public static let maybeThreshold = 0.3
 
     public static let recallCriteria = (
-        yes: "The query describes this memory: by what it is, when it was seen, what it was about, or a word of its title.",
+        yes: "The query describes this webpage: by what it is, when it was opened, what it is about, or a word of its title.",
         no: "A different thing, even if it shares a word with the query or is of the same kind."
     )
 
-    /// At or above this, a memory belongs to a collection ("everything
+    /// At or above this, a webpage belongs to a collection ("everything
     /// about the dyson"): every one that does is shown, newest first.
     public static let collectionThreshold = 0.5
 
     public static let collectionCriteria = (
-        yes: "This memory is about the thing, topic or name the query asks for everything about: its title, its query, its address or its text concerns it, whatever kind of memory it is.",
+        yes: "This webpage is about the thing, topic or name the query asks for everything about: its title, its query or its address concerns it, whatever kind of webpage it is.",
         no: "About something else, even of the same kind, from the same day, or sharing an unrelated word with the query."
     )
 
     public static func questionID(_ index: Int) -> String { "m\(index)" }
 
-    /// `collection` asks, per memory, whether it is about the topic rather
+    /// `collection` asks, per webpage, whether it is about the topic rather
     /// than whether it is the one thing asked for.
     public static func request(
         for query: String,
-        candidates: [MemoryRecord],
+        candidates: [Webpage],
         now: Date,
         locale: Locale = .current,
         model: String = JevClient.defaultModel,
@@ -41,38 +41,30 @@ public enum RecallRouting {
         SystemOneRequest(
             model: model,
             state: RouteState(query: query, locale: locale.identifier),
-            questions: candidates.enumerated().map { index, record in
+            questions: candidates.enumerated().map { index, webpage in
                 (questionID(index), .noul(
-                    instructions: instructions(for: record, now: now, calendar: calendar, collection: collection),
+                    instructions: instructions(for: webpage, now: now, calendar: calendar, collection: collection),
                     criteria: collection ? collectionCriteria : recallCriteria
                 ))
             }
         )
     }
 
-    /// One candidate, as Jev reads it: its kind, when, its host for a page,
-    /// its title, and the start of a written answer.
-    public static func instructions(for record: MemoryRecord, now: Date, calendar: Calendar = .current, collection: Bool = false) -> String {
-        var line = collection ? "Is this memory about what the query asks for everything about?" : "Is this the memory the query asks for?"
-        line += " A \(describe(record.kind)) from \(when(record.date, now: now, calendar: calendar))"
-        if let host = record.url?.host() { line += " (\(host))" }
-        line += ": \"\(record.title)\"."
-        if record.own == true { line += " I read it on my own screen; the user did not see it." }
-        if let text = record.text {
-            let plain = text.replacingOccurrences(of: "==", with: "").replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "__", with: "")
-            line += " It begins: \"\(String(plain.prefix(120)))\"."
-        }
+    /// One candidate, as Jev reads it: its kind, since when it has been
+    /// open, its host for a page, and its title.
+    public static func instructions(for webpage: Webpage, now: Date, calendar: Calendar = .current, collection: Bool = false) -> String {
+        var line = collection ? "Is this webpage about what the query asks for everything about?" : "Is this the webpage the query asks for?"
+        line += " A \(describe(webpage.kind)) open since \(when(webpage.opened, now: now, calendar: calendar))"
+        if webpage.kind == .page, let host = webpage.address.host() { line += " (\(host))" }
+        line += ": \"\(webpage.title)\"."
         return line
     }
 
-    static func describe(_ kind: MemoryRecord.Kind) -> String {
+    static func describe(_ kind: Webpage.Kind) -> String {
         switch kind {
         case .page: "web page"
-        case .narrative: "written answer"
-        case .oneLine: "one-line answer"
-        case .image: "picture"
         case .search: "search"
-        case .action: "thing the app did"
+        case .images: "picture search"
         }
     }
 
@@ -93,21 +85,21 @@ public enum RecallRouting {
     }
 
     /// The candidates at or above `threshold`, surest first. A missing answer is a no.
-    public static func picks(from response: SystemOneResponse, candidates: [MemoryRecord], threshold: Double = maybeThreshold) -> [RecallPick] {
-        candidates.enumerated().compactMap { index, record -> RecallPick? in
+    public static func picks(from response: SystemOneResponse, candidates: [Webpage], threshold: Double = maybeThreshold) -> [RecallPick] {
+        candidates.enumerated().compactMap { index, webpage -> RecallPick? in
             guard case let .noul(probability)? = response.answers[questionID(index)], probability >= threshold else { return nil }
-            return RecallPick(record: record, probability: probability)
+            return RecallPick(webpage: webpage, probability: probability)
         }
         .sorted { $0.probability > $1.probability }
     }
 }
 
 public struct RecallPick: Equatable, Sendable {
-    public var record: MemoryRecord
+    public var webpage: Webpage
     public var probability: Double
 
-    public init(record: MemoryRecord, probability: Double) {
-        self.record = record
+    public init(webpage: Webpage, probability: Double) {
+        self.webpage = webpage
         self.probability = probability
     }
 }
@@ -129,9 +121,9 @@ public struct RecallResolver: Sendable {
         self.locale = locale
     }
 
-    /// `collection` asks the "about" question and keeps every memory at or
+    /// `collection` asks the "about" question and keeps every webpage at or
     /// above the collection threshold.
-    public func resolve(_ query: String, candidates: [MemoryRecord], now: Date = .now, threshold: Double? = nil, collection: Bool = false) async -> RecallVerdict {
+    public func resolve(_ query: String, candidates: [Webpage], now: Date = .now, threshold: Double? = nil, collection: Bool = false) async -> RecallVerdict {
         guard !candidates.isEmpty else { return .picked([], latencyMs: 0) }
         let threshold = threshold ?? (collection ? RecallRouting.collectionThreshold : RecallRouting.maybeThreshold)
         let request = RecallRouting.request(for: query, candidates: candidates, now: now, locale: locale, model: client.model, collection: collection)

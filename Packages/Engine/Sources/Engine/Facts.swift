@@ -117,12 +117,12 @@ public enum FactSearch {
     public static let limit = 5
 
     public static func shortlist(_ facts: [Fact], about: String?, now: Date, limit: Int = limit) -> [Fact] {
-        let terms = MemorySearch.terms(of: about)
+        let terms = WebpageSearch.terms(of: about)
         let newest = facts.sorted { $0.date > $1.date }
         guard !terms.isEmpty else { return Array(newest.prefix(limit)) }
         let scored = newest.compactMap { fact -> (fact: Fact, hits: Int)? in
-            let words = Set(MemorySearch.tokens(of: fact.text))
-            let hits = terms.filter { term in words.contains { MemorySearch.close(term, $0) } }.count
+            let words = Set(WebpageSearch.tokens(of: fact.text))
+            let hits = terms.filter { term in words.contains { WebpageSearch.close(term, $0) } }.count
             return hits > 0 ? (fact, hits) : nil
         }
         let matched = scored.sorted { $0.hits != $1.hits ? $0.hits > $1.hits : $0.fact.date > $1.fact.date }.map(\.fact)

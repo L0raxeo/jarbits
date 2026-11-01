@@ -7,16 +7,16 @@ import Testing
 @Suite struct PlanCaseTests {
     @Test func aLineParsesAndNamesItself() throws {
         let line = """
-        {"query": "open the dyson page from yesterday", "memories": [{"kind": "page", "title": "Dyson PencilVac | Dyson", "url": "https://www.dyson.com/pencilvac", "daysAgo": 1}], "facts": ["Lorcan is vegetarian"], "calls": [{"name": "open", "arguments": {"thing": "m1"}}], "note": "n"}
+        {"query": "open the dyson page from yesterday", "webpages": [{"title": "Dyson PencilVac | Dyson", "url": "https://www.dyson.com/pencilvac", "daysAgo": 1}], "facts": ["Lorcan is vegetarian"], "calls": [{"name": "open", "arguments": {"thing": "w1"}}], "note": "n"}
         """
         let cases = try PlanSet.parse(Data(line.utf8))
         let planCase = try #require(cases.first)
-        #expect(planCase.calls == [PlanCase.ExpectedCall(name: "open", arguments: ["thing": "m1"])])
-        #expect(planCase.name == "open the dyson page from yesterday knowing 1 with 1 memories")
-        let record = try #require(planCase.memories?.first?.record(now: AnswerContext.example.now))
-        #expect(record.kind == .page && record.url?.host() == "www.dyson.com")
-        #expect(record.date == AnswerContext.example.now.addingTimeInterval(-86_400))
-        #expect(planCase.memories?.first?.record(now: AnswerContext.example.now).id == record.id, "the id is fixed by the title, so the request bytes are stable")
+        #expect(planCase.calls == [PlanCase.ExpectedCall(name: "open", arguments: ["thing": "w1"])])
+        #expect(planCase.name == "open the dyson page from yesterday knowing 1 with 1 open")
+        let webpage = try #require(planCase.webpages?.first?.webpage(now: AnswerContext.example.now))
+        #expect(webpage.kind == .page && webpage.address.host() == "www.dyson.com")
+        #expect(webpage.opened == AnswerContext.example.now.addingTimeInterval(-86_400))
+        #expect(planCase.webpages?.first?.webpage(now: AnswerContext.example.now).id == webpage.id, "the id is fixed by the title, so the request bytes are stable")
         #expect(throws: EvalSetError.self) { try PlanSet.parse(Data(#"{"query": "x", "calls": []}"#.utf8)) }
     }
 
@@ -52,13 +52,13 @@ import Testing
         let planCase = PlanCase(
             query: "compare this page with the dyson one",
             exchanges: [.page(query: "lifesteal", title: "My Base was GRIEFED", address: URL(string: "https://m.youtube.com/watch?v=abc")!)],
-            memories: [.init(kind: .page, title: "Dyson PencilVac | Dyson", url: URL(string: "https://www.dyson.com/pencilvac"), daysAgo: 1)],
+            webpages: [.init(title: "Dyson PencilVac | Dyson", url: URL(string: "https://www.dyson.com/pencilvac")!, daysAgo: 1)],
             calls: [.init(name: "narrative")]
         )
         let request = PlanRunner.request(for: planCase)
         let input = try #require(request.transcript?.first.flatMap { step -> String? in if case let .userText(text) = step { text } else { nil } })
         #expect(input.contains("- p1: Read \"My Base was GRIEFED\" (m.youtube.com)"))
-        #expect(input.contains("- m1: A page from yesterday (www.dyson.com): \"Dyson PencilVac | Dyson\""))
+        #expect(input.contains("- w1: A page open since yesterday (www.dyson.com): \"Dyson PencilVac | Dyson\""))
         #expect(try PlanCache.key(for: request) == PlanCache.key(for: PlanRunner.request(for: planCase)), "the same case keys the same file")
         #expect(request.systemInstruction.hasPrefix(Persona.example.identityLine))
     }

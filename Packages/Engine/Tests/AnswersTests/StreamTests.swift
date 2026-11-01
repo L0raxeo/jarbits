@@ -226,7 +226,7 @@ import Testing
     @Test func thePlannerReadsTheCallsAndMapsAFailure() async throws {
         let client = MockGeminiTransport.client(status: 200, body: InteractionResponseTests.planBody)
         let planner = Planner(client: client)
-        let bundle = PlanBundle(query: "q", exchanges: [], facts: [], memories: [], tools: Planner.tools(for: InstinctSpec.all), context: .example)
+        let bundle = PlanBundle(query: "q", exchanges: [], facts: [], tools: Planner.tools(for: InstinctSpec.all), context: .example)
         let round = await planner.propose(bundle, transcript: [.userText("Request: q")])
         guard case let .calls(calls, steps, usage, _) = round else {
             Issue.record("expected calls, got \(round)")
@@ -238,7 +238,7 @@ import Testing
         let sent = try #require(MockGeminiTransport.requests.first { $0.value(forHTTPHeaderField: "Accept") == "application/json" })
         let body = try #require(sent.httpBody)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 5)
+        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 6)
 
         let silent = Planner(client: MockGeminiTransport.client(status: 200, body: #"{"id":"x","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"I would do this"}]}]}"#))
         guard case .silent(_, _, _, false) = await silent.propose(bundle, transcript: [.userText("Request: q")]) else {

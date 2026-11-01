@@ -1,13 +1,13 @@
 import Foundation
 
-/// A thing the planner can point at: an exchange of this session, or a
-/// memory. The device knows each one exactly (a page's address, a search's
-/// term, an answer's text, a memory's record); the planner only ever names
-/// it by a handle from its listing, and the device swaps the handle for the
-/// thing before a step runs. No model carries an address.
+/// A thing the planner can point at: an exchange of this session, an open
+/// webpage, a note, or a link in view. The device knows each one exactly
+/// (a page's address, a search's term, an answer's text); the planner only
+/// ever names it by a handle from its listing, and the device swaps the
+/// handle for the thing before a step runs. No model carries an address.
 public enum Thing: Sendable, Equatable {
     case exchange(Exchange)
-    case memory(MemoryRecord)
+    case webpage(Webpage)
     case note(Note)
     /// A link in view on the page on screen.
     case item(ScreenItem)
@@ -16,7 +16,7 @@ public enum Thing: Sendable, Equatable {
 /// What a thing is, exactly, for an instinct to act on.
 public struct Reference: Sendable, Equatable {
     public enum Kind: String, Sendable {
-        case page, search, answer, picture, recall, site, action, note
+        case page, search, images, answer, recall, site, note
     }
 
     public var kind: Kind
@@ -24,16 +24,17 @@ public struct Reference: Sendable, Equatable {
     public var address: URL?
     public var term: String?
     public var text: String?
-    public var memoryID: UUID?
+    /// The open webpage this stands for, when it is one.
+    public var webpageID: UUID?
     public var noteID: UUID?
 
-    public init(kind: Kind, title: String, address: URL? = nil, term: String? = nil, text: String? = nil, memoryID: UUID? = nil, noteID: UUID? = nil) {
+    public init(kind: Kind, title: String, address: URL? = nil, term: String? = nil, text: String? = nil, webpageID: UUID? = nil, noteID: UUID? = nil) {
         self.kind = kind
         self.title = title
         self.address = address
         self.term = term
         self.text = text
-        self.memoryID = memoryID
+        self.webpageID = webpageID
         self.noteID = noteID
     }
 
@@ -46,7 +47,7 @@ public struct Reference: Sendable, Equatable {
             case .search:
                 self.init(kind: .search, title: exchange.text ?? exchange.query, term: exchange.text ?? exchange.query)
             case .answer:
-                self.init(kind: .answer, title: exchange.query, text: exchange.text, memoryID: exchange.memoryID)
+                self.init(kind: .answer, title: exchange.query, text: exchange.text)
             case .recall:
                 self.init(kind: .recall, title: exchange.title ?? exchange.query, text: exchange.text)
             case .site:
@@ -54,15 +55,13 @@ public struct Reference: Sendable, Equatable {
             case .note:
                 self.init(kind: .note, title: exchange.title ?? exchange.query, text: exchange.text, noteID: exchange.noteID)
             }
-        case let .memory(record):
-            let kind: Kind = switch record.kind {
+        case let .webpage(webpage):
+            let kind: Kind = switch webpage.kind {
             case .page: .page
             case .search: .search
-            case .narrative, .oneLine: .answer
-            case .image: .picture
-            case .action: .action
+            case .images: .images
             }
-            self.init(kind: kind, title: record.title, address: record.url, term: record.kind == .search ? record.query : nil, text: record.text, memoryID: record.id)
+            self.init(kind: kind, title: webpage.title, address: webpage.address, term: webpage.term, webpageID: webpage.id)
         case let .note(note):
             self.init(kind: .note, title: note.title, text: note.excerpt, noteID: note.id)
         case let .item(item):
@@ -76,12 +75,8 @@ public struct Reference: Sendable, Equatable {
         case .page:
             if let address { return .page(query: query, title: title, address: address) }
             return Exchange(query: query, kind: .page, title: title)
-        case .search: return .search(query: query, term: term ?? title)
-        case .answer, .action:
-            var exchange = Exchange.answer(query: title, text: text ?? "")
-            exchange.memoryID = memoryID
-            return exchange
-        case .picture: return Exchange(query: query, kind: .search, text: title)
+        case .search, .images: return .search(query: query, term: term ?? title)
+        case .answer: return .answer(query: title, text: text ?? "")
         case .recall: return .recall(query: query, title: title, titles: [])
         case .site: return .site(query: query, name: title, hosts: [])
         case .note: return .note(query: query, title: title, excerpt: text ?? "", noteID: noteID)
@@ -112,10 +107,10 @@ extension Exchange {
 }
 
 /// The handles of one plan: `p1, p2…` for the exchanges the query depends
-/// on (oldest first), `m1, m2…` for the memories shown, `n1, n2…` for the
-/// notes, `s1, s2…` for the links in view on the screen, and more memories
-/// minted by a step's result. Nothing is renumbered, and a table never
-/// outlives its plan.
+/// on (oldest first), `w1, w2…` for the open webpages (newest first),
+/// `n1, n2…` for the notes, `s1, s2…` for the links in view on the screen,
+/// and more webpages minted by a step's result. Nothing is renumbered, and
+/// a table never outlives its plan.
 public struct ThingTable: Sendable, Equatable {
     public struct Entry: Sendable, Equatable {
         public let handle: String
@@ -124,13 +119,13 @@ public struct ThingTable: Sendable, Equatable {
 
     public private(set) var entries: [Entry] = []
     private var exchangesMinted = 0
-    private var memoriesMinted = 0
+    private var webpagesMinted = 0
     private var notesMinted = 0
     private var itemsMinted = 0
 
-    public init(exchanges: [Exchange] = [], memories: [MemoryRecord] = [], notes: [Note] = [], items: [ScreenItem] = []) {
+    public init(exchanges: [Exchange] = [], webpages: [Webpage] = [], notes: [Note] = [], items: [ScreenItem] = []) {
         for exchange in exchanges { _ = mint(exchange: exchange) }
-        _ = mint(memories)
+        _ = mint(webpages: webpages)
         _ = mint(notes: notes)
         _ = mint(items: items)
     }
@@ -175,17 +170,17 @@ public struct ThingTable: Sendable, Equatable {
         }
     }
 
-    /// Handles for records a step found; a record already in the table
-    /// keeps its handle.
+    /// Handles for open webpages, the listing's and any a step found; a
+    /// webpage already in the table keeps its handle.
     @discardableResult
-    public mutating func mint(_ records: [MemoryRecord]) -> [String] {
-        records.map { record in
-            if let existing = entries.first(where: { if case let .memory(known) = $0.thing { known.id == record.id } else { false } }) {
+    public mutating func mint(webpages: [Webpage]) -> [String] {
+        webpages.map { webpage in
+            if let existing = entries.first(where: { if case let .webpage(known) = $0.thing { known.id == webpage.id } else { false } }) {
                 return existing.handle
             }
-            memoriesMinted += 1
-            let handle = "m\(memoriesMinted)"
-            entries.append(Entry(handle: handle, thing: .memory(record)))
+            webpagesMinted += 1
+            let handle = "w\(webpagesMinted)"
+            entries.append(Entry(handle: handle, thing: .webpage(webpage)))
             return handle
         }
     }
@@ -196,7 +191,7 @@ public struct ThingTable: Sendable, Equatable {
 
     public var handles: [String] { entries.map(\.handle) }
     public var exchangeEntries: [Entry] { entries.filter { if case .exchange = $0.thing { true } else { false } } }
-    public var memoryEntries: [Entry] { entries.filter { if case .memory = $0.thing { true } else { false } } }
+    public var webpageEntries: [Entry] { entries.filter { if case .webpage = $0.thing { true } else { false } } }
     public var noteEntries: [Entry] { entries.filter { if case .note = $0.thing { true } else { false } } }
     public var itemEntries: [Entry] { entries.filter { if case .item = $0.thing { true } else { false } } }
     /// The items' handles, in screen order, for the screen block.
@@ -209,11 +204,20 @@ public struct ThingTable: Sendable, Equatable {
         return out
     }
 
+    /// Each open webpage's handle by its canonical address, so a page
+    /// exchange's line can point at the webpage it is.
+    public var webpageHandles: [URL: String] {
+        var out: [URL: String] = [:]
+        for entry in webpageEntries { if case let .webpage(webpage) = entry.thing { out[webpage.address] = entry.handle } }
+        return out
+    }
+
     /// The handle of the thing on the screen, whatever kind it is: a note by
-    /// its id (else its title), a page by its address, a search by its
-    /// term, an answer by its query; nil for a grid or a card, which have
-    /// no thing of their own. The listing names the screen by it, so
-    /// "this" is one handle however the thing got into the listing.
+    /// its id (else its title), a page by its address (the open webpage it
+    /// is, else the exchange), a search by its term, an answer by its query;
+    /// nil for a grid or a card, which have no thing of their own. The
+    /// listing names the screen by it, so "this" is one handle however the
+    /// thing got into the listing.
     public func screenHandle(for screen: Screen, noteID: UUID? = nil) -> String? {
         func exchange(_ entry: Entry) -> Exchange? { if case let .exchange(x) = entry.thing { x } else { nil } }
         switch screen.kind {
@@ -222,6 +226,8 @@ public struct ThingTable: Sendable, Equatable {
             return noteEntries.first { if case let .note(note) = $0.thing { note.title == screen.title } else { false } }?.handle
         case .page:
             guard let address = screen.address else { return nil }
+            if let handle = webpageHandles[Webpage.canonical(address)] { return handle }
+            if let open = webpageEntries.first(where: { if case let .webpage(w) = $0.thing { w.kind != .page && w.address == address } else { false } }) { return open.handle }
             if let page = exchangeEntries.last(where: { exchange($0).map { $0.kind == .page && $0.address == address.absoluteString && $0.own != true } ?? false }) { return page.handle }
             guard QueryParser.isSearchResults(address), let term = QueryParser.searchTerm(in: address)?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
             return exchangeEntries.last { exchange($0).map { $0.kind == .search && $0.text == term && $0.own != true } ?? false }?.handle
@@ -234,22 +240,28 @@ public struct ThingTable: Sendable, Equatable {
 
     /// One thing as the planner's listing gives it: its handle and what it
     /// is; an opened note names the notebook's handle for the same note
-    /// when `noteHandles` has it.
-    public static func line(_ entry: Entry, now: Date, calendar: Calendar = .current, noteHandles: [UUID: String] = [:]) -> String {
+    /// when `noteHandles` has it, and a page the user saw names the open
+    /// webpage it is when `webpageHandles` has it.
+    public static func line(_ entry: Entry, now: Date, calendar: Calendar = .current, noteHandles: [UUID: String] = [:], webpageHandles: [URL: String] = [:]) -> String {
         switch entry.thing {
         case let .exchange(exchange):
             if exchange.kind == .note, let id = exchange.noteID, let handle = noteHandles[id] {
                 return "\(entry.handle): \(exchange.described) (\(handle))"
             }
+            if exchange.kind == .page, exchange.own != true, let address = exchange.address.flatMap(URL.init(string:)), let handle = webpageHandles[Webpage.canonical(address)] {
+                return "\(entry.handle): \(exchange.described) (\(handle))"
+            }
             return "\(entry.handle): \(exchange.described)"
-        case let .memory(record):
-            let label = record.kind.label
-            let article = "aeiou".contains(label.first ?? "x") ? "An" : "A"
-            var line = "\(entry.handle): \(article) \(label) from \(RecallRouting.when(record.date, now: now, calendar: calendar))"
-            if let host = record.url?.host() { line += " (\(host))" }
-            line += ": \"\(record.title)\""
-            if record.own == true { line += ", read on my screen" }
-            return line
+        case let .webpage(webpage):
+            let since = RecallRouting.when(webpage.opened, now: now, calendar: calendar)
+            switch webpage.kind {
+            case .page:
+                var line = "\(entry.handle): A page open since \(since)"
+                if let host = webpage.address.host() { line += " (\(host))" }
+                return line + ": \"\(webpage.title)\""
+            case .search: return "\(entry.handle): A search for \"\(webpage.query)\", open since \(since)"
+            case .images: return "\(entry.handle): A picture search for \"\(webpage.query)\", open since \(since)"
+            }
         case let .note(note):
             // The note whole, its lines numbered, under its heading line: the
             // planner writes into it by line, so it sees every line.

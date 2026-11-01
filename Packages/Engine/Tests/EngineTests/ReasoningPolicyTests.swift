@@ -64,7 +64,7 @@ import Testing
         #expect(ReasoningPolicy.maxRounds == 6)
         #expect(ReasoningPolicy.timeBudget == .seconds(120))
         #expect(ReasoningPolicy.roundTimeout == .seconds(45))
-        #expect(ReasoningPolicy.memoriesGiven == 5)
+        #expect(ReasoningPolicy.webpagesListed == 40)
         #expect(ReasoningPolicy.threshold == EngineRequest.reasoningThreshold)
     }
 
@@ -76,13 +76,13 @@ import Testing
                 .init(name: "narrative", arguments: ["query": "a vegetarian dinner"], outcome: "shown", latencyMs: 900),
                 .init(name: "done", arguments: [:], outcome: "done", latencyMs: 0),
             ],
-            usage: AnswerUsage(inputTokens: 2000, outputTokens: 80, thoughtTokens: 40), latencyMs: 3000, factsGiven: 1, memoriesGiven: 0, outcome: .completed
+            usage: AnswerUsage(inputTokens: 2000, outputTokens: 80, thoughtTokens: 40), latencyMs: 3000, factsGiven: 1, webpagesGiven: 0, outcome: .completed
         )
         #expect(summary.shownSomething && summary.didSomething)
         let data = try DecisionRecord.encoder.encode(summary)
         let back = try DecisionRecord.decoder.decode(EngineSummary.self, from: data)
         #expect(back == summary)
-        let fell = EngineSummary(model: "m", rounds: 1, steps: [], latencyMs: 10, factsGiven: 0, memoriesGiven: 0, outcome: .fellBackToWeb("no calls"))
+        let fell = EngineSummary(model: "m", rounds: 1, steps: [], latencyMs: 10, factsGiven: 0, webpagesGiven: 0, outcome: .fellBackToWeb("no calls"))
         #expect(!fell.shownSomething && !fell.didSomething)
         #expect(try DecisionRecord.decoder.decode(EngineSummary.self, from: DecisionRecord.encoder.encode(fell)).outcome == .fellBackToWeb("no calls"))
     }

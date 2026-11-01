@@ -56,7 +56,7 @@ import Testing
         #expect(markdown.contains("`reasoningWanted`"))
         #expect(markdown.contains("## After routing: recall"))
         #expect(markdown.contains(RecallRouting.recallCriteria.yes))
-        #expect(markdown.contains("web page from yesterday (m.youtube.com)"))
+        #expect(markdown.contains("web page open since yesterday (m.youtube.com)"))
         #expect(!markdown.contains("`recencyFallback`"), "no gate overrules a pick")
         #expect(!markdown.contains("`local(\"time\")`") && !markdown.contains("## Decided on the device") && !markdown.contains("## Grammars after the pick"), "no rule and no grammar decides a query")
         #expect(markdown.contains("| `narrative` or `one_line` picked, `recent` at or above 0.5 |"))
@@ -139,11 +139,11 @@ import Testing
                 engine: EngineSummary(model: "gemini-3.8-flash", rounds: 2, steps: [
                     .init(name: "remember", arguments: ["query": "I'm vegetarian", "fact": "I'm vegetarian"], outcome: "ran", latencyMs: 15),
                     .init(name: "narrative", arguments: ["query": "suggest a vegetarian dinner"], outcome: "shown", latencyMs: 1200),
-                ], usage: AnswerUsage(inputTokens: 6000, outputTokens: 120, thoughtTokens: 80), latencyMs: 4200, factsGiven: 1, memoriesGiven: 0, outcome: .completed)),
+                ], usage: AnswerUsage(inputTokens: 6000, outputTokens: 120, thoughtTokens: 80), latencyMs: 4200, factsGiven: 1, webpagesGiven: 0, outcome: .completed)),
             DecisionRecord(timestamp: now.addingTimeInterval(900), query: "do the thing", decision: Pick(
                 instinct: .webResults, suggested: .narrative, confidence: 0.3,
                 probabilities: ["narrative": 0.3, "web_results": 0.3], model: "jev-1.13.0", latencyMs: 190, inputTokens: 400, reasoning: 1.1, reasoningConfidence: 0.5, source: .confidenceFallback),
-                engine: EngineSummary(model: "gemini-3.8-flash", rounds: 1, steps: [], usage: AnswerUsage(inputTokens: 5000, outputTokens: 40, thoughtTokens: 20), latencyMs: 1500, factsGiven: 0, memoriesGiven: 2, outcome: .fellBackToWeb("round 1: no calls"))),
+                engine: EngineSummary(model: "gemini-3.8-flash", rounds: 1, steps: [], usage: AnswerUsage(inputTokens: 5000, outputTokens: 40, thoughtTokens: 20), latencyMs: 1500, factsGiven: 0, webpagesGiven: 2, outcome: .fellBackToWeb("round 1: no calls"))),
             DecisionRecord(timestamp: now.addingTimeInterval(845), query: "suggest a vegetarian dinner", decision: Pick(instinct: .narrative, suggested: nil, confidence: 1, source: .plan),
                 answer: AnswerSummary(model: "gemini-3.1-flash-lite", format: .narrative, usage: AnswerUsage(inputTokens: 900, outputTokens: 180, thoughtTokens: 0), firstTokenMs: 500, latencyMs: 2000, outcome: .completed)),
             DecisionRecord(timestamp: now.addingTimeInterval(850), query: "my friend noah went vegan once", decision: Pick(instinct: .narrative, suggested: .narrative, confidence: 0.95, probabilities: ["narrative": 0.95], model: "jev-1.13.0", latencyMs: 180, inputTokens: 300, remember: 0.8, source: .jev),
@@ -175,7 +175,7 @@ import Testing
         #expect(markdown.contains("Kept: \"I'm vegetarian\""))
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).fact == nil, "lines without a fact decode")
         #expect(try DecisionRecord.decoder.decode(DecisionRecord.self, from: Data(oldRecord.utf8)).extraction == nil, "lines without an extraction decode")
-        #expect(markdown.contains("1 recalls: 1 opened one memory, 0 showed a picker, 0 matched nothing and went to web. Jev judged 1, median 310 ms; 0 fell back to word order."))
+        #expect(markdown.contains("1 recalls: 1 brought one webpage forward, 0 showed the grid, 0 matched nothing open. Jev judged 1, median 310 ms; 0 fell back to word order."))
         #expect(markdown.contains("4 site requests: 1 opened a remembered site, 1 showed choices, 1 fell back to web results, 1 rejected the site on screen. Median search latency 640 ms."))
         #expect(markdown.contains("Fell back: \"lobsters\": no key"))
         let old = #"{"matches":2}"#

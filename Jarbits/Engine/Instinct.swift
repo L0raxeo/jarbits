@@ -46,6 +46,9 @@ struct InstinctContext {
     /// The page this step opens goes to Jarbits's own screen, not the
     /// user's: the planner's choice, carried out by the session.
     var desk = false
+    /// The user asked for a new webpage of a site already open: opened
+    /// afresh instead of the open one coming forward.
+    var fresh = false
 }
 
 /// What an instinct that shows nothing came to: how it touched the facts,
@@ -54,7 +57,7 @@ struct InstinctOutcome {
     var fact: FactSummary?
     var text: String
     /// What a recall in a plan found, for the plan to point at by handle.
-    var found: [MemoryRecord] = []
+    var found: [Webpage] = []
     /// The instinct could not do the thing: why, in Jarbits's words. It
     /// showed nothing and recorded nothing; the session hands the query to
     /// the planner, and a plan step reads it as its result.

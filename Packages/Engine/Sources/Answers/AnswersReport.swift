@@ -106,10 +106,10 @@ public enum AnswersReport {
     /// Advanced reasoning's request, quoted from the same `Planner` the app uses.
     private static func reasoningSection() -> [String] {
         let tools = Planner.tools(for: InstinctSpec.all)
-        let bundle = PlanBundle(query: "<query>", exchanges: [.search(query: "<earlier query>", term: "<term searched>")], facts: ["<fact>"], memories: [], tools: tools, context: .example)
+        let bundle = PlanBundle(query: "<query>", exchanges: [.search(query: "<earlier query>", term: "<term searched>")], facts: ["<fact>"], tools: tools, context: .example)
         let screen = Screen(kind: .page, title: "<page title>", address: URL(string: "https://example.com/<path>"), visible: "<the text in the viewport>", rest: "<the rest of the page's text>", items: [ScreenItem(title: "<link text>", address: URL(string: "https://example.com/<link>")!)])
-        let things = ThingTable(exchanges: bundle.exchanges, memories: [
-            MemoryRecord(date: AnswerContext.example.now.addingTimeInterval(-86_400), kind: .page, query: "<earlier query>", title: "<page title>", url: URL(string: "https://example.com/<path>")),
+        let things = ThingTable(exchanges: bundle.exchanges, webpages: [
+            Webpage(kind: .page, address: URL(string: "https://example.com/<path>")!, title: "<page title>", query: "<earlier query>", opened: AnswerContext.example.now.addingTimeInterval(-86_400)),
         ], items: screen.items)
         let input = Planner.input(query: "<query>", things: things, now: AnswerContext.example.now, screen: screen)
         var out: [String] = []
@@ -123,13 +123,13 @@ public enum AnswersReport {
         out.append(Planner.system(facts: bundle.facts, context: bundle.context, persona: .example))
         out.append("```")
         out.append("")
-        out.append("First turn (the request, the exchanges it depends on, the memories nearest it, at most \(ReasoningPolicy.memoriesGiven), every note, and the screen: its visible text up to \(Screen.visibleLimit) characters, the rest up to \(Screen.restLimit), the links in view as `s` handles; a JPEG of the viewport rides beside the text as a second content part, `{\"type\": \"image\", \"data\": <base64>, \"mime_type\": \"image/jpeg\"}`):")
+        out.append("First turn (the request, the exchanges it depends on, the open webpages, newest first, at most \(ReasoningPolicy.webpagesListed), every note, and the screen: its visible text up to \(Screen.visibleLimit) characters, the rest up to \(Screen.restLimit), the links in view as `s` handles; a JPEG of the viewport rides beside the text as a second content part, `{\"type\": \"image\", \"data\": <base64>, \"mime_type\": \"image/jpeg\"}`):")
         out.append("")
         out.append("```")
         out.append(input)
         out.append("```")
         out.append("")
-        out.append("Tools (`tools` on the request), one per instinct, then `ask`, `say`, `open`, `look` and `done`. `say` shows the planner's own text on a card, as it is, with no second model: for what it already holds in full (the facts, the memories shown to it, earlier steps' results), including \"I don't know that yet\"; a question needing knowledge beyond that goes through `narrative` or `one_line`. The first turn tags each earlier exchange (`p1`, `p2`) and each memory (`m1`, `m2`): a handle (`ThingTable` in the Engine library). A field of kind thing (`open.things`, an answer's `about`) takes a handle, and the device swaps it for the thing itself, a page's address, a search's term, an answer's text, before the step runs; a handle not in the listing fails the step. In a plan, `recall` shows nothing: its result names what it found by handle, minted into the listing, for `open`, `say` or an answer's `about`.")
+        out.append("Tools (`tools` on the request), one per instinct, then `ask`, `say`, `open`, `look`, `close` and `done`. `say` shows the planner's own text on a card, as it is, with no second model: for what it already holds in full (the facts, the memories shown to it, earlier steps' results), including \"I don't know that yet\"; a question needing knowledge beyond that goes through `narrative` or `one_line`. The first turn tags each earlier exchange (`p1`, `p2`) and each memory (`m1`, `m2`): a handle (`ThingTable` in the Engine library). A field of kind thing (`open.things`, an answer's `about`) takes a handle, and the device swaps it for the thing itself, a page's address, a search's term, an answer's text, before the step runs; a handle not in the listing fails the step. In a plan, `recall` shows nothing: its result names what it found by handle, minted into the listing, for `open`, `say` or an answer's `about`.")
         out.append("")
         out.append("| Tool | Description | Fields |")
         out.append("|---|---|---|")
@@ -140,17 +140,17 @@ public enum AnswersReport {
         out.append("")
         out.append("| Outcome | Then | Logged as |")
         out.append("|---|---|---|")
-        out.append("| `say` | Its text on an answer card, the user's words in the capsule, kept as a narrative memory; the step is `shown` | the plan's line |")
+        out.append("| `say` | Its text on an answer card, the user's words in the capsule, the step is `shown` | the plan's line |")
         out.append("| `open` | The thing the handle names: a page loads, a search loads its results, an answer shows as saved, a page from Jarbits's screen comes forward as it is; the step is `shown` | the plan's line |")
         out.append("| A page tool with `screen` left out or `mine` | The page loads on Jarbits's own screen, unseen; the result is `opened on my screen as p3: …`; the step is `read` | the plan's line |")
-        out.append("| `recall` in a plan | Nothing shown; the step's result is `found m6: …; m7: …` or `found nothing` | the plan's line |")
+        out.append("| `recall` in a plan | Nothing shown; the step's result is `found w6: …; w7: …` or `found nothing` | the plan's line |")
         out.append("| `done`, or the rounds end after something was shown or done | What the steps showed stays; a plan that only did something hands the screen back | `engine.outcome = completed` |")
         out.append("| Nothing shown and nothing done | The bubble says so, with Try again and Search instead | `fellBackToWeb(reason)` |")
         out.append("| No on the sheet, or the sheet swiped away | The plan ends there | `declined` |")
         out.append("| The rounds or the time ran out | As completed, or the bubble's question when nothing happened | `budget` |")
         out.append("| A newer query took the screen | Nothing more | `stale` |")
         out.append("")
-        out.append("The plan summary (model, rounds, every step with its outcome and latency, tokens, the facts and memories given, the outcome) rides on the same `decisions.jsonl` line; a step that did something with no screen of its own is also a memory of kind `action`, so \"what did you just do\" finds it.")
+        out.append("The plan summary (model, rounds, every step with its outcome and latency, tokens, the facts and open webpages given, the outcome) rides on the same `decisions.jsonl` line; a step that did something with no screen of its own is also a memory of kind `action`, so \"what did you just do\" finds it.")
         return out
     }
 

@@ -239,12 +239,12 @@ struct HomeView: View {
                     }
 
                     #if DEBUG
-                    // Forgets every memory. A Debug control until a real one exists.
+                    // Closes every webpage and forgets the rest. A Debug control until a real one exists.
                     if showsHint {
                         VStack {
                             HStack {
                                 Spacer()
-                                Button("Clear memory") { session.clearMemory() }
+                                Button("Close everything") { session.clearWebpages() }
                                     .buttonStyle(.plain)
                                     .font(.footnote)
                                     .foregroundStyle(Palette.quiet)

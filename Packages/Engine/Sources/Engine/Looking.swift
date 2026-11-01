@@ -1,14 +1,14 @@
 import Foundation
 
 /// What `look` reads out of a thing that is not a web page: a note's lines,
-/// an answer's or a memory's text, numbered so a later look continues
-/// from a number and a write names a line. A page is read by its own
+/// an answer's text, numbered so a later look continues from a number and
+/// a write names a line. A page is read by its own
 /// script in the app; these are the device-side readers for everything
 /// else, so nothing in the listing is more than one look away.
 public enum Looking {
     /// Lines of a note shown at most per look.
     public static let noteLimit = 400
-    /// Paragraphs of an answer or a memory shown at most per look.
+    /// Paragraphs of an answer shown at most per look.
     public static let paragraphLimit = 60
 
     public struct Read: Equatable, Sendable {
@@ -45,27 +45,14 @@ public enum Looking {
         return headings.isEmpty ? "no headings in my note \"\(note.title)\"" : headings.joined(separator: "\n")
     }
 
-    /// An answer's or a memory's text as numbered paragraphs (split at
-    /// blank lines), from paragraph `from`, `limit` at most.
+    /// An answer's text as numbered paragraphs (split at blank lines), from
+    /// paragraph `from`, `limit` at most.
     public static func paragraphs(of text: String, from: Int? = nil, limit: Int = paragraphLimit) -> Read {
         let all = text.components(separatedBy: "\n\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let start = max((from ?? 1) - 1, 0)
         let shown = Array(all.dropFirst(start).prefix(limit))
         let numbered = shown.enumerated().map { "\(start + $0.offset + 1)| \($0.element)" }.joined(separator: "\n")
         return Read(text: numbered, links: [], more: max(all.count - start - shown.count, 0))
-    }
-
-    /// A memory's text: a conversation as its turns in order, `Asked "q":
-    /// answer`, numbered; a single answer as its paragraphs.
-    public static func text(of record: MemoryRecord, from: Int? = nil) -> Read {
-        if let turns = record.turns {
-            let all = turns.map { "Asked \"\($0.query)\": \($0.answer)" }
-            let start = max((from ?? 1) - 1, 0)
-            let shown = Array(all.dropFirst(start).prefix(paragraphLimit))
-            let numbered = shown.enumerated().map { "\(start + $0.offset + 1)| \($0.element)" }.joined(separator: "\n")
-            return Read(text: numbered, links: [], more: max(all.count - start - shown.count, 0))
-        }
-        return paragraphs(of: record.text ?? "", from: from)
     }
 
     /// The line after a read that was cut: how to continue it.

@@ -104,8 +104,8 @@ import Testing
 
     @Test func aRecallShortlistComesBackJudgedOrFailed() async throws {
         let now = Date(timeIntervalSince1970: 1_792_685_600)
-        let video = MemoryRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, date: now.addingTimeInterval(-86_400), kind: .page, query: "", title: "Rick Steves' Europe: Lisbon", url: URL(string: "https://m.youtube.com/watch?v=a"))
-        let recipe = MemoryRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, date: now.addingTimeInterval(-3_600), kind: .narrative, query: "how do you make hot chocolate", text: "Heat milk.")
+        let video = Webpage(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, kind: .page, address: URL(string: "https://m.youtube.com/watch?v=a")!, title: "Rick Steves' Europe: Lisbon", opened: now.addingTimeInterval(-86_400))
+        let recipe = Webpage(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, kind: .search, address: QueryParser.searchURL(for: "how do you make hot chocolate"), query: "how do you make hot chocolate", opened: now.addingTimeInterval(-3_600))
         let body = #"{ "model": "jev-1.13.0", "answers": { "m0": { "type": "noul", "noul": 0.95 }, "m1": { "type": "noul", "noul": 0.1 } }, "usage": { "input_tokens": 300, "output_tokens": 4 } }"#
         let client = MockTransport.client(status: 200, body: body)
 
@@ -115,7 +115,7 @@ import Testing
             Issue.record("expected picks, got \(verdict)")
             return
         }
-        #expect(picks.map(\.record) == [video])
+        #expect(picks.map(\.webpage) == [video])
         #expect(latencyMs >= 0)
         let sent = try #require(MockTransport.requests.first?.httpBody)
         let json = try #require(JSONSerialization.jsonObject(with: sent) as? [String: Any])

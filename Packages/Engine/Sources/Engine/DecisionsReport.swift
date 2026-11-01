@@ -8,7 +8,7 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     /// Filled in once Gemini has answered (or failed to); absent for web plans
     /// and for lines written before answers existed.
     public var answer: AnswerSummary?
-    /// How a recall fared: how many memories matched and which was shown.
+    /// How a recall fared: how many open webpages matched and which was shown.
     public var recall: RecallSummary?
     /// How a site request fared: opened from the book, choices shown, or the results page.
     public var site: SiteSummary?
@@ -212,7 +212,7 @@ public enum DecisionsReport {
             let none = recalls.filter { $0.1.matches == 0 }
             let one = recalls.filter { $0.1.matches == 1 }.count
             let several = recalls.count - none.count - one
-            var line = "\(recalls.count) recalls: \(one) opened one memory, \(several) showed a picker, \(none.count) matched nothing and went to web."
+            var line = "\(recalls.count) recalls: \(one) brought one webpage forward, \(several) showed the grid, \(none.count) matched nothing open."
             let judged = recalls.filter { $0.1.source == "jev" }
             if !judged.isEmpty {
                 let latencies = judged.compactMap(\.1.latencyMs).sorted()
