@@ -105,13 +105,20 @@ final class Messenger: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: Delegate
 
+    // The center calls these on its own queue. Everything they touch (the
+    // app's state, the session) is main-thread only, so each reads what it
+    // needs from the response first, then does the rest on the main actor
+    // and answers the center from there.
+
     /// While the app is on screen the bubble and the voice have it.
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        let away = await MainActor.run { UIApplication.shared.applicationState == .background }
-        return away ? [.banner, .list, .sound] : []
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void) {
+        Task { @MainActor in
+            let away = UIApplication.shared.applicationState == .background
+            completionHandler(away ? [.banner, .list, .sound] : [])
+        }
     }
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping @Sendable () -> Void) {
         let action = response.actionIdentifier
         let info = response.notification.request.content.userInfo
         let token = (info["token"] as? String).flatMap(UUID.init(uuidString:))
@@ -121,8 +128,9 @@ final class Messenger: NSObject, UNUserNotificationCenterDelegate {
         let text = info["text"] as? String ?? ""
         let options = info["options"] as? [String] ?? []
         let typed = (response as? UNTextInputNotificationResponse)?.userText
-        await MainActor.run {
+        Task { @MainActor in
             self.handle(action: action, token: token, layer: layer, questionID: questionID, query: query, text: text, options: options, typed: typed)
+            completionHandler()
         }
     }
 
