@@ -140,6 +140,7 @@ final class ContinuedTask {
         case "notebook": "Writing in my notes"
         case "remember", "forget": "Keeping that in mind"
         case "recall": "Looking back"
+        case "trigger": "Setting that up"
         case "web_results", "images", "videos", "site": "Searching"
         case "narrative", "one_line": "Thinking it through"
         default: "Working"

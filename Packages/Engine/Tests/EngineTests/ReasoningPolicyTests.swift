@@ -24,7 +24,7 @@ import Testing
         #expect(ReasoningPolicy.entersReasoning(decision(0.2, format: .notebook), spec: notebook), "reasoned, whatever the score")
         #expect(!ReasoningPolicy.entersReasoning(decision(0.2, format: .webResults), spec: search))
         #expect(!ReasoningPolicy.entersReasoning(decision(0.2, format: .notebook)), "without the spec the old rule stands, for the eval")
-        #expect(InstinctSpec.all.filter { !$0.shortcut }.map(\.id) == ["map", "stock", "notebook"], "the unbuilt two and the notebook are reasoned; the rest earned the shortcut")
+        #expect(InstinctSpec.all.filter { !$0.shortcut }.map(\.id) == ["map", "stock", "notebook", "trigger"], "the unbuilt two and the notebook are reasoned; the rest earned the shortcut")
     }
 
     @Test func anUnsurePickAlwaysEnters() {

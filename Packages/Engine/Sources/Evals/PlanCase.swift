@@ -131,6 +131,8 @@ public struct PlanCase: Codable, Equatable, Sendable {
     /// model made and the result the device gave, put in the transcript
     /// before the request, so a case tests the round after a look.
     public var prior: [PriorStep]?
+    /// What is set to go off, listed for the planner by handle.
+    public var triggers: [TriggerCase]?
     public var calls: [ExpectedCall]
     /// The expected calls are the first ones; whatever follows in the same round is fine.
     public var prefix: Bool?
@@ -140,7 +142,36 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var picked: Instinct?
     public var note: String?
 
-    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, webpages: [OpenWebpage]? = nil, notes: [NoteCase]? = nil, screen: ScreenCase? = nil, bubble: ScreenCase? = nil, prior: [PriorStep]? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
+    /// A trigger as a case lists it: its number, the condition in the
+    /// planner's own fields (`when` and the matching values), the job and the line.
+    public struct TriggerCase: Codable, Sendable, Equatable {
+        public var number: Int
+        /// `at`, `days`, `every`, `random`, `sometime` or `site`.
+        public var when: String
+        /// Minutes from the case's now for `at`; minutes of the gap for `every`.
+        public var minutes: Int?
+        public var weekdays: [Int]?
+        public var hour: Int?
+        public var minute: Int?
+        public var site: String?
+        public var task: String?
+        public var line: String
+
+        public func trigger(now: Date) -> Trigger {
+            let condition: Trigger.When
+            switch when {
+            case "days": condition = .days(weekdays: Set(weekdays ?? [2, 3, 4, 5, 6]), hour: hour ?? 8, minute: minute ?? 0)
+            case "every": condition = .every(minutes: minutes ?? 30)
+            case "random": condition = .random(perDay: 3, fromMinute: 9 * 60, toMinute: 21 * 60)
+            case "sometime": condition = .sometime(from: now, to: now.addingTimeInterval(7 * 24 * 3600))
+            case "site": condition = .site(key: Trigger.siteKey(of: site ?? "youtube.com"), name: site ?? "YouTube")
+            default: condition = .at(now.addingTimeInterval(Double(minutes ?? 60) * 60))
+            }
+            return Trigger(number: number, created: now.addingTimeInterval(-3600), asked: line, when: condition, job: task.map { .run(task: $0) } ?? .say, line: line)
+        }
+    }
+
+    public init(query: String, exchanges: [Exchange]? = nil, facts: [String]? = nil, webpages: [OpenWebpage]? = nil, notes: [NoteCase]? = nil, screen: ScreenCase? = nil, bubble: ScreenCase? = nil, prior: [PriorStep]? = nil, triggers: [TriggerCase]? = nil, calls: [ExpectedCall], prefix: Bool? = nil, failure: String? = nil, picked: Instinct? = nil, note: String? = nil) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
@@ -149,6 +180,7 @@ public struct PlanCase: Codable, Equatable, Sendable {
         self.screen = screen
         self.bubble = bubble
         self.prior = prior
+        self.triggers = triggers
         self.calls = calls
         self.prefix = prefix
         self.failure = failure
@@ -164,6 +196,7 @@ public struct PlanCase: Codable, Equatable, Sendable {
         if let notes, !notes.isEmpty { name += " with \(notes.count) notes" }
         if let last = exchanges?.last { name += " after \"\(last.query)\"" }
         if let screen { name += " over \"\(screen.title)\"" }
+        if let triggers, !triggers.isEmpty { name += " with \(triggers.count) set" }
         if let prior, !prior.isEmpty { name += " after \(prior.map(\.name).joined(separator: ", "))" }
         // The same question answered differently is a different case.
         if let last = prior?.last, last.name == "ask" { name += " answered \"\(last.result.prefix(48))\"" }

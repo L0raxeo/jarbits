@@ -370,7 +370,10 @@ struct HomeView: View {
             if hearing { withAnimation(.spring(duration: 0.35, bounce: 0.1)) { barCompact = false } }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { session.attention.touched() }
+            if phase == .active {
+                session.attention.touched()
+                session.becameActive()
+            }
         }
         // The Action button: the keyboard goes, so the microphone's rule can say yes.
         .onChange(of: session.woke) { _, _ in

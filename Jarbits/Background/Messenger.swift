@@ -117,8 +117,18 @@ final class Messenger: NSObject, UNUserNotificationCenterDelegate {
 
     /// While the app is on screen the bubble and the voice have it.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void) {
+        let info = notification.request.content.userInfo
+        let trigger = (info["trigger"] as? String).flatMap(UUID.init(uuidString:))
+        let occurrence = info["occurrence"] as? Int ?? 0
         Task { @MainActor in
             let away = !self.onScreen
+            // A trigger arriving while the app is on screen is the signal to
+            // go off here, in the bubble and aloud: no banner over it.
+            if let trigger, !away {
+                completionHandler([])
+                await self.session?.triggerArrived(trigger, occurrence: occurrence)
+                return
+            }
             completionHandler(away ? [.banner, .list, .sound] : [])
         }
     }
@@ -133,7 +143,15 @@ final class Messenger: NSObject, UNUserNotificationCenterDelegate {
         let text = info["text"] as? String ?? ""
         let options = info["options"] as? [String] ?? []
         let typed = (response as? UNTextInputNotificationResponse)?.userText
+        let trigger = (info["trigger"] as? String).flatMap(UUID.init(uuidString:))
+        let occurrence = info["occurrence"] as? Int ?? 0
         Task { @MainActor in
+            if let trigger, action == UNNotificationDefaultActionIdentifier {
+                // The tap on a trigger's notification: it goes off now, the app opening.
+                await self.session?.triggerTapped(trigger, occurrence: occurrence)
+                completionHandler()
+                return
+            }
             self.handle(action: action, token: token, layer: layer, questionID: questionID, query: query, text: text, options: options, typed: typed)
             completionHandler()
         }

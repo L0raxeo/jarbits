@@ -23,16 +23,24 @@ import Testing
     }
 
     @Test func theNotebookCameAfterTime() {
-        #expect(Instinct.allCases.dropLast().last == .notebook, "appended in order, so the options Jev knew keep theirs")
-        #expect(Instinct.allCases.dropLast(2).last == .time)
+        #expect(Instinct.allCases.dropLast(2).last == .notebook, "appended in order, so the options Jev knew keep theirs")
+        #expect(Instinct.allCases.dropLast(3).last == .time)
         #expect(Instinct.notebook.outranksConversation && !Instinct.notebook.isAnswered)
         #expect(Instinct.notebook.criterion.examples.contains("add milk to my shopping list"))
         #expect(Instinct.remember.criterion.notFor.contains("which is notebook"), "a note to write is not a fact to keep")
         #expect(Instinct.notebook.criterion.notFor.contains("which is remember"))
     }
 
-    @Test func theWeatherIsTheNewestInstinct() {
-        #expect(Instinct.allCases.last == .weather, "appended last, so the options Jev knew keep their order")
+    @Test func theTriggerIsTheNewestInstinct() {
+        #expect(Instinct.allCases.last == .trigger, "appended last, so the options Jev knew keep their order")
+        #expect(Instinct.trigger.outranksConversation && !Instinct.trigger.isAnswered)
+        #expect(Instinct.remember.criterion.notFor.contains("which is trigger"), "a reminder is not a fact to keep")
+        #expect(Instinct.notebook.criterion.notFor.contains("which is trigger"), "a timer is not a note")
+        #expect(Instinct.trigger.criterion.notFor.contains("which is remember") && Instinct.trigger.criterion.notFor.contains("which is notebook"))
+    }
+
+    @Test func theWeatherCameBeforeTheTrigger() {
+        #expect(Instinct.allCases.dropLast().last == .weather, "appended in order, so the options Jev knew keep their order")
         #expect(Instinct.weather.outranksConversation && !Instinct.weather.isAnswered, "the forecast answers it, not a model")
         #expect(!Instinct.oneLine.criterion.what.contains("weather") && Instinct.oneLine.criterion.notFor.contains("which is weather"), "the weather left one_line")
         #expect(!Instinct.oneLine.criterion.examples.contains { $0.contains("rain") })

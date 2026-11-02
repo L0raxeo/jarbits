@@ -572,7 +572,9 @@ pressure; developers report the task pausing on a truly locked phone
 (Apple says fixed in iOS 26.1, one report says not), to be tested on his
 phone; force-quit and a powered-off phone end everything, which only the
 server will fix; and a page the planner opens on his own screen may not
-load in the background, to be tested too.
+load in the background, to be tested too. A reminder set to go off while
+the app is away comes as its own scheduled notification, on time, with no
+code of Jarbits's running (see "Triggers").
 On the idle screen it
 stops short of the clay's circle. The page stays live and tappable around
 it. An answer's bubble appears the moment its stream starts, a short bar
@@ -646,6 +648,95 @@ keep checking in case."), and then to keep checking, since the answer may
 be one search away; when the time still runs out, the device's closing
 line answers the promise under it. Without a planner at all, web results
 still stand in.
+
+## Triggers
+
+A trigger is one saved promise (2026-11-02): when it goes off, what
+Jarbits does then, and how often. "Remind me at 5 to call mom", "in 20
+minutes", "set a timer for 10 minutes", "every weekday at 8", "every 30
+minutes", "randomly through the day, remind me to stretch", "sometime
+next week", "pull up my watchlist next time I open youtube", "at 8, tell
+me the weather". He can ask what is set and cancel any of it; changing
+one is a cancel and a new set. `Trigger` in the package holds the shape
+(id, a number the planner's listing names it by, t3, never reused; when;
+the job, fixed words or a task; the line Jarbits says; until; what went
+off last; the random times picked, kept so a relaunch never moves them)
+and the rules, pure and tested: the next and the last occurrence
+(wall-clock repeats follow the phone's local time; one-time triggers are
+fixed moments), random picks inside the window never closer than thirty
+minutes, a site's key (`m.youtube.com` and `www.youtube.com` are one, a
+subdomain matches), what should be waiting with the system given every
+trigger (weekly repeats first, one slot per weekday however long they run,
+then the nearest moments, a gap or a random one a week ahead and twenty at
+most, cut to iOS's sixty-four), the listing line and a summary for the
+log. `TriggerStore` keeps them as JSON Lines (`triggers.jsonl`), and its
+`claim` is the one gate on going off: the tap, the on-screen signal and
+the catch-up can all arrive for one occurrence, and only the first gets
+true; a one-time trigger is finished by its claim, a cancelled one by its
+cancel, and finished ones are pruned after thirty days. The server will
+hold the triggers one day; the rules are in the package so it can run
+them, the saved form is plain JSON, and the id lasts.
+
+Setting one is the `trigger` instinct, always planned: Jev picks it (its
+criterion keeps reminders out of `remember` and `notebook`, and "remind me
+what my sister's name is" out of it), and the planner writes the
+condition and the words into its tool's fields (`Planner.triggerFields`,
+on the tool alone so Jev is asked nothing new: `when` as at, days, every,
+random, sometime or site with the matching values, `job` say or run,
+`task`, `line`, `until`, `own`, `which`). `TriggerInstinct` works out the
+moment (`at` through the weather's reader of dates and bare times, so a
+day with no time is a failed result and the planner asks; `in_minutes`
+so the planner never does clock arithmetic), looks a site up by address
+or in the site book (unknown is a failed result), refuses during a query
+a trigger started, keeps it, tells the clock and answers with the moment
+worked out ("set t3: today at 5:00 PM; say …"), which the planner says
+back so a mistake is heard. The rules say task and line must stand on
+their own weeks later (never "this" or "the page"), task holds the job
+alone, nothing later is promised without a trigger step, a task set for a
+time comes as a notification to tap when the app is closed, a site is
+watched for inside Jarbits (iOS tells no app when another opens), "wake
+me up" is a notification and not an alarm, no time given means ask, and
+monthly and yearly are not yet. Jarbits sets one itself only to serve a
+request and says so (`own`). The listing shows what is set under "Set to
+go off", by handle; "what reminders do I have" is a `say`, and
+cancelling one names the handle; cancelling all asks first. The fact
+reader keeps nothing from a reminder.
+
+Going off (`TriggerClock`, `Jarbits/Background/`): the clock keeps the
+system's pending notifications equal to what should be waiting, at
+launch, on every return to the foreground and after every set, cancel
+and firing (ids `trigger.<id>.<seconds>`, a weekly repeat one repeating
+notification per weekday; no categories, since `Messenger.ask` replaces
+the set with its own). A notification arriving while the app is in
+front shows no banner: it is the signal, and the trigger goes off here
+(`fire`): the occurrence claimed, then its turn waited for behind a query
+running or a question open (fixed words a minute at most, then said over
+the question), then fixed words as a piece in the bubble, spoken or sent
+as a message, and in the conversation; a task as a query of its own
+through the shared run (`send`: no fact reading on words the user is not
+saying now, no trigger set from inside it). Away, the notification is the
+reminder; a task needs the tap, which opens the app and fires it once the
+stores are in. Catching up on return: fixed words the user saw as a
+notification are marked, not repeated (said now when notifications are
+off); a task opened without a tap is offered once, newest first, "You
+asked me at 8 to fetch the weather. Still want it, sir?", and dropped
+quietly after a day; a repeat that missed several counts its latest only.
+A site trigger watches the site on the user's screen, by key: only a
+change to a different site is a visit (a layer opened by voice, typing or
+a link, a tab brought forward, a swipe back to it; not Jarbits's hidden
+screen, not the next video on the same site, not a results page, not the
+site already up when it was set), compared once a move has finished,
+since one move can change the stack and the index one after the other.
+Every firing, catch-up and drop is a line in the log (`TriggerSummary`
+on the record).
+
+Four calls made with Lorcan: "next time I open YouTube" means inside
+Jarbits; a task with the app closed needs the tap until the server
+exists, with no workaround that only sometimes works; Jarbits sets a
+trigger itself only to serve a request and tells him; "wake me up" is a
+notification, not an alarm. Not yet: triggers on a topic, on a place or
+on other apps opening; alarms and time-sensitive notifications; snooze;
+a screen listing them; monthly and yearly repeats.
 
 ## Weather
 
@@ -1592,6 +1683,7 @@ app as open webpages; card layers do not.
 | `Jarbits/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the open webpages and Jev's judge. |
 | `Jarbits/Engine/SessionExchange.swift` | A layer's thread and its exchanges: what each layer got, as the engine sends it to Jev. |
 | `Jarbits/Engine/FactInstincts.swift` | The two instincts that show nothing: `remember` keeps a fact, `forget` judges which one the words mean and asks in the bubble. |
+| `Jarbits/Engine/TriggerInstinct.swift`, `Jarbits/Background/TriggerClock.swift` | The trigger instinct (see "Triggers"): the moment worked out, the site looked up, the trigger kept and the clock told; and the clock, which keeps the system's notifications equal to what should be waiting and catches up on what came due while away. `Trigger` and `TriggerStore` live in the package. |
 | `Jarbits/Engine/PendingQuestion.swift` | One question put to the user in the bubble and the wait on its answer, resumed once by a tap, a return or a cancel. |
 | `Jarbits/Answers/AnswerSession.swift` | Streams one Gemini answer: the text, the live-data marker check, and the summary for the log. |
 | `Jarbits/Memory/WebpageStore.swift` | The open webpages file: the row in order and the current one, written a second after a change and when the app leaves, pictures beside it, the meaning index; search by words and meaning (`WebpageSearch` in the package). |

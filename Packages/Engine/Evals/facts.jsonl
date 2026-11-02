@@ -21,3 +21,4 @@
 {"query": "I don't have a friend named sam", "known": ["Lorcan has a friend named John."], "expect": [], "note": "denying what was never noted keeps nothing: no one notes the friends someone doesn't have"}
 {"query": "it's Sean, not John", "known": ["Lorcan has a friend named John."], "expect": [{"kind": "changed", "of": 1, "contains": ["Sean"]}], "note": "a correction keeps the friend and fixes the name"}
 {"query": "I don't eat pork", "known": ["Lorcan has a friend named John."], "expect": [{"kind": "new", "contains": ["pork"]}], "note": "a negative that is how he lives is a fact"}
+{"query": "remind me to call mom at 5", "expect": [], "note": "a reminder keeps nothing: a thing to do, not a fact (2026-11-02)"}

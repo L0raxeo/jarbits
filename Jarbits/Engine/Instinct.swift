@@ -67,6 +67,8 @@ struct InstinctOutcome {
     /// over. The planner never gets a turn after a no, so it reports
     /// nothing about it; the device already showed the outcome.
     var declined = false
+    /// How a trigger was set or cancelled, for the log.
+    var trigger: TriggerSummary? = nil
 
     static let nothing = InstinctOutcome(fact: nil, text: "")
     static func failed(_ reason: String) -> InstinctOutcome { InstinctOutcome(fact: nil, text: reason, failed: reason) }
@@ -102,6 +104,7 @@ enum InstinctRegistry {
             TimeInstinct(),
             NotebookInstinct(),
             WeatherInstinct(),
+            TriggerInstinct(),
         ]
         assert(instincts.map(\.spec.id) == InstinctSpec.all.map(\.id), "every spec in the registry has its conformer, in order")
         return instincts

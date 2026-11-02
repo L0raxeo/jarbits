@@ -182,7 +182,7 @@ public enum EngineRequest {
 
     public static let rememberCriteria = (
         yes: "The user tells the app something that will still be true next week and could shape a later answer, or asks it to keep something in mind: \"remember that I'm allergic to peanuts\", \"I'm vegetarian\", \"my wife's name is Ana\", \"we moved to Austin\", \"I don't eat pork\", \"keep in mind I have a nut allergy\", \"I'm allergic to peanuts, what can I snack on\".",
-        no: "A question or request with no lasting fact in it; something true only now (\"I'm hungry\", \"I'm at the airport\"); a fact about the world rather than the user (\"the capital of peru is lima\"); and \"remember\" pointing at something seen before in this app (\"remember that convo on the dyson pencilvac\", \"remember that page\"), which is recall; and telling the app that something it holds about them is not so or was misheard (\"I don't have a friend named john\", \"you misheard me\", \"that's not true\")."
+        no: "A question or request with no lasting fact in it; something true only now (\"I'm hungry\", \"I'm at the airport\"); a fact about the world rather than the user (\"the capital of peru is lima\"); and \"remember\" pointing at something seen before in this app (\"remember that convo on the dyson pencilvac\", \"remember that page\"), which is recall; and telling the app that something it holds about them is not so or was misheard (\"I don't have a friend named john\", \"you misheard me\", \"that's not true\"); and a request to be reminded of something later (\"remind me to call mom at 5\"), which is a thing to do, not a fact."
     )
 
     public static let rejectsQuestionID = "rejects"

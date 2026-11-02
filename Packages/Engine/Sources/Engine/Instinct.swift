@@ -39,6 +39,12 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
     /// a native screen with the asked-for detail on top, or the numbers for
     /// the planner to answer from. See `WeatherSnapshot`.
     case weather
+    /// Something Jarbits starts later: a reminder at a time, in a while, on
+    /// set days, at a gap, at random, or when a site next opens here; a
+    /// task to run then; what is set, and cancelling. Always planned: the
+    /// planner writes the condition and the words. Appended last, so the
+    /// options Jev already knew keep their order. See `Trigger`.
+    case trigger
 
     /// What the app shows when the router cannot or should not decide.
     public static let fallback: Instinct = .webResults
@@ -53,7 +59,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
     public var outranksConversation: Bool {
         switch self {
         case .narrative, .oneLine, .webResults: false
-        case .map, .stock, .recall, .image, .video, .site, .remember, .forget, .time, .notebook, .weather: true
+        case .map, .stock, .recall, .image, .video, .site, .remember, .forget, .time, .notebook, .weather, .trigger: true
         }
     }
 
@@ -74,6 +80,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .time: "Time"
         case .notebook: "Notebook"
         case .weather: "Weather"
+        case .trigger: "Reminders"
         }
     }
 
@@ -94,6 +101,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .time: nil
         case .notebook: nil
         case .weather: nil
+        case .trigger: nil
         }
     }
 
@@ -192,7 +200,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .remember:
             Criterion(
                 what: "The user asks the app to keep something in mind about them for later, or tells it something lasting about themselves with nothing else asked: a preference, an allergy, a name, where they live. The words are a remember, a keep-in-mind, a don't-forget, a note-that, or a plain statement about the user; nothing is wanted back but the keeping.",
-                notFor: "Bringing back something seen in this app before (\"remember that convo on the dyson pencilvac\", \"remember that page\"), which is recall; writing the user wants kept as a note or a list (\"make a note that…\", \"add milk to my shopping list\"), which is notebook; a question that mentions a fact on the way to asking something (\"I'm allergic to peanuts, what can I snack on\" wants the snacks); a fact about the world; telling the app that something it holds about them is not so or was misheard (\"I don't have a friend named john\", \"you misheard me\", \"that's not true\"), which is nothing to keep.",
+                notFor: "Bringing back something seen in this app before (\"remember that convo on the dyson pencilvac\", \"remember that page\"), which is recall; writing the user wants kept as a note or a list (\"make a note that…\", \"add milk to my shopping list\"), which is notebook; a question that mentions a fact on the way to asking something (\"I'm allergic to peanuts, what can I snack on\" wants the snacks); a fact about the world; telling the app that something it holds about them is not so or was misheard (\"I don't have a friend named john\", \"you misheard me\", \"that's not true\"), which is nothing to keep; and a reminder, a timer or anything to be done later (\"remind me to call mom at 5\", \"remind me when I open youtube\"), which is trigger.",
                 examples: ["remember that I'm allergic to peanuts", "keep in mind I'm vegetarian", "don't forget my wife's name is Ana", "note that I don't eat pork", "I live in austin now"]
             )
         case .forget:
@@ -210,7 +218,7 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .notebook:
             Criterion(
                 what: "Jarbits's notebook: writing the user wants kept as a note or a list, added to, changed, opened, read back or deleted. A note to make, something to put in a list, a page to keep in the notes, a note to open or read out, a note to delete. The notes are the user's own writing, kept as files, not facts about the user.",
-                notFor: "A lasting fact about the user with nothing to write down (\"remember that I'm allergic to peanuts\"), which is remember; dropping such a fact, which is forget; bringing back a page, an answer or a search seen in this app before, which is recall.",
+                notFor: "A lasting fact about the user with nothing to write down (\"remember that I'm allergic to peanuts\"), which is remember; dropping such a fact, which is forget; bringing back a page, an answer or a search seen in this app before, which is recall; a reminder or timer to go off later (\"remind me to call mom at 5\", \"set a timer for 10 minutes\"), which is trigger, even when the words say note.",
                 examples: ["make a note that the plumber comes tuesday", "add milk to my shopping list", "open my packing list", "what's in my notes about the trip", "put this page in my notes", "delete that note", "start a new note called ideas"]
             )
         case .weather:
@@ -218,6 +226,12 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
                 what: "The weather now or ahead, here or in a named place, from the forecast: the temperature, rain or snow, wind, UV, humidity, sunrise or sunset, the forecast for a day or an hour up to ten days out; and a question whose answer turns on the forecast, such as whether to bring an umbrella or a coat, or whether it is a good day for a run or the beach.",
                 notFor: "Weather or climate as a topic (\"why is it so humid in florida\", \"what's the difference between weather and climate\"), which is an explanation; a weather website or app by its name (\"pull up the weather channel\"), which is site; and the weather on a past date, which is web results.",
                 examples: ["what's the weather", "what's the temperature", "weather in tokyo tomorrow", "will it rain today", "is it windy out", "what's the uv index", "when's sunset", "should I bring an umbrella", "weather this weekend in nyc"]
+            )
+        case .trigger:
+            Criterion(
+                what: "Something the app does later, on its own: a reminder or a timer at a time, in a while, on set days, at a gap, at random times, or the next time a site opens in this app; a task to run then (tell me the weather at 8, pull up my watchlist when youtube opens); and what is set to go off, or cancelling one of them. The words name a later moment or condition and what should happen then.",
+                notFor: "A lasting fact to keep with no later moment (\"remember that I'm allergic to peanuts\"), which is remember; writing kept as a note or a list (\"make a note that the plumber comes tuesday\"), which is notebook; a question about now with remind in it (\"remind me what my sister's name is\", which asks for a fact); the weather or the time asked for now; opening a site now (\"open youtube\"), which is site.",
+                examples: ["remind me at 5 to call mom", "set a timer for 10 minutes", "every weekday at 8 remind me to take my pills", "every 30 minutes remind me to stretch", "next time I open youtube pull up my watchlist"]
             )
         }
     }

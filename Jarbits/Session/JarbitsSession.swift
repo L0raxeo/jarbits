@@ -88,6 +88,25 @@ final class JarbitsSession {
     let sites: SiteStore
     /// Jarbits's notebook: the notes, as files.
     let notebook: Notebook
+    /// What Jarbits does later; see `Trigger`.
+    let triggers: TriggerStore
+    /// The triggers that can still go off, as the planner's listing shows
+    /// them; read from the store after every change, by the session and the clock.
+    var liveTriggers: [Trigger] = []
+    /// The trigger whose task is the query in flight: a query it started
+    /// may not set another.
+    private(set) var firingTrigger: Trigger?
+    /// How the query in flight touched the triggers, for its log line.
+    private var pendingTriggerSummary: TriggerSummary?
+    /// The notifications the triggers need, and the catching up; see `TriggerClock`.
+    let triggerClock: TriggerClock
+    /// Triggers that have gone off but wait their turn: a query running, or
+    /// a question open. See `fire`.
+    private var pendingFires: [(trigger: Trigger, occurrence: Date, since: Date)] = []
+    private var firePump: Task<Void, Never>?
+    /// The stores have loaded: a trigger tapped from cold waits for this.
+    private var storesReady = false
+    private var waitingForStores: [CheckedContinuation<Void, Never>] = []
     /// Brave's web search for the sites an unknown name might mean; nil
     /// shows the Google results page for the name instead.
     let siteSearch: SiteSearch?
@@ -153,8 +172,16 @@ final class JarbitsSession {
     }
 
     /// The layers, oldest first, and which one is on screen.
-    private(set) var layers: [Layer] = []
-    private(set) var index = 0
+    private(set) var layers: [Layer] = [] { didSet { noteScreenSite() } }
+    private(set) var index = 0 { didSet { noteScreenSite() } }
+    /// The site on the user's screen, by key (`Trigger.siteKey`); nil for a
+    /// card, a results page or nothing. Only a change to a different site
+    /// is a visit, so a site trigger fires on arriving, never on moving
+    /// around inside the site, and the site already up when a trigger is
+    /// set waits for the next arrival. See `noteScreenSite`.
+    private var siteOnScreen: String?
+    private var siteSeen = false
+    private var siteCheckQueued = false
     var current: Layer? { layers.indices.contains(index) ? layers[index] : nil }
     /// Jarbits's own screen: the pages a plan opened to read, oldest first.
     /// Never in `layers`, never current, never drawn for the user; a hidden
@@ -304,7 +331,7 @@ final class JarbitsSession {
     /// A Gemini key is configured, so an answer can be shown.
     var canAnswer: Bool { answerClient != nil }
 
-    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, closing: Closing? = nil, log: DecisionLog = .shared, webpages: WebpageStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared) {
+    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, closing: Closing? = nil, log: DecisionLog = .shared, webpages: WebpageStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared, triggers: TriggerStore = .shared) {
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
@@ -314,6 +341,8 @@ final class JarbitsSession {
         self.siteSearch = siteSearch
         self.sites = sites
         self.notebook = notebook
+        self.triggers = triggers
+        triggerClock = TriggerClock(store: triggers)
         self.facts = facts
         self.factResolver = factResolver
         self.factReader = factReader
@@ -328,6 +357,9 @@ final class JarbitsSession {
             self?.factTexts = all.map(\.text)
             self?.userName = name
             self?.nameLoaded = true
+            self?.liveTriggers = await triggers.live()
+            self?.storesLoaded()
+            await self?.triggerClock.sync()
         }
         dictation.mayListen = { [weak self] in
             await self?.audioIsQuiet() ?? true
@@ -353,7 +385,27 @@ final class JarbitsSession {
         warmer.warm()
         restoreWebpages()
         messenger.session = self
+        triggerClock.session = self
         Self.current = self
+    }
+
+    private func storesLoaded() {
+        storesReady = true
+        let waiting = waitingForStores
+        waitingForStores = []
+        for continuation in waiting { continuation.resume() }
+    }
+
+    /// Returns once the facts, the name and the triggers are in.
+    private func awaitStores() async {
+        if storesReady { return }
+        await withCheckedContinuation { waitingForStores.append($0) }
+    }
+
+    /// The app is in front again: the notifications are checked and what
+    /// came due while away is caught up.
+    func becameActive() {
+        Task { await triggerClock.sync() }
     }
 
     // MARK: Open webpages
@@ -502,6 +554,15 @@ final class JarbitsSession {
         } else {
             question?.cancel()
         }
+        send(trimmed, factReading: true)
+    }
+
+    /// The query's run proper, shared by the user's words and a trigger's
+    /// task: the screen read, the route with the reading beside it, and the
+    /// plan or the instinct applied. The fact reader runs only on words the
+    /// user said now. Everything that is the user's alone (the open
+    /// question, the conversation's clock) stays in `submit`.
+    private func send(_ trimmed: String, factReading: Bool) {
         takePicture(reason: "leave")   // before anything moves: the page as last seen
         let exchanges = exchanges   // the session so far, before anything moves
         let opened = openedSite   // and the site opened by name, if one is on screen
@@ -525,7 +586,9 @@ final class JarbitsSession {
         let routing = Task { await engine.route(trimmed, exchanges: exchanges, current: newest, opened: opened, persona: persona, screen: screenRead) }
         // The fact reader beside the route: every lasting fact the words
         // state, read whatever the query becomes, applied when it is back.
-        startFactReading(query: trimmed, exchanges: exchanges.suffix(FactReader.exchangesGiven).map(\.exchange), routing: routing)
+        if factReading {
+            startFactReading(query: trimmed, exchanges: exchanges.suffix(FactReader.exchangesGiven).map(\.exchange), routing: routing)
+        }
         Task {
             let result = await routing.value
             guard token == requestToken else { releaseRun(token); return }   // a newer query won, or cancelled
@@ -587,6 +650,7 @@ final class JarbitsSession {
         messenger.withdraw(pending.id)
         if waved, answer != nil, token == requestToken { stage = .routing }   // the plan goes on under the wave
         releaseRun(token)
+        pumpFires()
         return answer
     }
 
@@ -1014,8 +1078,16 @@ final class JarbitsSession {
             guard let self, let run else { return }
             runExpired(run)
         }
+        run.onOver = { [weak self] run in self?.queryOver(run) }
         self.run = run
         messenger.requestAuthorizationIfNeeded()
+    }
+
+    /// Nothing of the query is still running: a task a trigger started is
+    /// over, and a trigger waiting its turn may go.
+    private func queryOver(_ run: QueryRun) {
+        if run.token == requestToken || firingTrigger != nil { firingTrigger = nil }
+        pumpFires()
     }
 
     private func holdRun(_ token: UUID) {
@@ -1766,7 +1838,7 @@ final class JarbitsSession {
         Task {
             defer { releaseRun(token) }
             let bubble = await inBubble?.screen()
-            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, spoken: spoken, token: token)
+            let summary = await executor.run(query: query, decision: decision, exchanges: listed, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, spoken: spoken, triggers: liveTriggers, token: token)
             guard token == requestToken else { return }
             #if DEBUG
             print("plan \(summary.outcome) after \(summary.rounds) rounds, \(summary.steps.count) steps, \(summary.latencyMs) ms")
@@ -1902,6 +1974,7 @@ final class JarbitsSession {
             }
         }
         guard !layer.desk else { return }
+        if layer === current { noteScreenSite() }
         if moved {
             layer.lastPicture = nil
             layer.pictureFixed = PageShot.youTubeThumbnail(for: url) != nil
@@ -1968,7 +2041,11 @@ final class JarbitsSession {
         reset()
         archive = []
         conversation = ConversationMemory()
+        pendingFires = []
         Task {
+            await triggers.clear()
+            liveTriggers = []
+            await triggerClock.removeAll()
             await webpages.clear()
             await sites.clear()
             await facts.clear()
@@ -2062,7 +2139,188 @@ final class JarbitsSession {
     }
 
     private func record(_ decision: Pick, query: String, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil) {
-        let record = DecisionRecord(query: query, decision: decision, answer: answer, recall: recall, site: site, extraction: extraction, fact: fact, engine: engine, reading: reading, away: run?.away == true ? true : nil)
+        let record = DecisionRecord(query: query, decision: decision, answer: answer, recall: recall, site: site, extraction: extraction, fact: fact, engine: engine, reading: reading, away: run?.away == true ? true : nil, trigger: pendingTriggerSummary)
+        pendingTriggerSummary = nil
+        Task { await log.append(record) }
+    }
+
+    // MARK: Triggers
+
+    /// A trigger was set or cancelled: the listing's copy is read again.
+    func triggersChanged() async {
+        liveTriggers = await triggers.live()
+    }
+
+    /// A trigger step's summary rides on the query's log line.
+    func noteTrigger(_ summary: TriggerSummary) {
+        pendingTriggerSummary = summary
+    }
+
+    /// A site the user named, for a site trigger: an address as typed, else
+    /// the site book's entry for the name. The key and the name to show.
+    func siteFor(_ named: String) async -> (key: String, name: String)? {
+        if let url = QueryParser.directURL(from: named), let host = url.host() {
+            return (Trigger.siteKey(of: host), QueryParser.displayText(for: url))
+        }
+        guard let entry = await sites.lookup(named) else { return nil }
+        return (Trigger.siteKey(of: entry.host), entry.name)
+    }
+
+    /// A trigger's notification arrived while the app was in front: it goes
+    /// off here. A weekly repeat carries no moment; the latest due is it.
+    func triggerArrived(_ id: UUID, occurrence seconds: Int) async {
+        await fire(id, occurrence: await moment(for: id, seconds: seconds))
+    }
+
+    /// The user tapped a trigger's notification: it goes off now, the app
+    /// opening, once the stores are in (a tap can launch the app from cold).
+    func triggerTapped(_ id: UUID, occurrence seconds: Int) async {
+        await awaitStores()
+        attention.touched()
+        await fire(id, occurrence: await moment(for: id, seconds: seconds))
+    }
+
+    private func moment(for id: UUID, seconds: Int) async -> Date {
+        if seconds > 0 { return Date(timeIntervalSince1970: TimeInterval(seconds)) }
+        guard let trigger = await triggers.trigger(id: id), let due = trigger.lastDue(before: .now) else { return .now }
+        return due
+    }
+
+    /// The one way a trigger goes off: the occurrence is claimed (once,
+    /// whichever of the tap, the on-screen signal and the catch-up got
+    /// there first), then it waits its turn behind a query running or a
+    /// question open, and is carried out: fixed words said, or its task run
+    /// as a query of its own.
+    func fire(_ id: UUID, occurrence: Date) async {
+        await awaitStores()
+        guard let trigger = await triggers.trigger(id: id) else { return }
+        guard await triggers.claim(id, occurrence: occurrence) else { return }
+        await triggersChanged()
+        pendingFires.append((trigger, occurrence, .now))
+        pumpFires()
+        await triggerClock.sync()
+    }
+
+    /// The next waiting trigger goes when nothing is running and no
+    /// question is open; fixed words wait a minute at most behind a
+    /// question, then are said over it. While any wait, a pump runs every
+    /// few seconds, so nothing is forgotten.
+    private func pumpFires() {
+        guard !pendingFires.isEmpty else {
+            firePump?.cancel()
+            firePump = nil
+            return
+        }
+        let next = pendingFires[0]
+        let running = busy || (run.map { !$0.over } ?? false)
+        var blocked = running || question != nil
+        if !running, question != nil, case .say = next.trigger.job, Date.now.timeIntervalSince(next.since) > 60 { blocked = false }
+        if blocked {
+            if firePump == nil {
+                firePump = Task { [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(5))
+                        guard !Task.isCancelled else { return }
+                        self?.pumpFires()
+                    }
+                }
+            }
+            return
+        }
+        pendingFires.removeFirst()
+        carryOut(next.trigger, occurrence: next.occurrence)
+        pumpFires()
+    }
+
+    private func carryOut(_ trigger: Trigger, occurrence: Date) {
+        switch trigger.job {
+        case .say:
+            showLine(trigger.line, query: trigger.asked)
+            recordTrigger(trigger, action: "fired", occurrence: occurrence)
+        case let .run(task):
+            // The line as the task starts, then the task as a query of its
+            // own: no fact reading on words the user is not saying now, and
+            // no trigger set from inside it.
+            showLine(trigger.line, query: trigger.asked)
+            firingTrigger = trigger
+            recordTrigger(trigger, action: "fired", occurrence: occurrence)
+            send(task, factReading: false)
+        }
+    }
+
+    /// Words of Jarbits's own with no query behind them (a reminder going
+    /// off): a piece in the bubble, spoken or sent as a message, and in the
+    /// conversation, so "thanks, again in ten" has something to refer to.
+    private func showLine(_ text: String, query: String) {
+        let piece = Layer(plan: .said(query: query, text: text), query: query, decision: nil)
+        piece.asked = query
+        piece.spoken = text
+        append(piece)
+        archive.append((exchanges: [SessionExchange(exchange: .answer(query: query, text: text), turn: nil, layerID: piece.id)], at: .now))
+        if stage == .idle || stage == .ready { stage = stageBefore }
+        deliver(piece.id, text: text)
+    }
+
+    /// A task that came due while the app was away, and the user opened
+    /// the app without tapping: offered once, as a question with no query
+    /// behind it, like the name's.
+    func offerMissed(_ trigger: Trigger, due: Date) async {
+        guard case let .run(task) = trigger.job else { return }
+        guard question == nil, !busy else { return }
+        let when = Trigger.words(for: due, now: .now)
+        let pending = PendingQuestion(title: "You asked me \(when) to \(task). Still want it, sir?", input: .options(["Yes", "Not now"]))
+        question = pending
+        put(pending, token: requestToken)
+        let answer = await pending.wait()
+        if question === pending { question = nil }
+        messenger.withdraw(pending.id)
+        guard await triggers.claim(trigger.id, occurrence: due) else { return }
+        await triggersChanged()
+        if case .option(0, _)? = answer {
+            pendingFires.append((trigger, due, .now))
+            pumpFires()
+        } else {
+            recordTrigger(trigger, action: "dropped", occurrence: due)
+        }
+    }
+
+    /// The screen's site may have changed (a layer opened, a swipe, a page
+    /// moving to another site): compared once the move has finished, on
+    /// the next turn, since one move can change `layers` and `index` one
+    /// after the other. The first value after launch sets the starting
+    /// point without firing. A different site reaching the screen fires
+    /// every live site trigger that matches it.
+    private func noteScreenSite() {
+        guard !siteCheckQueued else { return }
+        siteCheckQueued = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            siteCheckQueued = false
+            checkScreenSite()
+        }
+    }
+
+    private func checkScreenSite() {
+        var key: String?
+        if let layer = current, layer.isWeb, let url = layer.webAddress, !QueryParser.isSearchResults(url), let host = url.host() {
+            key = Trigger.siteKey(of: host)
+        }
+        guard siteSeen else {
+            siteSeen = true
+            siteOnScreen = key
+            return
+        }
+        guard key != siteOnScreen else { return }
+        siteOnScreen = key
+        guard let key else { return }
+        for trigger in liveTriggers where trigger.matches(host: key) {
+            Task { await fire(trigger.id, occurrence: .now) }
+        }
+    }
+
+    /// A line in the log for a trigger going off, caught up or dropped.
+    func recordTrigger(_ trigger: Trigger, action: String, occurrence: Date? = nil) {
+        let record = DecisionRecord(query: trigger.asked, decision: Pick(instinct: .trigger, source: .plan), trigger: TriggerSummary(action: action, number: trigger.number, kind: trigger.when.kind))
         Task { await log.append(record) }
     }
 

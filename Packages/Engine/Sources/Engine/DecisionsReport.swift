@@ -22,8 +22,10 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     public var reading: ReadingSummary?
     /// A piece of this query reached the user as a message, the app off screen.
     public var away: Bool?
+    /// How a trigger was set, cancelled or went off, when the query touched one.
+    public var trigger: TriggerSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: Pick, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil, away: Bool? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: Pick, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil, away: Bool? = nil, trigger: TriggerSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
@@ -35,6 +37,7 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
         self.engine = engine
         self.reading = reading
         self.away = away
+        self.trigger = trigger
     }
 
     public static let encoder: JSONEncoder = {

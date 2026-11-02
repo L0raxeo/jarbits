@@ -314,6 +314,6 @@ import Testing
         #expect(request.questions.map(\.id) == ["instinct", "recent"] + EngineRequest.recallQuestionIDs + ["remember", "notebook.action?", "notebook.action", "notebook.all?", "notebook.all", "weather.focus?", "weather.focus", "weather.screen?", "weather.screen", "reasoning"])
         let criteria = try #require(((json["questions"] as? [String: Any])?["instinct"] as? [String: Any])?["criteria"] as? [String: Any])
         #expect(criteria["site"] != nil, "site is one of the options")
-        #expect(Array(Instinct.allCases.map(\.rawValue)).suffix(7) == ["site", "video", "remember", "forget", "time", "notebook", "weather"], "appended in order, so the other options keep theirs")
+        #expect(Array(Instinct.allCases.map(\.rawValue)).suffix(8) == ["site", "video", "remember", "forget", "time", "notebook", "weather", "trigger"], "appended in order, so the other options keep theirs")
     }
 }

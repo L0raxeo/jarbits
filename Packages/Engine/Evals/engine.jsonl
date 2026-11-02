@@ -161,3 +161,20 @@
 {"query": "San Francisco", "exchanges": [{"query": "what will the weather be tomorrow in cali", "kind": "answer", "text": "Which part of California?"}], "instinct": "weather", "chain": 1, "source": "jev", "note": "a bare place after a question asked over the answer: the fallback for a question never asked properly or expired; a miss is reported, never ruled around (2026-11-01)"}
 {"query": "I don't have a friend named john", "instinct": "planned", "note": "a denial is neither a fact to keep nor a request to forget: it wants a reply, the planner's"}
 {"query": "you misheard me, I don't have a sister", "instinct": "planned", "note": "the same"}
+{"query": "remind me at 5 to call mom", "instinct": "trigger", "note": "from the trigger criterion (2026-11-02)"}
+{"query": "set a timer for 10 minutes", "instinct": "trigger", "note": "from the trigger criterion"}
+{"query": "every weekday at 8 remind me to take my pills", "instinct": "trigger", "note": "from the trigger criterion"}
+{"query": "every 30 minutes remind me to stretch", "instinct": "trigger", "note": "from the trigger criterion"}
+{"query": "next time I open youtube pull up my watchlist", "instinct": "trigger", "note": "from the trigger criterion"}
+{"query": "remind me to call mom at 5", "instinct": "trigger", "note": "a reminder at a time, not a fact to keep (2026-11-02)"}
+{"query": "remind me in 20 minutes to check the oven", "instinct": "trigger", "note": "a time from now"}
+{"query": "every morning at 8 tell me the weather", "instinct": "trigger", "note": "a task to run on set days; not weather now"}
+{"query": "randomly remind me to stretch during the day", "instinct": "trigger", "note": "random times in a window"}
+{"query": "pull up my watchlist the next time I open youtube", "instinct": "trigger", "note": "a site trigger; not site, which opens it now"}
+{"query": "remind me to go to the grocery store next time I pull up amazon", "instinct": "trigger", "note": "a site trigger with fixed words"}
+{"query": "what reminders do I have", "instinct": "planned", "note": "what is set is answered by the planner from its listing: a trigger pick and an unsure pick both plan, since trigger is always planned (Jev was unsure, trigger .21 on the first run, 2026-11-02)"}
+{"query": "cancel the youtube reminder", "instinct": "trigger", "note": "cancelling one"}
+{"query": "make a note to call mom", "instinct": "notebook", "note": "writing kept as a note, no moment: stays notebook (2026-11-02)"}
+{"query": "weather tomorrow at 8", "instinct": "weather", "note": "the forecast for an hour, not a reminder (2026-11-02)"}
+{"query": "remind me what my sister's name is", "instinct": "planned", "pick": "one_line", "note": "remind in the words, but a question about now: a fact asked for, never trigger; Jev leaned one_line at .76, under the floor, so the planner answers it (2026-11-02)"}
+{"query": "remember that page", "instinct": "recall"}

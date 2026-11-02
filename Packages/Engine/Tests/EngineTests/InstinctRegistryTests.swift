@@ -43,6 +43,9 @@ import Testing
                 #expect(spec.arguments.fields.allSatisfy { !$0.required }, "nothing named means here and now, in general")
                 if case let .choice(options) = spec.arguments.fields[2].kind { #expect(options == WeatherFocus.allCases.map(\.rawValue)) } else { Issue.record("focus is a choice") }
                 if case let .choice(options) = spec.arguments.fields[3].kind { #expect(options == ["mine", "user"], "the first is what words that say nothing of it get: the bubble") } else { Issue.record("screen is a choice") }
+            case .trigger:
+                #expect(!spec.showsLayer && spec.sideEffects == .none && spec.asksItself && !spec.shortcut, "always planned; shows nothing; cancel-all asks itself")
+                #expect(spec.arguments.isEmpty, "its fields are the planner's tool's alone, so Jev is asked nothing new")
             case .narrative, .oneLine:
                 #expect(spec.showsLayer && spec.sideEffects == .none)
                 #expect(spec.arguments.fields.map(\.name) == ["about"] && spec.arguments.things.count == 1, "an answer can be about a thing; nothing for the extractor")

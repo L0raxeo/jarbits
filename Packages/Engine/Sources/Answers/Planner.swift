@@ -65,6 +65,29 @@ public struct Planner: Sendable {
         description: "which screen the page opens on. mine: my own screen, where only I read it, to find something out before I answer; the user never sees it, and the result gives it a handle for look and open (\"when does lehigh pizza open\", \"what's the price of the kilburn two\", \"is this video's advice sound\": results on my screen, a look, then one_line or narrative). user: the user's screen, where it shows at once, when they asked to see the page or the results themselves (\"pull up youtube\", \"look up flights to lima\", \"show me pictures of capybaras\"). Every page step says which.",
         required: true
     )
+    /// The trigger tool's fields, on the tool alone for the same reason: the
+    /// planner reads the request and writes the condition and the words;
+    /// the device works out the moment and keeps it.
+    public static let triggerFields: [ArgumentSchema.Field] = [
+        .init(name: "action", kind: .choice(["set", "cancel"]), description: "set something to go off later, or cancel what is set"),
+        .init(name: "when", kind: .choice(["at", "days", "every", "random", "sometime", "site"]), description: "when it goes off: at, one date and time (at, or in_minutes); days, set weekdays at a time (weekdays, time); every, a fixed gap (every_minutes); random, so many random times a day in a window (per_day, from, to as times of day); sometime, one random moment in a span (from, to as date-times); site, the next time a site opens in this app (site). Give it for every set", required: false),
+        .init(name: "at", kind: .text, description: "for at: the date and time the user gave, read against today, as ISO 8601 with the date (\"at 5\" today: 2026-11-02T17:00; \"tomorrow at 8\": 2026-11-03T08:00). Never invent a time: \"remind me tomorrow\" names a day and no time, so ask which time before any set, rather than choose one", required: false),
+        .init(name: "in_minutes", kind: .integer, description: "for at, instead of at: minutes from now (\"in 20 minutes\": 20; \"a timer for an hour\": 60); never do the clock arithmetic yourself", required: false),
+        .init(name: "weekdays", kind: .text, description: "for days: the weekdays, separated by commas, as mon, tue, wed, thu, fri, sat, sun (\"every weekday\": mon,tue,wed,thu,fri; \"every day\": all seven)", required: false),
+        .init(name: "time", kind: .text, description: "for days: the time of day as HH:MM, 24-hour (\"at 8\" in the morning: 08:00)", required: false),
+        .init(name: "every_minutes", kind: .integer, description: "for every: the gap in minutes (\"every half hour\": 30; \"every 2 hours\": 120)", required: false),
+        .init(name: "per_day", kind: .integer, description: "for random: how many times a day, when the user says; otherwise 3, never asked (\"randomly\" means the user left the count to me); the device chooses the moments", required: false),
+        .init(name: "from", kind: .text, description: "for random: the window's start as a time of day, HH:MM (\"during the day\": 09:00); for sometime: the span's start as an ISO 8601 date-time", required: false),
+        .init(name: "to", kind: .text, description: "for random: the window's end as HH:MM (\"during the day\": 21:00); for sometime: the span's end as an ISO 8601 date-time (\"sometime next week\": the Monday to the Sunday)", required: false),
+        .init(name: "until", kind: .text, description: "for a repeat: when it stops, as an ISO 8601 date, only when the user says (\"until friday\"); null otherwise", required: false),
+        .init(name: "site", kind: .text, description: "for site: the site's name or address as the user gave it (\"youtube\", \"amazon.com\"); the device looks it up in my site book", required: false),
+        .init(name: "job", kind: .choice(["say", "run"]), description: "what happens then: say, fixed words (a reminder, a timer going off); run, a task Jarbits carries out at that moment (the weather fetched, a note pulled up)", required: false),
+        .init(name: "task", kind: .text, description: "for run: the task in full, standing on its own weeks from now with nothing of this conversation in view (\"tell me the weather in Austin\", \"pull up my watchlist note\"), and only the job, never the condition (\"pull up my watchlist\", not \"pull up my watchlist when youtube opens\")", required: false),
+        .init(name: "line", kind: .text, description: "for set: what I say when it goes off, in my own voice, standing on its own weeks from now (\"Time to call your mother, sir.\"; for a task, what I say as I start it); never \"that\" or \"this\": write out what is meant", required: false),
+        .init(name: "own", kind: .boolean, description: "true only when I chose to set this myself to serve the request (\"check back on this tonight\"), not when the user asked for it", required: false),
+        .init(name: "which", kind: .text, description: "for cancel: the trigger's handle from the listing (t3), or all", required: false),
+    ]
+
     /// The instincts that open a page, and so take the screen field.
     public static let pageTools: Set<Instinct> = [.webResults, .image, .video, .map, .stock, .site]
     public static func opensPage(_ spec: InstinctSpec) -> Bool { spec.showsLayer && pageTools.contains(spec.instinct) }
@@ -163,7 +186,7 @@ public struct Planner: Sendable {
     /// A tool's fields: the query, the screen and fresh for a page-opening
     /// tool, then the instinct's own. The executor validates a call against the same.
     public static func fields(for spec: InstinctSpec) -> [ArgumentSchema.Field] {
-        [queryField] + (opensPage(spec) ? [screenField, freshField] : []) + spec.arguments.fields + (spec.instinct == .notebook ? [removeField] : [])
+        [queryField] + (opensPage(spec) ? [screenField, freshField] : []) + spec.arguments.fields + (spec.instinct == .notebook ? [removeField] : []) + (spec.instinct == .trigger ? triggerFields : [])
     }
 
     static func describe(_ spec: InstinctSpec) -> String {
@@ -176,6 +199,8 @@ public struct Planner: Sendable {
             text += " Every note of my notebook is in the listing: the one the request means goes in note, by handle, whatever words it used for it (\"my watchlist\" means a note titled Watch List); a page or answer to keep goes in item, by handle, or several handles separated by commas (\"s5, s6, s7\" after a look at the links), each becoming a line of its own where {item} stands. A topic with no note handle makes a new note by that name (add, new) or fails (open, delete). text is the lines to write: when the request dictates them, they are the request's own words, never a retelling of the thing on screen. Every note is listed whole with its lines numbered, and a line whose words stand in square brackets is a link (the address is the device's, never written): \"the ones with links\" and \"the ones without\" are read off the brackets, and a rewrite copies a bracketed title as it stands, which the device writes back as the link; text is the exact lines to add, in the marks of the lines around where they go, and after is the number of the line they follow. \"add milk\" to a bulleted shopping list writes \"- milk\" after its last item; \"add eggs to the groceries\" in a note with a groceries list and a packing list writes \"- eggs\" after the last grocery line, not at the end; \"start a packing list here with passport\" in a note of prose writes a blank line, \"## Packing\" and \"- [ ] passport\" at the end; a page kept by handle goes as \"- {item}\" in a list and \"{item}\" alone in prose; a link always goes into a note as the thing's handle in braces inside text, on its own line (\"- {s3}\", \"{p1}\"), with the handle in item as well, which the device writes as a clickable link carrying the page's title, never as an address written out, which would stand in the note as plain text; and a note that is empty starts the way its purpose reads (a watch list or shopping list as a list, a thought as prose); \"add that the plumber comes tuesday\" to a note of prose, or as a new note, writes the sentence \"The plumber comes Tuesday.\", never a one-item list; a numbered list gets the next number. The note to write in is the one the request names, else the one note in view; in view means on the screen or in the bubble (the listing's last blocks name them), and a note merely listed in my notebook is not in view. Only when two notes are in view and the request names neither (\"change the bullet points to checkboxes\" with one note on screen and another in the bubble) ask which first, by their titles, and never write to both; with one note in view, write to it without asking, whatever else the notebook holds. A page or video kept into a note still goes in item by handle, whichever note takes it. Taking lines out is remove, by their numbers, never a rewrite of the rest, and a note emptied is a note with no lines, never a deleted one (delete only when the request says delete): the listing shows a kept page as its title, and a rewrite that copies the title loses nothing only because the device writes the link back, so replace is for new wording of the whole note. A write shows a line naming the note and what went in; open shows the note itself as a card the user reads on into: a request to see a note (\"what's on my watchlist\") is open, never a retelling of its lines in say."
         } else if spec.instinct == .weather {
             text += " Shows nothing, and reads the forecast for me to answer from with say, one_line or narrative; on the user's screen when screen is user."
+        } else if spec.instinct == .trigger {
+            text += " Sets, lists or cancels something I do later. Shows nothing: its result says what was set and the moment the device worked out (set t3: today at 5:00 PM), which I then say back in a line. What is set stands in the listing under \"Set to go off\", by handle, for say and for cancel."
         } else if opensPage(spec) {
             text += " Opens its page on my screen, where only I read it; on the user's screen when screen is user."
         } else {
@@ -208,6 +233,7 @@ public struct Planner: Sendable {
             "- Every lasting fact the request itself states is read and kept by the device as the words arrive, with a mark: never call remember for what the request says. Call remember for something lasting about \(persona.users) own life that came out of an answer or of ask, never for a decision or detail inside something they are making (a project's mascot, a logo's colour): the work keeps that.",
             "- When \(persona.user) says something you hold about them is not so (\"I don't have a friend named John\", \"you misheard me\", \"that's not true\" straight after a fact marked just noted), it is not so, whatever the facts below say: take their word for it, as a person would. The device drops it as the words arrive, with whatever rested on it, so never call forget or remember for it, never ask whether to, and never argue. Own the mistake in one short line of your own through say (\"My apologies, sir. I must have misheard.\"), and if the request asks for anything else, serve that too, without the thing you got wrong. When you held no such thing, acknowledge it just as briefly and claim nothing forgotten. Never bring it up again.",
             "- remember and forget show \(persona.user) a mark saying what was kept or dropped: never also say it.",
+            "- Anything to be done later goes through trigger, and only a trigger step that ran makes it so: never say \"I'll remind you\" or promise anything later without one. Its task and line must stand on their own weeks from now, when this conversation is gone: \"remind me about that\" is written out as what that is, never \"this\" or \"the page\"; task holds the job alone, never the condition. After a set, say in one short line what was set and when, with the time from the step's result (the device worked it out, so hearing it back lets \(persona.user) catch a mistake); for a task set for a time, say once that with the app closed it comes as a notification to tap; for a site, that I watch for it here in Jarbits, since I cannot see other apps; for \"wake me up\", that it is a notification, not an alarm. When no time is given, ask; only \"randomly\" or \"sometime\" lets me choose the moment. Monthly and yearly repeats I cannot do yet: say so. What is set is answered from the listing with say; cancel names the handle.",
             "- A request about \(persona.users) own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about \(persona.user).",
             "- Call several tools in one turn only when none needs another's result; otherwise one at a time, and read the result before the next.",
             "- A step whose result says it ran is done: never call it again with the same arguments.",
@@ -234,7 +260,7 @@ public struct Planner: Sendable {
     /// `lead` is the one line before the request that says why the planner
     /// has it: what an instinct tried and could not do (`failureLead`), or
     /// that the classifier picked an instinct that is reasoned (`pickedLead`).
-    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil, bubble: Screen? = nil, bubbleNoteID: UUID? = nil, spoken: String? = nil) -> String {
+    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil, bubble: Screen? = nil, bubbleNoteID: UUID? = nil, spoken: String? = nil, triggers: [Trigger] = []) -> String {
         var lines = ["Request: \(query)"]
         // The words as the user said them, when the reading changed them: the
         // planner resolves "it" and "this" from these, never from a rewrite.
@@ -267,6 +293,13 @@ public struct Planner: Sendable {
         } else {
             lines.append("In my notebook, every note (newest first):")
             lines += notes.map { "- " + ThingTable.line($0, now: now, calendar: calendar) }
+        }
+        // What is set to go off: not things to show, so a block of their own, by handle.
+        let live = triggers.filter { $0.isLive(at: now) }
+        if !live.isEmpty {
+            lines.append("")
+            lines.append("Set to go off (what I do later, by handle; cancel takes the handle):")
+            lines += live.map { "- " + $0.listingLine(now: now, calendar: calendar) }
         }
         let screenHandle = screen.flatMap { things.screenHandle(for: $0, noteID: screenNoteID) }
         if let screen {

@@ -306,6 +306,14 @@ public struct InstinctSpec: Sendable, Identifiable {
                 .init(name: "text", kind: .text, description: "the lines to write into the note, exactly as they will stand in it, in Markdown: every note is listed whole with its lines numbered, so write in the marks of the lines around the place they go: \"- milk\" after a bulleted list's last item, \"- [ ] passport\" in a checklist, the next number in a numbered list; after prose, or into an empty note, a fact or a thought is a sentence (\"The plumber comes Tuesday.\"), never a one-item list, and only a list is a list (\"start a packing list\", \"my groceries\"); a new list in a note of prose is a blank line, a heading (\"## Packing\") and its first item; a page or answer kept by handle goes where \"{item}\" stands, on its own line (\"- {item}\" in a list), and its title and link are filled in, so text is written whenever an item is kept, \"- {item}\" at the least; for replace, the note's whole new text; null only when nothing at all is written", required: false),
                 .init(name: "after", kind: .integer, description: "the number of the note's line the new lines go after, as the listing numbers them: the last line of the list they belong to, when the note has more than one; 0 for the top; null for the end, or a new note", required: false),
             ])
+        case .trigger:
+            // Always planned: the planner writes the condition and the
+            // words, through fields on its tool alone (`Planner.triggerFields`),
+            // so Jev is asked nothing new. Shows nothing; its result says what
+            // was set and when. Cancelling everything asks on the sheet itself.
+            questions = { _ in [] }
+            showsLayer = false
+            asksItself = true
         }
         self.showsLayer = showsLayer
         self.sideEffects = sideEffects
