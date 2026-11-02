@@ -559,7 +559,7 @@ shut down meanwhile gets "Sorry, sir, I lost my place on that one:
 longer holds it (a relaunch, a newer query) and nothing is up, the words
 are shown as a piece so the tap lands on something. Permission is asked
 at the first query of a launch; declined, the bubble alone, as before.
-The decision log marks a query that reached the user this way (`away`).
+The decision log marks a query that reached the user this way (`away`). Only an active app counts as on screen (2026-11-01, Lorcan): the app switcher, the notification shade and Control Center are away; the permission alert over the first query is the one exception.
 
 Four limits, stated to Lorcan: the system can end the task under
 pressure; developers report the task pausing on a truly locked phone
@@ -793,8 +793,11 @@ page the user saw in this session points at the webpage it is (`p2: Read
 handle. `open w1` brings it forward; several handles go to the grid; `look
 w1` reads it when it is loaded; `about: w1` names it for an answer; a
 page-opening tool's `fresh: true` opens a second one of a site already
-open; the `close` tool closes by handle or every one. Nothing here reaches
-Jev: the routing request carries only the session's exchanges.
+open; the `close` tool closes by handle or every one. Asked what is open ("what
+tabs do I have open"), the planner shows the grid with every handle,
+never a written list; a count, or whether one is open, it says in a line
+(2026-11-01). Nothing here reaches Jev: the routing request carries only
+the session's exchanges.
 
 ## Jarbits and the user
 

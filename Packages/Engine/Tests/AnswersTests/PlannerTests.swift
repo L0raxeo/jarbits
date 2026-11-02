@@ -20,6 +20,7 @@ import Testing
         // The principle: a thing the listing holds is shown as itself, never retold.
         #expect(open.description.contains("is open with its handle, never a retelling of it in say"))
         #expect(Planner.sayTool.description.contains("Never to retell something the listing holds as a thing"))
+        #expect(Planner.openTool.description.contains("every open webpage's handle, which is the grid"))
         #expect(Planner.sayTool.description.contains("say is for a fact with no thing to show"))
         for tool in tools.dropLast(6) {
             let requiredNames = tool.parameters["required"]?.arrayValue?.compactMap { $0.stringValue }
