@@ -781,7 +781,11 @@ replays the shortlist and Jev's verdict offline.
 **The grid** (`RecallGridView`, `WebpageTile`): a two-wide grid of
 pictures with the kind, the title and since when under each, headed "N
 open" or by the set's title; a tap brings that webpage forward as it
-stands. Several notes go to the same layout.
+stands, and the x on its corner closes it, with no question asked, as
+Safari's tab overview does. Several notes go to the same layout, without
+the x. A webpage closed while a grid lists it leaves that grid at once,
+older grids in the row included; a grid left with none goes too
+(2026-11-01).
 
 **The planner's view.** Every open webpage stands in the listing, newest
 first, up to forty (`ReasoningPolicy.webpagesListed`; past that the ones

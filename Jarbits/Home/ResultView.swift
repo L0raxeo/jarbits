@@ -413,8 +413,10 @@ private struct RecallGridView: View {
                         ForEach(webpages) { webpage in
                             Button { session.bringForward(webpage: webpage.id) } label: { WebpageTile(webpage: webpage) }
                                 .buttonStyle(.plain)
+                                .overlay(alignment: .topTrailing) { closeButton(webpage) }
                         }
                     }
+                    .animation(.default, value: webpages.map(\.id))   // a closed webpage's tile leaves as it closes
                     Button("Web results") { session.showWebResults() }
                         .buttonStyle(.plain)
                         .font(.subheadline)
@@ -431,6 +433,21 @@ private struct RecallGridView: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
+    }
+
+    /// Closes the webpage at once, as Safari's tab overview does; its tile leaves the grid.
+    private func closeButton(_ webpage: Webpage) -> some View {
+        Button { session.close([webpage.id]) } label: {
+            Image(systemName: "xmark")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(.black.opacity(0.55), in: Circle())
+                .padding(8)   // a finger's reach around the mark
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Close \(webpage.title)")
     }
 }
 

@@ -420,15 +420,25 @@ final class JarbitsSession {
         }
     }
 
-    /// Webpages closed by the user's word: gone from the row and the store;
+    /// Webpages closed by the user's word: gone from the row and the store,
+    /// and from every grid that lists them, a grid left with none going too;
     /// the one on screen moves to its neighbour, and an empty row goes idle.
     func close(_ ids: [UUID]) {
         let gone = Set(ids)
         guard layers.contains(where: { $0.webpageID.map(gone.contains) ?? false }) else { return }
         let wasCurrent = current
         for layer in layers where layer.webpageID.map(gone.contains) ?? false { layer.page?.close(); layer.page = nil }
-        archive(layers.filter { $0.webpageID.map(gone.contains) ?? false })
-        layers.removeAll { $0.webpageID.map(gone.contains) ?? false }
+        let leaving = layers.filter { layer in
+            if case let .recallPicker(listed, _) = layer.plan { return listed.allSatisfy { gone.contains($0.id) } }
+            return layer.webpageID.map(gone.contains) ?? false
+        }
+        archive(leaving)
+        layers.removeAll { layer in leaving.contains { $0 === layer } }
+        for layer in layers {
+            if case let .recallPicker(listed, title) = layer.plan, listed.contains(where: { gone.contains($0.id) }) {
+                layer.plan = .recallPicker(listed.filter { !gone.contains($0.id) }, title: title)
+            }
+        }
         Task { [webpages] in await webpages.close(ids) }
         #if DEBUG
         print("webpages closed \(ids.count); \(layers.count) left")
