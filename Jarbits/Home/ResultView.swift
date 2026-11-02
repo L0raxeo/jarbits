@@ -104,7 +104,7 @@ struct ResultView: View {
         case let .siteChoices(name, candidates):
             SiteChoicesView(name: name, candidates: candidates, clayY: clayY)
         case let .note(note):
-            NoteView(note: note, topInset: topInset, barCompact: $barCompact)
+            NoteView(note: note, topInset: topInset, bottomInset: bottomInset, barCompact: $barCompact)
         case let .notes(notes, title):
             NotesGridView(notes: notes, title: title, topInset: topInset, barCompact: $barCompact)
         case let .weather(snapshot):

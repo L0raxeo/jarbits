@@ -22,6 +22,7 @@ struct NoteView: View {
     @Environment(JarbitsSession.self) private var session
     let note: Note
     let topInset: CGFloat
+    let bottomInset: CGFloat
     @Binding var barCompact: Bool
 
     @State private var text = AttributedString()
@@ -60,7 +61,7 @@ struct NoteView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, topInset + 12)
-                .padding(.bottom, 120 + (editing ? keyboardHeight : 0))   // the capsule floats over the page; the keyboard's room while typing
+                .padding(.bottom, 120 + (editing ? keyboardHeight : bottomInset))   // the capsule floats over the page, and this page runs under the home bar; the keyboard's room while typing
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
                 guard let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
