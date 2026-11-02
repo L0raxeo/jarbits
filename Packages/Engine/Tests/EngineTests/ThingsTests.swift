@@ -5,6 +5,13 @@ import Testing
 @Suite struct ThingsTests {
     private let now = Date(timeIntervalSince1970: 1_792_600_000)
 
+    @Test func anUndoReadsAsAWriteNotAnOpen() {
+        let undo = Exchange.noteWrite(query: "undo that", title: "Trip", heading: "Put back Trip", lines: "- passport")
+        #expect(undo.described.hasPrefix("Put back Trip (my note \"Trip\")"))
+        let rewrite = Exchange.noteWrite(query: "tidy it", title: "Trip", heading: "Rewrote Trip", lines: nil)
+        #expect(rewrite.described.hasPrefix("Rewrote Trip"))
+    }
+
     @Test func handlesAreMintedInOrderAndNeverRenumbered() {
         let page = Exchange.page(query: "dyson", title: "Dyson PencilVac", address: URL(string: "https://www.dyson.com/pencilvac")!)
         let search = Exchange.search(query: "google steve jobs", term: "steve jobs")

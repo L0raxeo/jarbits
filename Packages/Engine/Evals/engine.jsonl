@@ -178,3 +178,5 @@
 {"query": "weather tomorrow at 8", "instinct": "weather", "note": "the forecast for an hour, not a reminder (2026-11-02)"}
 {"query": "remind me what my sister's name is", "instinct": "planned", "pick": "one_line", "note": "remind in the words, but a question about now: a fact asked for, never trigger; Jev leaned one_line at .76, under the floor, so the planner answers it (2026-11-02)"}
 {"query": "remember that page", "instinct": "recall"}
+{"query": "reorganize these notes", "instinct": "notebook", "exchanges": [{"query": "pull up my assistant notes", "kind": "note", "title": "Project Ideas"}], "note": "stays with the notebook (2026-11-02)"}
+{"query": "undo that", "instinct": "planned", "exchanges": [{"query": "reorganize this note", "kind": "note", "title": "Project Ideas", "text": "Rewrote Project Ideas", "host": "## Ideas\n- Calendar\n- Curiosity"}], "note": "a change just made to a note: reaches the planner, which has the undo (2026-11-02)"}

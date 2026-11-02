@@ -1360,6 +1360,11 @@ final class JarbitsSession {
             shown.query = context.query
             shown.decision = context.decision
             shown.lastShown = .now
+            // A write stays on record, so "undo that" has it in view; a plain reopen leaves the last one standing.
+            if let summary {
+                shown.summary = summary
+                shown.wrote = lines
+            }
             stage = .ready
             record(context)
             return

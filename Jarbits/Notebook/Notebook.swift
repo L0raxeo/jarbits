@@ -5,7 +5,9 @@ import Engine
 /// Application Support, permanent, not a webpage. The title is the file's
 /// first line, the dates are the file's. Every replace or append first
 /// copies the text as it was to `.versions/<id>/`, so an edit can be
-/// undone; a delete moves the file to `.trash/`, which is never shown or
+/// undone, one step back each time, with what an undo replaces and the
+/// version it used moved to `.undone/<id>/`, kept and never shown; a delete
+/// moves the file to `.trash/`, which is never shown or
 /// searched. Nothing here leaves the phone except inside a Gemini request.
 actor Notebook {
     static let shared = Notebook()
@@ -20,6 +22,7 @@ actor Notebook {
 
     private var versionsURL: URL { directory.appending(path: ".versions", directoryHint: .isDirectory) }
     private var trashURL: URL { directory.appending(path: ".trash", directoryHint: .isDirectory) }
+    private var undoneURL: URL { directory.appending(path: ".undone", directoryHint: .isDirectory) }
 
     private func fileURL(for id: UUID) -> URL { directory.appending(path: "\(id.uuidString).md") }
 
@@ -109,6 +112,30 @@ actor Notebook {
         write(note)
         replaceLoaded(note)
         return note
+    }
+
+    /// The note back as it was before its last change: the newest version
+    /// that differs from the text now, title and all. Nil when none does.
+    func undo(_ id: UUID) -> Note? {
+        guard let current = note(id: id) else { return nil }
+        let manager = FileManager.default
+        let folder = versionsURL.appending(path: id.uuidString, directoryHint: .isDirectory)
+        let undone = undoneURL.appending(path: id.uuidString, directoryHint: .isDirectory)
+        try? manager.createDirectory(at: undone, withIntermediateDirectories: true)
+        let files = ((try? manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []).sorted { $0.lastPathComponent > $1.lastPathComponent }
+        for file in files {
+            guard let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
+            try? manager.moveItem(at: file, to: undone.appending(path: file.lastPathComponent))
+            let earlier = Note.parse(text, id: id, created: current.created, edited: .now)
+            // A save of the same text, as a reload can make, is no change to go back over.
+            guard earlier.title != current.title || earlier.body.trimmingCharacters(in: .whitespacesAndNewlines) != current.body.trimmingCharacters(in: .whitespacesAndNewlines) else { continue }
+            let stamp = ISO8601DateFormatter().string(from: .now).replacingOccurrences(of: ":", with: "-")
+            try? current.markdown.write(to: undone.appending(path: "\(stamp)-replaced.md"), atomically: true, encoding: .utf8)
+            write(earlier)
+            replaceLoaded(earlier)
+            return earlier
+        }
+        return nil
     }
 
     /// To the trash, never gone.

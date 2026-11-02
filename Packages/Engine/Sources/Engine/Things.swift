@@ -103,7 +103,7 @@ extension Exchange {
             else { return "Chose among sites for \"\(title ?? query)\"" }
         case .note:
             // A write says what it did and what went in; an open, that it opened.
-            if let text, text.hasPrefix("Added to ") || text.hasPrefix("Rewrote ") || text.hasPrefix("Made the note ") || text.hasPrefix("Took ") {
+            if let text, text.hasPrefix("Added to ") || text.hasPrefix("Rewrote ") || text.hasPrefix("Made the note ") || text.hasPrefix("Took ") || text.hasPrefix("Put back ") {
                 let lines = wrote.map { $0.split(separator: "\n").map { "    " + String($0) }.joined(separator: "\n") }
                 return "\(text) (my note \"\(title ?? query)\")" + (lines.map { ":\n" + $0 } ?? "")
             }

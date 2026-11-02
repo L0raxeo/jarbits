@@ -7,6 +7,22 @@ import Testing
         NoteMarkdown.markdown(from: NoteMarkdown.attributed(from: markdown))
     }
 
+    @Test func movingLinesLosesNoWordsAndCuttingThemDoes() {
+        let note = (1...40).map { "- [ ] point \($0) with an example" }.joined(separator: "\n")
+        let moved = "## Points\n" + note.split(separator: "\n").reversed().map { $0.replacingOccurrences(of: "- [ ] ", with: "- ").uppercased() }.joined(separator: "\n")
+        #expect(NoteMarkdown.wordsLost(from: note, to: moved).lost == 0)
+        #expect(NoteMarkdown.largeLoss(from: note, to: moved) == nil)
+        let headings = (1...40).map { "- [ ] point \($0)" }.joined(separator: "\n")
+        #expect(NoteMarkdown.largeLoss(from: note, to: headings)?.total == 200)
+        #expect(NoteMarkdown.largeLoss(from: note, to: headings)?.lost == 120)
+        #expect(NoteMarkdown.largeLoss(from: "milk eggs bread", to: "milk") == nil, "a short note isn't asked about")
+        #expect(NoteMarkdown.largeLoss(from: note, to: "")?.lost == 200, "emptied")
+    }
+
+    @Test func aWordStandingTwiceCountsTwice() {
+        #expect(NoteMarkdown.wordsLost(from: "soy sauce soy", to: "soy sauce") == (1, 3))
+    }
+
     @Test func everyFormSurvivesTheRoundTrip() {
         #expect(roundTrip("plain words") == "plain words")
         #expect(roundTrip("## A heading") == "## A heading")

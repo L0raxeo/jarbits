@@ -951,6 +951,16 @@ are no folders and no tags: the user asks for a note and Jarbits finds
 it. He speaks of "my notebook" and "my notes": it is his way of keeping
 things for the user.
 
+A rewrite is guarded (2026-11-02, after "clean up and organize these notes"
+cut a long note to its headings). Tidying keeps everything written, by the
+planner's instructions; and a rewrite that would take out more than a third
+of the words of a note of at least 30 is put to the user first, by plain
+comparison of the words (`NoteMarkdown.largeLoss`). "Undo that" puts a note
+back as it was before its last change, one step back each time
+(`Notebook.undo`), and what it replaces is kept in `.undone/<id>/`. A write
+to the note on screen is on record as a write, so the planner knows it
+happened.
+
 The `notebook` instinct, the thirteenth, is reasoned: Jev picks it and
 the planner runs it, with the page on screen, every note of the notebook
 and the facts in view. It takes what to do as a closed-set value Jev

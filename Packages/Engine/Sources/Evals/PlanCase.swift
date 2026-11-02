@@ -254,12 +254,17 @@ public enum PlanCheck {
                 let accepted = value.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
                 let prose = accepted.contains("<prose>") && !got.isEmpty && NoteMarkdown.form(of: got.split(separator: "\n").first.map(String.init) ?? "") == .plain
                 let absent = accepted.contains("<absent>") && got.isEmpty
+                // "<keeps>" accepts text that holds the case's first note's words, all but one in twenty.
+                let keeps = accepted.contains("<keeps>") && !got.isEmpty && {
+                    let loss = NoteMarkdown.wordsLost(from: planCase.notes?.first?.body ?? "", to: got)
+                    return loss.lost * 20 <= loss.total
+                }()
                 // A handle pinned on a field may instead be written in braces inside
                 // another field's text ("- {p1}" for item p1): the device fills both.
                 let braced = got.isEmpty && call.arguments.contains { other, text in
                     other != field && accepted.contains { !$0.isEmpty && text.contains("{\($0)}") }
                 }
-                if !prose, !braced, !absent, !accepted.contains(got.lowercased()) {
+                if !prose, !braced, !absent, !keeps, !accepted.contains(got.lowercased()) {
                     failures.append("\(expected.name).\(field): expected \"\(value)\", got \(got.isEmpty ? "nothing" : "\"\(got)\"")")
                 }
             }

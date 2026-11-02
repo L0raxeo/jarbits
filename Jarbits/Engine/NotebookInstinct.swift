@@ -7,7 +7,9 @@ import Engine
 /// chose from its listing, where every note stands, so nothing here judges
 /// again. A topic with no note handle means no listed note was it: add and
 /// new make the note, open and delete fail, and the planner takes the next
-/// step. Every change shows the note afterwards; a delete asks on the sheet.
+/// step. Every change shows the note afterwards; a delete asks on the sheet,
+/// and so does a rewrite that would take out much of what the note says.
+/// An undo puts the note back as it was before its last change.
 struct NotebookInstinct: InstinctRunner {
     let spec = InstinctSpec.spec(for: .notebook)
 
@@ -86,6 +88,15 @@ struct NotebookInstinct: InstinctRunner {
                 session.showNote(note, wrote: "Made the note \(note.title)", context: context)
                 return InstinctOutcome(fact: nil, text: "made my note \"\(note.title)\"")
             }
+            if action == "replace", let loss = NoteMarkdown.largeLoss(from: note.body, to: NoteMarkdown.relinked(content, from: note.body)) {
+                let answer = await session.ask("That would take out about \(loss.lost) of your \(loss.total) words in \u{201C}\(note.title)\u{201D}, sir. Go ahead?", .options(["Go ahead", "Leave it"]), guarded: true, token: token)
+                guard session.isCurrent(token) else { return .nothing }
+                guard case .option(0, _)? = answer else {
+                    // Left as it is: the note shown, and the plan ends here.
+                    session.showNote(note, context: context)
+                    return .declined("left my note \"\(note.title)\" as it was")
+                }
+            }
             let changed = action == "add"
                 ? await session.notebook.insert(content, into: note.id, after: after)
                 : await session.notebook.replace(note.id, body: content, title: title)
@@ -109,6 +120,16 @@ struct NotebookInstinct: InstinctRunner {
             guard session.isCurrent(token) else { return .nothing }
             session.showSaid("\u{201C}\(note.title)\u{201D} is gone.", context: context)
             return InstinctOutcome(fact: nil, text: "deleted my note \"\(note.title)\"")
+        case "undo":
+            guard let note = found else {
+                return .failed(named.map { "no note of mine is \"\($0)\"; the notes I have are listed" } ?? "no note was named; the notes I have are listed")
+            }
+            guard let earlier = await session.notebook.undo(note.id) else {
+                return .failed("my note \"\(note.title)\" has no earlier version to go back to")
+            }
+            guard session.isCurrent(token) else { return .nothing }
+            session.showNote(earlier, wrote: "Put back \(earlier.title)", context: context)
+            return InstinctOutcome(fact: nil, text: "put my note \"\(earlier.title)\" back as it was before its last change")
         default:   // open
             guard let note = found else {
                 return .failed(named.map { "no note of mine is \"\($0)\"; the notes I have are listed" } ?? "no note was named; the notes I have are listed")

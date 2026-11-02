@@ -33,6 +33,30 @@ extension AttributeDynamicLookup {
 }
 
 public enum NoteMarkdown {
+    /// How many of `old`'s words are missing from `new`, of how many: each
+    /// word counted as often as it stands, with case, punctuation and list
+    /// marks ignored, so moving lines about loses nothing and rewording does.
+    public static func wordsLost(from old: String, to new: String) -> (lost: Int, total: Int) {
+        func words(_ text: String) -> [String] {
+            text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        }
+        var kept: [String: Int] = [:]
+        for word in words(new) { kept[word, default: 0] += 1 }
+        var lost = 0
+        let before = words(old)
+        for word in before {
+            if let left = kept[word], left > 0 { kept[word] = left - 1 } else { lost += 1 }
+        }
+        return (lost, before.count)
+    }
+
+    /// A rewrite that takes out more than a third of a note's words, from a
+    /// note of at least 30, which the user is asked about first. Nil when it doesn't.
+    public static func largeLoss(from old: String, to new: String) -> (lost: Int, total: Int)? {
+        let loss = wordsLost(from: old, to: new)
+        return loss.total >= 30 && loss.lost * 3 > loss.total ? loss : nil
+    }
+
     /// The editor's text from the file's body. Every line is a paragraph
     /// ending in a newline; its form is read from its marker and kept as
     /// the paragraph attribute; `**bold**` and `_italic_` become intents.

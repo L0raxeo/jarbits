@@ -65,7 +65,7 @@ extension Layer {
             // The note's id rides along, so the thing on screen and the notebook's entry are one note.
             // A write is recorded by what was written, an open by the note's first words.
             if let summary {
-                return [SessionExchange(exchange: .noteWrite(query: query, title: note.title, heading: summary, lines: wrote ?? (summary.hasPrefix("Rewrote") || summary.hasPrefix("Made") ? String(note.excerpt.prefix(160)) : nil), noteID: note.id), turn: nil, layerID: id)]
+                return [SessionExchange(exchange: .noteWrite(query: query, title: note.title, heading: summary, lines: wrote ?? (summary.hasPrefix("Rewrote") || summary.hasPrefix("Made") || summary.hasPrefix("Put back") ? String(note.excerpt.prefix(160)) : nil), noteID: note.id), turn: nil, layerID: id)]
             }
             return [SessionExchange(exchange: .note(query: query, title: note.title, excerpt: note.excerpt, noteID: note.id), turn: nil, layerID: id)]
         case let .notes(notes, title):

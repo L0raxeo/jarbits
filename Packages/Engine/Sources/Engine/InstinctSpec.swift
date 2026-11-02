@@ -297,7 +297,7 @@ public struct InstinctSpec: Sendable, Identifiable {
             questions = { _ in [] }
             asksItself = true
             arguments = ArgumentSchema(fields: [
-                .init(name: "action", kind: .choice(["new", "add", "replace", "open", "delete"]), description: "what to do in the notebook: new makes a note, add puts text into a note, replace rewrites a note's text, open shows or reads a note, delete removes one"),
+                .init(name: "action", kind: .choice(["new", "add", "replace", "open", "delete", "undo"]), description: "what to do in the notebook: new makes a note, add puts text into a note, replace rewrites a note's text, open shows or reads a note, delete removes one, undo puts a note back as it was before its last change"),
                 .init(name: "all", kind: .boolean, description: "the whole notebook or every note is asked for, rather than one note", required: false),
                 .init(name: "note", kind: .thing, description: "the note to act on, by handle, when the listing or the screen has it: the one the request means, however it names it (\"my watchlist\" means a note titled Watch List); null when no listed note is it", required: false),
                 .init(name: "item", kind: .thing, description: "the page or answer to put into the note, by handle, when the request adds something on screen or listed (\"add this\"), or several handles separated by commas (\"s5, s6, s7\") when several are kept; the line it stands on is written in text, with {item} where its title and link will be filled in, once per item (or each by its own handle in braces, \"- {s3}\"); null when the request dictates words instead", required: false),
