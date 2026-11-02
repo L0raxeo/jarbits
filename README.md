@@ -1,12 +1,11 @@
 # Jarbits
 
-Jarbits is an assistant for iPhone. A query goes through a router that
-decides what kind of card to show. The router is TypeSafe's Jev, a System One model: it picks one of
-nine response formats and reports how sure it is. Five providers exist
-behind it: a Google results web view (`web_results`), Gemini answers for
-`narrative` and `one_line`, Google's image results for `image`, the phone's
-own open webpages for `recall` (the page the user was reading, brought back), and the
-phone's site book for `site` (a website asked for by name, "go to youtube").
+Jarbits is an assistant for iPhone. A query goes to TypeSafe's Jev, a System
+One model, which picks one of fifteen instincts (the things the app can do
+for a query, `InstinctSpec.all`) and reports how sure it is. A sure pick whose
+whole input is in the words runs straight; everything else goes to the
+planner, a Gemini model with every instinct as a tool (see "How a query runs"
+and "Advanced reasoning").
 
 The screen is white with a purple gradient clay above the middle that
 breathes, and a keyboard hint at the bottom. Tapping the clay or the hint, or
@@ -223,12 +222,13 @@ reading (see "The reading") in parallel:
   (`continues` on the line). Any other pick with a chain runs with the
   chained exchanges as context: a narrative or one-line answer lists them
   under Gemini's context block ("Earlier in this session: Searched …,
-  Read …"; see "Answer cards"), and the reading folds them into the
-  request, so "wait no I meant brazil" after a search is a search for
-  Brazil, "how big is it" after reading a page is an answer that knows the
-  page, "and chile?" after "capital of peru" answers in one line, "why?"
-  after it answers in a paragraph, and "pictures of it" is a picture of
-  the thing.
+  Read …"; see "Answer cards"), and the value reader gets them, so "how
+  big is it" after reading a page is an answer that knows the page, "and
+  chile?" after "capital of peru" answers in one line, and "why?" after it
+  answers in a paragraph. A search, pictures and videos run on the read
+  words as they are, and the reading folds nothing in (see "The reading"):
+  words that only make sense with an earlier exchange are resolved only
+  when the query reaches the planner.
 - **Only an instinct whose whole input is in the words runs straight.**
   A search, a question, a picture, videos, a site name, a place, a fact
   to keep or drop, something to recall: those earned the shortcut
@@ -366,8 +366,7 @@ punctuation and spacing aside), Jev is asked again on the read words and
 that pick wins, and they are what the instinct, the planner, the exchange,
 the layer, the extractor and the label on screen receive. The same
 substance, a miss, or a reply slower than `QueryReader.timeout` (4 s; the
-Mac sees 1.0 to 1.4 s, and a miss sends a chained search out unresolved)
-leaves the first pick standing on the typed words. The trade is
+Mac sees 1.0 to 1.4 s) leaves the first pick standing on the typed words. The trade is
 latency: a query waits for the slower of the two calls, Jev's few hundred
 milliseconds or the reading's (the first real calls took 0.97 and 1.38 s,
 about five thousandths of a cent each), and a rewritten query pays one
@@ -510,8 +509,9 @@ like the Gemini key), and a reply that try also failed, the server declined,
 or the player could not start; the next reply tries ElevenLabs again
 (2026-11-02; before, one failure meant Apple's voice until the app was
 closed). Flash is half a credit a character (a long answer
-of 1,500 characters is about 750 credits); the free plan then
-pay-as-you-go, the key capped at 100,000 credits.
+of 1,500 characters is about 750 credits); the plan is Starter, billed
+yearly (2026-11-01; the free plan refuses library voices through the API),
+the key capped at 100,000 credits.
 
 While he speaks, other apps' audio is turned down and brought back after
 (`Microphone.duck`/`restore`, one dip per run of replies). iOS lets it
@@ -604,8 +604,8 @@ right where the form has it. A drag stretches the body with the finger
   `JarbitsSession.bringForward`).
 
 The one idea underneath: a reply is a `Layer` held in `replies` instead of
-pushed onto the stack. So its thread and exchanges reach Jev, the reader
-and the planner as the newest exchanges ("Asked X and got Y"; `focus` is
+pushed onto the stack. So its thread and exchanges reach Jev and the
+planner as the newest exchanges ("Asked X and got Y"; `focus` is
 the newest reply when one is up, else the current layer), an `AnswerSession`
 streams into it, and its record is
 kept. The x or a push up puts it away; a new layer opening, a swipe between
@@ -1243,17 +1243,16 @@ address (up to 40, one per address); and, through WebKit's image export
 (bounded at 2 s, in parallel), a JPEG of the viewport at 1024 points
 wide. A note gives its text, an answer its text, a grid its tiles. Jev
 never waits for any of it: it is asked the moment the query starts, and
-only the reader and the planner wait. A read that fails leaves the query
-exactly as before: the title and the address, no block, no picture.
+only the planner and an answer use the read. A read that fails leaves the
+query exactly as before: the title and the address, no block, no picture.
 
-Every model that interprets then sees the screen, under one rule, the
-same words for the reader and the planner (`Screen.rule`): the screen is
-what the user sees now; fold it in only where the words point at it
-("this", "that one", "the second", "here", "the one shown", "the price on
-the page"); a request that stands on its own, or leans on an earlier
-exchange, is left as it is. The reading gets the selection and the
-visible text before the request, so "how much is this" reads as the
-thing it is. The planner's first turn ends on the whole screen (the
+The planner and an answer see the screen under one rule, the same words
+for both (`Screen.rule`): the screen is what the user sees now; fold it in
+only where the words point at it ("this", "that one", "the second",
+"here", "the one shown", "the price on the page"); a request that stands
+on its own, or leans on an earlier exchange, is left as it is. The reading
+sees no screen, so "how much is this" comes through as said for the
+planner to resolve. The planner's first turn ends on the whole screen (the
 visible text, the rest, the links in view) and carries the picture as a
 second content part (`{"type": "image", "data": <base64>, "mime_type":
 "image/jpeg"}`, Google's Interactions API shape), with one more rule:
@@ -1300,8 +1299,7 @@ call (`PageChrome.js` `pageData()`: the canonical link, a fixed set of
 preview tags, and every JSON-LD block flattened to `dotted.key: value`
 lines, strings and numbers only, in the page's own words, 1,500
 characters at most) and they ride with the screen as `Screen.data`, in
-the planner's and an answer's block under "The page's own data", not in
-the reader's. "How long is this video" on a page that draws no duration
+the planner's and an answer's block under "The page's own data". "How long is this video" on a page that draws no duration
 is answered from `duration: PT12M4S` in the first turn, with no look.
 
 ### Looking deeper into a page
@@ -1419,8 +1417,8 @@ live, with cases for both sides and for `open` by handle. Console:
 
 **What leaves the phone with a query.** The visible text, the selection,
 the links in view, the page's own data and the rest of the page (capped as
-above) go to Gemini with the query, for the reading and, when the query is
-planned or an answer is about the page, for those; a planned query also
+above) go to Gemini with the query when the query is planned or an answer
+is about the page; the reading gets the words alone; a planned query also
 sends a picture of the viewport, and a plan that looks sends what the look
 read: up to 4,000 characters of the page's text, forty links, the
 headings, or 3,000 characters of tables, per look. Jev gets the query and
@@ -1441,7 +1439,7 @@ The planner (`Planner` in the Answers library) asks `gemini-3.1-flash-lite`,
 the extractor's model, at high thinking (accuracy over speed and cost,
 Lorcan 2026-10-29; `store: false`; prices in `GeminiPricing`), with every instinct as a tool,
 each taking a `query` and its own fields (and, on the page-opening ones,
-`screen`: see "Jarbits's screen and the user's"), plus five the executor answers
+`screen`: see "Jarbits's screen and the user's"), plus the ones the executor answers
 itself: `ask` puts one question in the bubble (up to three options, or a
 line to type in a box plainly there, "Your answer", tapped to type so the
 microphone stays open; the plan waits, and the tap goes back as the step's result
@@ -1471,7 +1469,8 @@ script; a note's lines, links or headings; an answer's text; an open webpage whe
 by paragraph or by turn, `Looking`; numbered, `from` continuing, the links
 as `s` handles; 2026-10-31, so that what the listing does not show is one
 look away and never a guess, at the cost of an extra round when the model
-reads what it already had), and
+reads what it already had),
+`close` closes open webpages by handle or all of them, and
 `done` ends the plan. `say` is for what the planner already holds in full
 (the facts, the open webpages listed, earlier steps' results), including
 "I don't know that yet"; a question needing knowledge beyond that goes
