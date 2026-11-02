@@ -10,14 +10,19 @@ import UIKit.UIGestureRecognizerSubclass
 /// on it; the editor's own recognizers wait for it to fail, so a tap on
 /// plain text, or any tap while typing, reaches the editor exactly as
 /// before and only a tap on a link, while not typing, or on a checkbox
-/// marker at any time, is taken. The same view keeps the cursor in view:
-/// after each keystroke and when the keyboard shows, the page (the scroll
-/// view around the editor, which does not scroll itself) moves so the
-/// cursor sits above the keyboard.
+/// marker at any time, is taken. The same view sets the page up, as only
+/// the text view itself can be: the room above and below the text, and the
+/// date line scrolling inside it above the title.
 struct NoteLinkCatcher: UIViewRepresentable {
     var onLink: (URL) -> Void
     /// A tap on a checkbox marker: the character offset of the marker.
     var onCheckbox: (Int) -> Void
+    /// The line above the title.
+    var dateLine: String
+    /// The height of what floats over the page's top.
+    var topInset: CGFloat
+    /// The room under the text while the keyboard is down.
+    var bottomRoom: CGFloat
 
     func makeUIView(context: Context) -> CatcherView {
         let view = CatcherView()
@@ -30,6 +35,7 @@ struct NoteLinkCatcher: UIViewRepresentable {
         view.onCheckbox = onCheckbox
         view.recognizer?.onLink = onLink
         view.recognizer?.onCheckbox = onCheckbox
+        view.setPage(dateLine: dateLine, topInset: topInset, bottomRoom: bottomRoom)
     }
 }
 
@@ -39,8 +45,9 @@ final class CatcherView: UIView {
     private(set) var recognizer: NoteLinkRecognizer?
     private weak var textView: UITextView?
     private var observers: [NSObjectProtocol] = []
-    /// The keyboard's frame on screen while it is up.
-    private var keyboardFrame: CGRect?
+    private let dateLabel = UILabel()
+    private var topInset: CGFloat = 0
+    private var bottomRoom: CGFloat = 0
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -60,75 +67,51 @@ final class CatcherView: UIView {
         let ours = NoteLinkRecognizer(textView: textView)
         ours.onLink = { [weak self] url in self?.onLink(url) }
         ours.onCheckbox = { [weak self] offset in self?.onCheckbox(offset) }
-        for other in textView.gestureRecognizers ?? [] { other.require(toFail: ours) }
+        // Scrolling doesn't wait: a finger that moves is a scroll, and the catcher lets go of it.
+        for other in textView.gestureRecognizers ?? [] where other !== textView.panGestureRecognizer { other.require(toFail: ours) }
         textView.addGestureRecognizer(ours)
         recognizer = ours
         self.textView = textView
+        dateLabel.font = .preferredFont(forTextStyle: .footnote)
+        dateLabel.adjustsFontForContentSizeCategory = true
+        dateLabel.textColor = UIColor(Palette.quiet)
+        dateLabel.textAlignment = .center
+        dateLabel.autoresizingMask = .flexibleWidth
+        textView.addSubview(dateLabel)
+        fitPage()
         observe(textView)
+    }
+
+    /// The page's words and room, from the note's view.
+    func setPage(dateLine: String, topInset: CGFloat, bottomRoom: CGFloat) {
+        dateLabel.text = dateLine
+        self.topInset = topInset
+        self.bottomRoom = bottomRoom
+        fitPage()
+    }
+
+    /// The date line under what floats at the top, the text under the date
+    /// line, and under the last line room to see it clear of the capsule or
+    /// the keyboard, as Notes leaves.
+    private func fitPage() {
+        guard let textView else { return }
+        let dateHeight = ceil(dateLabel.sizeThatFits(CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)).height)
+        let dateTop = max(0, topInset + 12 - textView.adjustedContentInset.top)
+        dateLabel.frame = CGRect(x: 0, y: dateTop, width: textView.bounds.width, height: dateHeight)
+        let room = UIEdgeInsets(top: dateTop + dateHeight + 10, left: 20, bottom: bottomRoom, right: 20)
+        if textView.textContainerInset != room { textView.textContainerInset = room }
     }
 
     private func observe(_ textView: UITextView) {
         let center = NotificationCenter.default
         observers = [
-            center.addObserver(forName: UITextView.textDidChangeNotification, object: textView, queue: .main) { [weak self] _ in
-                self?.revealCaretSoon()
-            },
-            center.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main) { [weak self] note in
-                self?.keyboardFrame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
-            },
             center.addObserver(forName: UIResponder.keyboardDidShowNotification, object: nil, queue: .main) { [weak self] _ in
-                self?.revealCaretSoon()
-            },
-            center.addObserver(forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main) { [weak self] _ in
-                self?.keyboardFrame = nil
+                MainActor.assumeIsolated {
+                    guard let textView = self?.textView, textView.isFirstResponder else { return }
+                    textView.scrollRangeToVisible(textView.selectedRange)
+                }
             },
         ]
-    }
-
-    // MARK: The cursor above the keyboard
-
-    private func revealCaretSoon() {
-        DispatchQueue.main.async { [weak self] in self?.revealCaret() }
-    }
-
-    /// The page scrolled, when it must, so the cursor sits inside the part
-    /// of it the keyboard leaves uncovered, with a line's room around it.
-    private func revealCaret() {
-        guard let textView, textView.isFirstResponder, let selected = textView.selectedTextRange,
-              let page = Self.page(around: textView), let window = page.window else { return }
-        let caret = textView.caretRect(for: selected.end)
-        guard !caret.isNull, !caret.isInfinite, caret.height > 0 else { return }
-        let rect = textView.convert(caret, to: page)
-        let inset = page.adjustedContentInset
-        let top = page.contentOffset.y + inset.top
-        var bottom = page.contentOffset.y + page.bounds.height - inset.bottom
-        if let keyboardFrame {
-            let keyboard = page.convert(window.convert(keyboardFrame, from: nil), from: window)
-            bottom = min(bottom, keyboard.minY)
-        }
-        let room: CGFloat = 28
-        var offset = page.contentOffset
-        if rect.maxY + room > bottom {
-            offset.y += rect.maxY + room - bottom
-        } else if rect.minY - room < top {
-            offset.y -= top - (rect.minY - room)
-        } else {
-            return
-        }
-        let most = max(-inset.top, page.contentSize.height - page.bounds.height + inset.bottom)
-        offset.y = min(max(offset.y, -inset.top), most)
-        guard abs(offset.y - page.contentOffset.y) > 0.5 else { return }
-        page.setContentOffset(offset, animated: true)
-    }
-
-    /// The scroll view the editor sits in; the editor is one itself, so the search starts above it.
-    private static func page(around textView: UITextView) -> UIScrollView? {
-        var ancestor = textView.superview
-        while let view = ancestor {
-            if let scroll = view as? UIScrollView { return scroll }
-            ancestor = view.superview
-        }
-        return nil
     }
 
     /// The editor's text view: the first found under the nearest ancestor

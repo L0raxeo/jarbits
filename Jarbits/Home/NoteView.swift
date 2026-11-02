@@ -4,7 +4,9 @@ import Engine
 /// One of Jarbits's notes, open for typing, laid out like the iOS Notes
 /// app: one page you write on, the first line the title (large and bold,
 /// whatever is typed there), the rest the body in a rich editor over an
-/// attributed string, scrolling as one, the query capsule floating over
+/// attributed string. The editor is the page: it fills the screen and does
+/// its own scrolling, with the date line inside it, so a line wrapping
+/// changes no sizes and moves nothing. The query capsule floats over
 /// it. A small bar above the keyboard offers the six forms while the note
 /// itself has the keyboard, and not while the capsule does. A page kept in
 /// the note is its title in link colour; a tap opens it. The file is the
@@ -16,8 +18,8 @@ import Engine
 /// editor behaves as Notes does: a return in a list item starts the next
 /// item (the next number in a numbered list), a return on an empty item
 /// ends the list, a return after a heading starts a plain line, a tap on a
-/// checkbox ticks or clears it, and the page scrolls to keep the cursor
-/// above the keyboard.
+/// checkbox ticks or clears it, and the editor keeps the cursor above the
+/// keyboard itself.
 struct NoteView: View {
     @Environment(JarbitsSession.self) private var session
     let note: Note
@@ -31,45 +33,34 @@ struct NoteView: View {
     @State private var loadedEdited: Date?
     @State private var saveTask: Task<Void, Never>?
     @FocusState private var editing: Bool
-    /// The keyboard's height while it is up: room added under the text so
-    /// the page can scroll the last lines above it, as Notes does.
+    /// The keyboard's height while it is up. The home screen ignores the
+    /// keyboard, so the editor is told here, and does the rest itself.
     @State private var keyboardHeight: CGFloat = 0
 
     /// The title line's look; the body is `.body`, a heading `.title3`.
     static let titleFont = Font.title.weight(.bold)
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    // The date line, as Notes has it, above the title, scrolling with the page.
-                    Text("Edited \(note.edited.formatted(.relative(presentation: .named)))")
-                        .font(.footnote)
-                        .foregroundStyle(Palette.quiet)
-                        .frame(maxWidth: .infinity)
-                    TextEditor(text: $text, selection: $selection)
-                        .font(.body)
-                        .foregroundStyle(Palette.ink)
-                        .scrollContentBackground(.hidden)
-                        .scrollDisabled(true)   // the page scrolls, not the editor
-                        .frame(minHeight: proxy.size.height - topInset - 160, alignment: .top)
-                        .focused($editing)
-                    // The editor opens a tapped link through the system; this takes it
-                    // first, ticks a tapped checkbox, and keeps the cursor above the keyboard.
-                    NoteLinkCatcher(onLink: openLink, onCheckbox: toggleCheckbox)
-                        .frame(width: 0, height: 0)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, topInset + 12)
-                .padding(.bottom, 120 + (editing ? keyboardHeight : bottomInset))   // the capsule floats over the page, and this page runs under the home bar; the keyboard's room while typing
+        TextEditor(text: $text, selection: $selection)
+            .font(.body)
+            .foregroundStyle(Palette.ink)
+            .scrollContentBackground(.hidden)
+            .focused($editing)
+            .background {
+                // The editor opens a tapped link through the system; this takes it first,
+                // ticks a tapped checkbox, and gives the editor its room and its date line.
+                NoteLinkCatcher(
+                    onLink: openLink,
+                    onCheckbox: toggleCheckbox,
+                    dateLine: "Edited \(note.edited.formatted(.relative(presentation: .named)))",
+                    topInset: topInset,
+                    bottomRoom: 120 + bottomInset   // the capsule floats over the page, and this page runs under the home bar
+                )
             }
+            .safeAreaPadding(.bottom, editing ? keyboardHeight : 0)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
                 guard let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
-                let screen = UIScreen.main.bounds
-                keyboardHeight = max(0, screen.maxY - frame.minY)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
-                keyboardHeight = 0
+                keyboardHeight = max(0, UIScreen.main.bounds.maxY - frame.minY)
             }
             .scrollDismissesKeyboard(.interactively)
             .ignoresSafeArea(.container, edges: [.top, .bottom])
@@ -105,7 +96,6 @@ struct NoteView: View {
             }
             .onChange(of: note.id) { _, _ in load() }
             .onDisappear { saveNow() }
-        }
     }
 
     private func formButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {

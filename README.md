@@ -1040,8 +1040,10 @@ text keeps the bare address (`NoteMarkdown.inline`, 2026-10-30).
 The note card (`NoteView`) is laid out like the iOS Notes app: one page
 you write on, the first line the title (large and bold, whatever is typed
 there; an empty first line titles the note from its first words), the
-rest the body, in one rich editor over an attributed string, scrolling as
-one, the query capsule floating over it with no bar of its own below. A
+rest the body, in one rich editor over an attributed string. The editor is
+the page: it fills the screen and does its own scrolling, with the date line
+inside it, so a line wrapping changes no sizes and moves nothing
+(2026-11-02). The query capsule floats over it with no bar of its own below. A
 bar above the keyboard offers the six forms while the note has the
 keyboard, and not while the capsule does. A page kept in the note is its
 title in link colour in the text, and a tap opens the page in Jarbits,
@@ -1055,9 +1057,9 @@ no separate list of links. The editor keeps to what Notes does
 number in a numbered list, with the items below renumbered; a return on
 an empty item ends the list on a plain line; a return after a heading
 starts a plain line; a tap on a checkbox ticks or clears it, typing or
-not; and the page scrolls so the cursor stays above the keyboard after
-each keystroke and when the keyboard comes up (the same catcher view
-moves the page, since the editor does not scroll itself). A link in a note shown as a card in the bubble
+not; and the cursor stays above the keyboard, which the editor does itself
+once it is told the keyboard's height, since the home screen ignores the
+keyboard. A link in a note shown as a card in the bubble
 opens the same way, in Jarbits. Typing saves after a pause and on leaving; the
 file is the truth, and a note Jarbits changes while it is on screen is
 reloaded.
