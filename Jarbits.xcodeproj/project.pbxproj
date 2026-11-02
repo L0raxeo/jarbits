@@ -24,7 +24,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				Jarbits.entitlements,
 			);
 			target = B10000000000000000000006 /* Jarbits */;
 		};

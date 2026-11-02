@@ -543,7 +543,7 @@ shut down meanwhile gets "Sorry, sir, I lost my place on that one:
 longer holds it (a relaunch, a newer query) and nothing is up, the words
 are shown as a piece so the tap lands on something. Permission is asked
 at the first query of a launch; declined, the bubble alone, as before.
-The decision log marks a query that reached the user this way (`away`).
+The decision log marks a query that reached the user this way (`away`). Only an active app counts as on screen (2026-11-01, Lorcan): the app switcher, the notification shade and Control Center are away; the permission alert over the first query is the one exception.
 
 Four limits, stated to Lorcan: the system can end the task under
 pressure; developers report the task pausing on a truly locked phone

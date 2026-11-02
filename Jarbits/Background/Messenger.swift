@@ -27,11 +27,14 @@ final class Messenger: NSObject, UNUserNotificationCenterDelegate {
     private let logger = Logger(subsystem: "jarbits", category: "messages")
     private var asked = false
 
-    /// The bubble and the voice have it: nothing to send. Inactive counts
-    /// as on screen: the permission alert over the first query, or the
-    /// notification shade pulled down, makes the app inactive while the
-    /// user is still looking at it.
-    var onScreen: Bool { UIApplication.shared.applicationState != .background }
+    /// The bubble and the voice have it: nothing to send. Only an active
+    /// app counts (2026-11-01, Lorcan: anything short of the app open in
+    /// front gets a message): the app switcher, the notification shade and
+    /// Control Center are away. The one exception is the permission alert
+    /// over the first query, which makes the app inactive while the user is
+    /// plainly looking at it.
+    var onScreen: Bool { UIApplication.shared.applicationState == .active || askingPermission }
+    private var askingPermission = false
 
     /// Once per launch, when the user has not been asked: at the first query.
     func requestAuthorizationIfNeeded() {
@@ -40,6 +43,8 @@ final class Messenger: NSObject, UNUserNotificationCenterDelegate {
         Task {
             let settings = await center.notificationSettings()
             guard settings.authorizationStatus == .notDetermined else { return }
+            askingPermission = true
+            defer { askingPermission = false }
             do {
                 _ = try await center.requestAuthorization(options: [.alert, .sound, .badge])
             } catch {
@@ -113,7 +118,7 @@ final class Messenger: NSObject, UNUserNotificationCenterDelegate {
     /// While the app is on screen the bubble and the voice have it.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void) {
         Task { @MainActor in
-            let away = UIApplication.shared.applicationState == .background
+            let away = !self.onScreen
             completionHandler(away ? [.banner, .list, .sound] : [])
         }
     }
