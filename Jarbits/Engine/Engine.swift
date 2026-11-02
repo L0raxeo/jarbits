@@ -106,7 +106,8 @@ struct Engine {
             if let text { arguments["fact"] = .string(text) }
             extraction = summary
         }
-        let missing = spec.arguments.freeForm.filter { arguments[$0.name] == nil }
+        // A remember with no fact stays without one: the reader found nothing to keep.
+        let missing = decision.instinct == .remember ? [] : spec.arguments.freeForm.filter { arguments[$0.name] == nil }
         if !missing.isEmpty {
             if let extractor {
                 let schema = spec.arguments.jsonSchema(only: missing)

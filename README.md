@@ -1029,8 +1029,9 @@ A fact comes to be known three ways (`Fact.source`):
   query, on both paths, with nothing waiting on it (2026-10-30). The words,
   the newest five exchanges and the facts Jarbits already holds, numbered,
   go to `gemini-3.1-flash-lite`; a list comes back, each fact `new`, `same`
-  as a known one (its date moves on, no mark), or `changed` from one (the
-  old words replaced and kept as `Fact.previous`). A story told plainly
+  as a known one (its date moves on, no mark), `changed` from one (the
+  old words replaced and kept as `Fact.previous`), or `wrong` (never so:
+  dropped). A story told plainly
   yields its facts ("Lorcan has a friend named Noah", and what Noah did);
   "I'm hungry", "the capital of Peru is Lima" and "remember that page"
   yield none. A fact is about Lorcan's own life, not about something he
@@ -1074,6 +1075,22 @@ sheet: "Forget “I'm vegetarian”?" with Forget and Keep when one is sure,
 "Which shall I forget?" with up to three when several are plausible. A tap
 forgets it and the mark says so; a swipe down keeps it. Nothing is ever
 forgotten unasked.
+
+Saying a fact is not so is handled as a person would (2026-11-02): "I don't
+have a friend named John", "you misheard me", or "that's not true" straight
+after a fact is noted (the models see a fact noted in the conversation still
+going marked "just noted"). The reader calls it `wrong`, along with any
+fact that only made sense if it were true, and they are dropped at once,
+with no sheet and no mark. The denial is never kept: no one keeps in mind
+the friends someone doesn't have. Denying what was never noted keeps
+nothing. A real change is still `changed` ("Ana and I split up", "it's Sean,
+not John"), and a negative that is how he lives is a fact ("I don't eat
+pork"). The words go to neither `remember` nor `forget`: the planner answers,
+owning the mistake in one line, and serves anything else asked (an answer
+picked instead does the same), and a `remember` that finds nothing to keep
+hands the query to the planner. Facts are dropped by the reader alone, so a
+reading that misses leaves the fact until it is denied again; the decision
+log's `read` line counts them (`dropped`).
 
 Neither instinct shows a layer: the screen stays where it was (the idle
 clay, or the result under the capsule), and the sheet rises over it when

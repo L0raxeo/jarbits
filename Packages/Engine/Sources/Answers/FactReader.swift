@@ -5,9 +5,10 @@ import Engine
 /// and whatever becomes of it: one small Gemini call that sees the words,
 /// the last few exchanges, and the facts Jarbits already holds, numbered,
 /// and returns a list. Each fact found is `new`, a restatement of a known
-/// one (`same`, with its number: refreshed, no mark), or a change to one
+/// one (`same`, with its number: refreshed, no mark), a change to one
 /// (`changed`, with its number: the old words replaced and kept as
-/// history). The reader interprets; the device writes what it said.
+/// history), or a known one that was never so (`wrong`, with its number:
+/// dropped, and nothing noted in its place). The reader interprets; the device writes what it said.
 /// Nothing waits for it: the reply comes when it comes, and the facts
 /// land in the store when they land (2026-10-30).
 public struct FactReader: Sendable {
@@ -22,12 +23,12 @@ public struct FactReader: Sendable {
     /// One fact the reader found, and how it stands to what was known.
     public struct Finding: Equatable, Sendable {
         public enum Kind: String, Sendable, CaseIterable {
-            case new, same, changed
+            case new, same, changed, wrong
         }
 
         public var text: String
         public var kind: Kind
-        /// The number of the known fact this restates or changes, as the
+        /// The number of the known fact this restates, changes or calls wrong, as the
         /// input numbered them (1-based); nil for a new fact.
         public var of: Int?
 
@@ -59,8 +60,8 @@ public struct FactReader: Sendable {
                         "type": "object",
                         "properties": [
                             "text": ["type": "string", "description": .string("the fact in one short sentence, naming \(persona.user)")],
-                            "kind": ["type": "string", "enum": ["new", "same", "changed"], "description": "new: not among the known facts; same: a known fact in other words; changed: a known fact this replaces"],
-                            "of": ["type": ["integer", "null"], "description": "the number of the known fact this is the same as or changes; null for a new fact"],
+                            "kind": ["type": "string", "enum": ["new", "same", "changed", "wrong"], "description": "new: not among the known facts; same: a known fact in other words; changed: a known fact this replaces; wrong: a known fact that was never so, to drop"],
+                            "of": ["type": ["integer", "null"], "description": "the number of the known fact this is the same as, changes or calls wrong; null for a new fact"],
                         ],
                         "required": ["text", "kind"],
                         "additionalProperties": false,
@@ -78,7 +79,8 @@ public struct FactReader: Sendable {
         persona.identityLine + "\n" + """
         You note every lasting personal fact a request \(persona.user) made to you states. Reply with JSON matching the schema and nothing else.
         A fact is something lasting about \(persona.users) own life: who they are, who and what is around them, how they live. An allergy, a name, where they live, their job, a coworker, their mother's age, a standing preference ("I prefer window seats"). It stays true whatever \(persona.user) happens to be working on, and could shape a later answer about anything. A request may hold several: "my friend Noah declared himself vegan in middle school, then brought pepperoni pizza the next day" holds "\(persona.user.capitalizedFirst) has a friend named Noah" and "\(persona.users) friend Noah declared himself vegan in middle school and brought pepperoni pizza to school the next day". State each in one short sentence as you would note it, from your own point of view: \(persona.user) by name, never "I" or "my" for them, and whoever or whatever else the words name kept as the words relate them to \(persona.user) ("\(persona.users) friend Noah is vegan", "\(persona.user.capitalizedFirst) is allergic to peanuts", "\(persona.users) mom Jasmine is 50 years old").
-        The facts already known are numbered below. A fact the request states that is already there in other words is same, with that fact's number. A fact that changes or replaces one that is there ("Ana and I split up" after "\(persona.users) wife is Ana"; "I eat fish now" after "\(persona.user.capitalizedFirst) is vegetarian") is changed, with that fact's number and the new words. Anything else is new.
+        The facts already known are numbered below; one marked (just noted) was noted moments ago in this conversation, and the mark is no part of its words. A fact the request states that is already there in other words is same, with that fact's number. A fact that changes or replaces one that is there ("Ana and I split up" after "\(persona.users) wife is Ana"; "I eat fish now" after "\(persona.user.capitalizedFirst) is vegetarian") is changed, with that fact's number and the new words. Anything else is new.
+        \(persona.user.capitalizedFirst) saying that a fact there is not so ("I don't have a friend named John" after "\(persona.user.capitalizedFirst) has a friend named John"; "you misheard me, I don't have a sister"; "that's not true" straight after a fact marked just noted) means you got it wrong: it is wrong, with that fact's number and its words as they stand. Every other known fact that only made sense if that one were true is wrong too, each with its own number ("\(persona.users) friend John moved to Denver"); the rest stand. Never note the denial itself: no one keeps in mind the friends someone doesn't have. So saying something is not so when no fact there says it gives nothing. What was true and has since changed ("Ana and I split up") is changed, and a correction that gives the right thing instead ("it's Sean, not John") is changed, with the right words. A negative that is how \(persona.user) lives and could shape a later answer ("I don't eat pork", "I don't drink") is a fact like any other. "That's not true" about an answer, a page or anything but your notes gives nothing.
         Something true only now ("I'm hungry", "I'm at the airport"), a fact about the world with no one personal in it ("the capital of Peru is Lima"), a question with nothing lasting in it, or a request that points at something seen in this app ("remember that page", "that conversation about the Dyson") gives an empty list.
         A decision or detail inside something \(persona.user) is making or working on (a project, a note, a draft, a design: "I want my project represented by a robot rather than an animal", "make the logo blue", "the app should open on the map") is a fact about that work, not about \(persona.user), and gives nothing, whatever words carry it ("I want", "I've decided", "add to my notes that"). The work itself keeps it. The same request can still state a fact about \(persona.users) life, which is kept: "add to my project notes that my cofounder Maya wants a robot" gives "\(persona.user.capitalizedFirst) has a cofounder named Maya" and nothing about the robot; "add to my notes that my sister moved to Austin" gives "\(persona.users) sister moved to Austin".
         Earlier exchanges of the session may come before the request, oldest first; "she", "it" and "there" resolve against them.

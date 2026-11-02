@@ -651,19 +651,21 @@ final class JarbitsSession {
         let known = knownFacts
         let persona = persona
         Task { [weak self] in
-            let reading = await factReader.read(query: query, exchanges: exchanges, known: known.map(\.text), persona: persona, now: .now)
+            let reading = await factReader.read(query: query, exchanges: exchanges, known: known.map { $0.line() }, persona: persona, now: .now)
             let result = await routing.value
             await self?.apply(findings: reading.findings, summary: reading.summary, known: known, query: query, decision: result.decision)
         }
     }
 
     /// What the reader found, written: a new fact added, a restated one
-    /// refreshed, a changed one replaced with its old words kept; then one
-    /// mark for what was added or changed, and the reader's own log line.
+    /// refreshed, a changed one replaced with its old words kept, a wrong one
+    /// dropped; then one mark for what was added or changed, and the reader's
+    /// own log line. A wrong fact has no mark: Jarbits owns up in the reply.
     private func apply(findings: [FactReader.Finding], summary: ExtractionSummary, known: [Fact], query: String, decision: Pick) async {
         var added: [String] = []
         var changed: [String] = []
         var restated = 0
+        var dropped: [String] = []
         for finding in findings {
             switch finding.kind {
             case .new:
@@ -681,16 +683,20 @@ final class JarbitsSession {
                     _ = await facts.add(Fact(text: finding.text, source: .inferred, madeBy: query))
                     added.append(finding.text)
                 }
+            case .wrong:
+                guard let of = finding.of, known.indices.contains(of - 1) else { continue }
+                await facts.forget(known[of - 1].id)
+                dropped.append(known[of - 1].text)
             }
         }
         if !findings.isEmpty { await refreshFacts() }
         #if DEBUG
-        print("facts read: \(added.count) new, \(restated) same, \(changed.count) changed (\(summary.latencyMs) ms)" + (added + changed).map { "\n  \($0)" }.joined())
+        print("facts read: \(added.count) new, \(restated) same, \(changed.count) changed, \(dropped.count) wrong (\(summary.latencyMs) ms)" + (added + changed + dropped).map { "\n  \($0)" }.joined())
         #endif
         if !added.isEmpty || !changed.isEmpty {
             note(FactMark(text: (added + changed).joined(separator: " · "), kind: added.isEmpty ? .updated : .remembered))
         }
-        record(decision, query: query, extraction: summary, fact: FactSummary(action: "read", source: .inferred, text: added.first ?? changed.first, remember: decision.remember, latencyMs: summary.latencyMs, found: added.count, restated: restated, replaced: changed.count))
+        record(decision, query: query, extraction: summary, fact: FactSummary(action: "read", source: .inferred, text: added.first ?? changed.first ?? dropped.first, remember: decision.remember, latencyMs: summary.latencyMs, found: added.count, restated: restated, replaced: changed.count, dropped: dropped.count))
     }
 
     /// Keeps `fact`, or refreshes the one already there, and shows the mark.
@@ -1939,6 +1945,7 @@ final class JarbitsSession {
             await webpages.clear()
             await sites.clear()
             await facts.clear()
+            knownFacts = []
             factTexts = []
             userName = nil
             askedName = false

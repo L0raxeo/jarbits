@@ -13,7 +13,8 @@ struct RememberInstinct: InstinctRunner {
     func run(_ context: InstinctContext, in session: JarbitsSession, token: UUID) async -> InstinctOutcome {
         let gate = context.decision.remember
         guard let text = context.arguments["fact"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-            return InstinctOutcome(fact: FactSummary(action: "none", remember: gate), text: "nothing to remember")
+            // Words with nothing to keep ("I don't have a friend named John") still want a reply: the planner's.
+            return InstinctOutcome(fact: FactSummary(action: "none", remember: gate), text: "nothing to remember", failed: "the words state nothing for me to keep")
         }
         // Told in the words; chosen when a plan asked on the sheet and the answer is being kept.
         let source: Fact.Source = context.arguments[Self.sourceField]?.stringValue == Fact.Source.chosen.rawValue ? .chosen : .told

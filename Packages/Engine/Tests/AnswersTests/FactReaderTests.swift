@@ -24,7 +24,7 @@ import Testing
         let schema = FactReader.schema(.example)
         let facts = try #require(schema["properties"]?["facts"])
         #expect(facts["type"]?.stringValue == "array")
-        #expect(facts["items"]?["properties"]?["kind"]?["enum"]?.arrayValue?.compactMap(\.stringValue) == ["new", "same", "changed"])
+        #expect(facts["items"]?["properties"]?["kind"]?["enum"]?.arrayValue?.compactMap(\.stringValue) == ["new", "same", "changed", "wrong"])
         #expect(facts["items"]?["required"]?.arrayValue?.compactMap(\.stringValue) == ["text", "kind"])
         #expect(schema["required"]?.arrayValue?.compactMap(\.stringValue) == ["facts"])
     }
@@ -47,5 +47,19 @@ import Testing
         #expect(FactReader.findings(in: #"{"facts": []}"#, known: 0) == [])
         #expect(FactReader.findings(in: "nope", known: 0) == nil)
         #expect(FactReader.findings(in: #"{"fact": "one"}"#, known: 0) == nil, "the old one-sentence shape is not a list")
+    }
+
+    @Test func aWrongFactIsReadByItsNumberAndNothingElse() {
+        let text = #"{"facts": [{"text": "Lorcan has a friend named John", "kind": "wrong", "of": 1}, {"text": "Lorcan has a sister", "kind": "wrong", "of": null}, {"text": "Lorcan is tall", "kind": "wrong", "of": 9}]}"#
+        #expect(FactReader.findings(in: text, known: 2) == [FactReader.Finding(text: "Lorcan has a friend named John", kind: .wrong, of: 1)])
+        #expect(FactReader.system(.example).contains("Never note the denial itself"))
+    }
+
+    @Test func aFactNotedInThisConversationIsMarkedForTheModels() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let fresh = Fact(text: "Lorcan has a friend named John", source: .inferred, madeBy: "q", date: now.addingTimeInterval(-60))
+        let old = Fact(text: "Lorcan is vegetarian", source: .inferred, madeBy: "q", date: now.addingTimeInterval(-ConversationMemory.silence - 1))
+        #expect(fresh.line(now: now) == "Lorcan has a friend named John (just noted)")
+        #expect(old.line(now: now) == "Lorcan is vegetarian")
     }
 }

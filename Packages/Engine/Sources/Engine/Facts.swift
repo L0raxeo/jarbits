@@ -37,6 +37,12 @@ public struct Fact: Codable, Sendable, Hashable, Identifiable {
         self.previous = previous
     }
 
+    /// The fact as the models read it: its words, marked when it was noted
+    /// in the conversation still going, so "that's not true" can find it.
+    public func line(now: Date = .now) -> String {
+        now.timeIntervalSince(date) < ConversationMemory.silence ? "\(text) (just noted)" : text
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, text, source, madeBy, date, version, previous
     }
@@ -90,12 +96,13 @@ public struct FactSummary: Codable, Sendable, Equatable {
     public var candidates: Int?
     public var judged: Int?
     public var latencyMs: Int?
-    /// For a reading: how many facts were new, restated, and changed.
+    /// For a reading: how many facts were new, restated, changed, and dropped as wrong.
     public var found: Int?
     public var restated: Int?
     public var replaced: Int?
+    public var dropped: Int?
 
-    public init(action: String, source: Fact.Source? = nil, text: String? = nil, remember: Double? = nil, candidates: Int? = nil, judged: Int? = nil, latencyMs: Int? = nil, found: Int? = nil, restated: Int? = nil, replaced: Int? = nil) {
+    public init(action: String, source: Fact.Source? = nil, text: String? = nil, remember: Double? = nil, candidates: Int? = nil, judged: Int? = nil, latencyMs: Int? = nil, found: Int? = nil, restated: Int? = nil, replaced: Int? = nil, dropped: Int? = nil) {
         self.action = action
         self.source = source
         self.text = text
@@ -106,6 +113,7 @@ public struct FactSummary: Codable, Sendable, Equatable {
         self.found = found
         self.restated = restated
         self.replaced = replaced
+        self.dropped = dropped
     }
 }
 

@@ -46,7 +46,7 @@ final class Executor {
             budgetStart = clock.now
             return okay
         }
-        let facts = session.factTexts
+        let facts = session.knownFacts.map { $0.line() }
         func finish(_ outcome: EngineSummary.Outcome, webpages: Int) -> EngineSummary {
             EngineSummary(
                 model: planner.client.model, rounds: rounds, steps: steps, usage: counted ? usage : nil,

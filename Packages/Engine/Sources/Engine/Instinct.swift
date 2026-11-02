@@ -192,13 +192,13 @@ public enum Instinct: String, CaseIterable, Codable, Sendable {
         case .remember:
             Criterion(
                 what: "The user asks the app to keep something in mind about them for later, or tells it something lasting about themselves with nothing else asked: a preference, an allergy, a name, where they live. The words are a remember, a keep-in-mind, a don't-forget, a note-that, or a plain statement about the user; nothing is wanted back but the keeping.",
-                notFor: "Bringing back something seen in this app before (\"remember that convo on the dyson pencilvac\", \"remember that page\"), which is recall; writing the user wants kept as a note or a list (\"make a note that…\", \"add milk to my shopping list\"), which is notebook; a question that mentions a fact on the way to asking something (\"I'm allergic to peanuts, what can I snack on\" wants the snacks); a fact about the world.",
+                notFor: "Bringing back something seen in this app before (\"remember that convo on the dyson pencilvac\", \"remember that page\"), which is recall; writing the user wants kept as a note or a list (\"make a note that…\", \"add milk to my shopping list\"), which is notebook; a question that mentions a fact on the way to asking something (\"I'm allergic to peanuts, what can I snack on\" wants the snacks); a fact about the world; telling the app that something it holds about them is not so or was misheard (\"I don't have a friend named john\", \"you misheard me\", \"that's not true\"), which is nothing to keep.",
                 examples: ["remember that I'm allergic to peanuts", "keep in mind I'm vegetarian", "don't forget my wife's name is Ana", "note that I don't eat pork", "I live in austin now"]
             )
         case .forget:
             Criterion(
                 what: "The user asks the app to forget, drop or stop remembering something it knows about them: the fact just noted, or one named by its subject.",
-                notFor: "Forgetting a page, a search or an answer, which is nothing the app keeps as a fact; a new question; \"never mind\" about a query just typed.",
+                notFor: "Forgetting a page, a search or an answer, which is nothing the app keeps as a fact; a new question; \"never mind\" about a query just typed; telling the app that something it holds about them is not so or was misheard (\"I don't have a friend named john\", \"you misheard me\"), which asks to forget nothing and wants a reply.",
                 examples: ["forget that", "forget that I'm vegetarian", "stop remembering my peanut allergy", "drop what I told you about my wife", "you can forget where I live"]
             )
         case .time:

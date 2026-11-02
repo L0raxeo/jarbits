@@ -159,3 +159,5 @@
 {"query": "show me this week's forecast", "instinct": "weather", "note": "asks to see it: the screen at once (2026-11-01)"}
 {"query": "pull up the weather", "instinct": "weather", "note": "asks to see it; no site named (2026-11-01)"}
 {"query": "San Francisco", "exchanges": [{"query": "what will the weather be tomorrow in cali", "kind": "answer", "text": "Which part of California?"}], "instinct": "weather", "chain": 1, "source": "jev", "note": "a bare place after a question asked over the answer: the fallback for a question never asked properly or expired; a miss is reported, never ruled around (2026-11-01)"}
+{"query": "I don't have a friend named john", "instinct": "planned", "note": "a denial is neither a fact to keep nor a request to forget: it wants a reply, the planner's"}
+{"query": "you misheard me, I don't have a sister", "instinct": "planned", "note": "the same"}

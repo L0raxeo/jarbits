@@ -15,3 +15,9 @@
 {"query": "add to my project notes that my cofounder Maya wants a robot", "expect": [{"kind": "new", "contains": ["Maya"]}], "note": "the mixed case: the cofounder is a fact about Lorcan's life, the robot is the work's; no allowMore, so a robot fact fails it"}
 {"query": "add to my notes that my sister moved to Austin", "expect": [{"kind": "new", "contains": ["Austin"]}], "note": "a fact about Lorcan's life is kept wherever the words were headed"}
 {"query": "I prefer window seats", "expect": [{"kind": "new", "contains": ["window"]}], "note": "a standing preference about how Lorcan lives"}
+{"query": "I don't have a friend named john", "known": ["Lorcan has a friend named John.", "Lorcan is vegetarian."], "expect": [{"kind": "wrong", "of": 1}], "note": "a denial drops the fact and notes nothing in its place"}
+{"query": "you misheard me, I don't have a sister", "known": ["Lorcan has a sister named Ana.", "Lorcan's sister Ana lives in Austin.", "Lorcan lives in Bethlehem."], "expect": [{"kind": "wrong", "of": 1}, {"kind": "wrong", "of": 2}], "note": "what only made sense if it were true goes too; the rest stand"}
+{"query": "that's not true", "known": ["Lorcan is vegetarian.", "Lorcan has a friend named John. (just noted)"], "expect": [{"kind": "wrong", "of": 2}], "note": "no name: the fact just noted"}
+{"query": "I don't have a friend named sam", "known": ["Lorcan has a friend named John."], "expect": [], "note": "denying what was never noted keeps nothing: no one notes the friends someone doesn't have"}
+{"query": "it's Sean, not John", "known": ["Lorcan has a friend named John."], "expect": [{"kind": "changed", "of": 1, "contains": ["Sean"]}], "note": "a correction keeps the friend and fixes the name"}
+{"query": "I don't eat pork", "known": ["Lorcan has a friend named John."], "expect": [{"kind": "new", "contains": ["pork"]}], "note": "a negative that is how he lives is a fact"}
