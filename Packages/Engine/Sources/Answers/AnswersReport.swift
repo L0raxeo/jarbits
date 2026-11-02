@@ -119,7 +119,7 @@ public enum AnswersReport {
         let things = ThingTable(exchanges: bundle.exchanges, webpages: [
             Webpage(kind: .page, address: URL(string: "https://example.com/<path>")!, title: "<page title>", query: "<earlier query>", opened: AnswerContext.example.now.addingTimeInterval(-86_400)),
         ], items: screen.items)
-        let input = Planner.input(query: "<query>", things: things, now: AnswerContext.example.now, screen: screen)
+        let input = Planner.input(query: "<query>", things: things, now: AnswerContext.example.now, screen: screen, done: [ActionRecord(at: AnswerContext.example.now, what: "<what I did>", asked: "<the words it was for>")])
         var out: [String] = []
         out.append("### Reasoning (function calling)")
         out.append("")

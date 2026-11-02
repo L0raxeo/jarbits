@@ -8,14 +8,26 @@ import Engine
 /// undone, one step back each time, with what an undo replaces and the
 /// version it used moved to `.undone/<id>/`, kept and never shown; a delete
 /// moves the file to `.trash/`, which is never shown or
-/// searched. Nothing here leaves the phone except inside a Gemini request.
+/// searched. Every write says whose hand it is: what Jarbits does goes on
+/// his record in the same step as the file, whatever becomes of the request
+/// behind it. Nothing here leaves the phone except inside a Gemini request.
 actor Notebook {
     static let shared = Notebook()
 
+    /// Who is writing. There is no default, so no write can leave it out.
+    enum Hand: Sendable {
+        /// Jarbits, for these words of the user's.
+        case jarbits(asked: String)
+        /// The user, typing in the note: theirs, so not on his record.
+        case user
+    }
+
     nonisolated let directory: URL
+    private let actions: ActionLog
     private var loaded: [Note]?
 
-    init(directory: URL? = nil) {
+    init(directory: URL? = nil, actions: ActionLog = .shared) {
+        self.actions = actions
         // "Browser" is the project's old name, kept: the files already on the phone are there.
         self.directory = directory ?? URL.applicationSupportDirectory.appending(path: "Browser/Notebook", directoryHint: .isDirectory)
     }
@@ -25,6 +37,10 @@ actor Notebook {
     private var undoneURL: URL { directory.appending(path: ".undone", directoryHint: .isDirectory) }
 
     private func fileURL(for id: UUID) -> URL { directory.appending(path: "\(id.uuidString).md") }
+
+    private func recorded(_ what: String, _ note: Note, by hand: Hand) {
+        if case let .jarbits(asked) = hand { actions.add(what, noteID: note.id, asked: asked) }
+    }
 
     // MARK: Reading
 
@@ -56,12 +72,13 @@ actor Notebook {
 
     /// A new note; its title from the words, else from the text's first line.
     @discardableResult
-    func create(title: String?, body: String) -> Note {
+    func create(title: String?, body: String, by hand: Hand) -> Note {
         let note = Note(title: title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? Note.title(from: body), body: body)
         write(note)
         var all = notes()
         all.append(note)
         loaded = all
+        recorded("Made my note \"\(note.title)\"" + (body.isEmpty ? "" : ": \(body)"), note, by: hand)
         return note
     }
 
@@ -70,13 +87,14 @@ actor Notebook {
     /// list continued and a numbered run counted again by
     /// `NoteMarkdown.insert`; the text before is kept as a version.
     @discardableResult
-    func insert(_ text: String, into id: UUID, after line: Int? = nil) -> Note? {
+    func insert(_ text: String, into id: UUID, after line: Int? = nil, by hand: Hand) -> Note? {
         guard var note = note(id: id) else { return nil }
         keepVersion(of: note)
         note.body = NoteMarkdown.insert(text, into: note.body, after: line)
         note.edited = .now
         write(note)
         replaceLoaded(note)
+        recorded("Added to my note \"\(note.title)\": \(text)", note, by: hand)
         return note
     }
 
@@ -84,7 +102,7 @@ actor Notebook {
     /// every other line stays as it was (`NoteMarkdown.removing`); the text
     /// before is kept as a version.
     @discardableResult
-    func remove(_ lines: [Int], from id: UUID) -> Note? {
+    func remove(_ lines: [Int], from id: UUID, by hand: Hand) -> Note? {
         guard var note = note(id: id), !lines.isEmpty else { return nil }
         let body = NoteMarkdown.removing(lines: lines, from: note.body)
         guard body != note.body else { return note }
@@ -93,6 +111,7 @@ actor Notebook {
         note.edited = .now
         write(note)
         replaceLoaded(note)
+        recorded("Took \(lines.count == 1 ? "a line" : "\(lines.count) lines") out of my note \"\(note.title)\"", note, by: hand)
         return note
     }
 
@@ -101,22 +120,24 @@ actor Notebook {
     /// the planner's listing shows a kept page as its title; the text
     /// before is kept as a version.
     @discardableResult
-    func replace(_ id: UUID, body: String, title: String? = nil) -> Note? {
+    func replace(_ id: UUID, body: String, title: String? = nil, by hand: Hand) -> Note? {
         guard var note = note(id: id) else { return nil }
         let body = NoteMarkdown.relinked(body, from: note.body)
         guard body != note.body || (title != nil && title != note.title) else { return note }
         keepVersion(of: note)
+        let before = note.body
         note.body = body
         if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { note.title = title }
         note.edited = .now
         write(note)
         replaceLoaded(note)
+        recorded(ActionWords.rewrote(title: note.title, from: before, to: note.body), note, by: hand)
         return note
     }
 
     /// The note back as it was before its last change: the newest version
     /// that differs from the text now, title and all. Nil when none does.
-    func undo(_ id: UUID) -> Note? {
+    func undo(_ id: UUID, by hand: Hand) -> Note? {
         guard let current = note(id: id) else { return nil }
         let manager = FileManager.default
         let folder = versionsURL.appending(path: id.uuidString, directoryHint: .isDirectory)
@@ -133,14 +154,16 @@ actor Notebook {
             try? current.markdown.write(to: undone.appending(path: "\(stamp)-replaced.md"), atomically: true, encoding: .utf8)
             write(earlier)
             replaceLoaded(earlier)
+            recorded("Put my note \"\(earlier.title)\" back as it was before its last change", earlier, by: hand)
             return earlier
         }
         return nil
     }
 
     /// To the trash, never gone.
-    func delete(_ id: UUID) {
+    func delete(_ id: UUID, by hand: Hand) {
         let file = fileURL(for: id)
+        if let note = note(id: id) { recorded("Deleted my note \"\(note.title)\"", note, by: hand) }
         try? FileManager.default.createDirectory(at: trashURL, withIntermediateDirectories: true)
         try? FileManager.default.moveItem(at: file, to: trashURL.appending(path: file.lastPathComponent))
         loaded = notes().filter { $0.id != id }

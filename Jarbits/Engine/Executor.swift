@@ -88,7 +88,7 @@ final class Executor {
         let notes = await session.notebook.all()
         guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
         var things = ThingTable(exchanges: exchanges, webpages: listedWebpages, notes: notes, items: screen?.items ?? [])
-        var transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: now, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, spoken: spoken, triggers: triggers), picture: screen?.picture)]
+        var transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: now, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, spoken: spoken, triggers: triggers, done: session.actions.newest(), doneEarlier: max(session.actions.count - ActionLog.listed, 0)), picture: screen?.picture)]
         func noSuchThing(_ handle: String) -> String {
             "no such thing: \(handle); the things are \(things.handles.isEmpty ? "none" : things.handles.joined(separator: ", "))"
         }
@@ -151,6 +151,7 @@ final class Executor {
             }
             for call in calls {
                 let stepStart = clock.now
+                let recordedBefore = session.actions.count
                 var result: String
                 var outcome: String
                 var ended: EngineSummary.Outcome?
@@ -255,15 +256,16 @@ final class Executor {
                 } else if call.name == Planner.closeTool.name {
                     // Open webpages closed by the user's word, by handle or every one.
                     let handles = (call.arguments["things"]?.arrayValue ?? []).compactMap { $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-                    var ids: [UUID] = []
+                    var closing: [Webpage] = []
                     var unknown: String?
                     if handles.contains("all") {
-                        ids = things.webpageEntries.compactMap { if case let .webpage(w) = $0.thing { w.id } else { nil } }
+                        closing = things.webpageEntries.compactMap { if case let .webpage(w) = $0.thing { w } else { nil } }
                     } else {
                         for handle in handles {
-                            if case let .webpage(w)? = things[handle] { ids.append(w.id) } else { unknown = handle; break }
+                            if case let .webpage(w)? = things[handle] { closing.append(w) } else { unknown = handle; break }
                         }
                     }
+                    let ids = closing.map(\.id)
                     if let unknown {
                         result = things[unknown] == nil ? noSuchThing(unknown) : "\(unknown) is not an open webpage: only webpages (w1, w2) close"
                         outcome = "failed: not a webpage"
@@ -275,9 +277,33 @@ final class Executor {
                     } else {
                         guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
                         session.close(ids)
+                        session.actions.add("Closed \(ids.count == 1 ? "a webpage" : "\(ids.count) webpages"): \(closing.map(\.title).joined(separator: "; "))", asked: session.askedWords)
                         result = ids.count == 1 ? "closed it" : "closed \(ids.count) webpages"
                         outcome = "ran"
                         shown = true   // the user saw it go; nothing more to show
+                    }
+                    answered = false
+                } else if call.name == Planner.pastTool.name {
+                    // Further back in his own record: a note's entries from the
+                    // newest, everything from where the listing's block ends.
+                    let handle = call.arguments["thing"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    var noteID: UUID?
+                    if let handle {
+                        switch things[handle] {
+                        case let .note(note)?: noteID = note.id
+                        case let .exchange(exchange)?: noteID = exchange.noteID
+                        default: break
+                        }
+                    }
+                    if let handle, noteID == nil {
+                        result = things[handle] == nil ? noSuchThing(handle) : "\(handle) is not a note: past takes a note's handle, or none"
+                        outcome = "failed: not a note"
+                        failures += 1
+                    } else {
+                        let skipping = max(call.arguments["from"]?.intValue ?? (noteID == nil ? ActionLog.listed : 0), 0)
+                        let read = session.actions.older(skipping: skipping, noteID: noteID)
+                        result = Planner.pastResult(read.records, earlier: read.earlier, skipped: skipping, in: things)
+                        outcome = "read"
                     }
                     answered = false
                 } else if call.name == Planner.lookTool.name {
@@ -504,6 +530,15 @@ final class Executor {
                     result = "no such tool"
                     outcome = "unknown"
                     answered = false
+                }
+                // Nothing he did goes unrecorded: a step that acted and wrote no
+                // line of its own goes on the record from its result. An answer
+                // has its line when it finishes; a tool that could not says so.
+                let answers = instincts.first { $0.spec.id == call.name }?.spec.instinct.isAnswered == true
+                if outcome == "ran" || outcome == "shown", !answers, session.actions.count == recordedBefore {
+                    session.actions.add("\(call.name): \(result)", asked: session.askedWords)
+                } else if outcome.hasPrefix("failed"), instincts.contains(where: { $0.spec.id == call.name }), outcome != "failed: no such thing" {
+                    session.actions.add("Tried \(call.name) and could not: \(result)", asked: session.askedWords)
                 }
                 steps.append(EngineSummary.Step(name: call.name, arguments: call.arguments, outcome: outcome, latencyMs: Int((clock.now - stepStart) / .milliseconds(1)), answer: answerGiven))
                 session.planProgress(step: call.name)

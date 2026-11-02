@@ -90,6 +90,8 @@ final class JarbitsSession {
     let notebook: Notebook
     /// What Jarbits does later; see `Trigger`.
     let triggers: TriggerStore
+    /// Everything Jarbits has done; see `ActionLog`.
+    let actions: ActionLog
     /// The triggers that can still go off, as the planner's listing shows
     /// them; read from the store after every change, by the session and the clock.
     var liveTriggers: [Trigger] = []
@@ -229,6 +231,8 @@ final class JarbitsSession {
     /// The user's request as read, for the query in flight: what every
     /// layer it makes records as `asked`, whatever a plan step's own query is.
     private var askedQuery = ""
+    /// The user's words behind what is happening now, for his record.
+    var askedWords: String { askedQuery }
     /// Where the query in flight is; the instincts move it as they open their layers.
     /// The idle circle and a drawn layer are places the screen stands, so each
     /// is remembered as it comes: a query hands back to the last of them,
@@ -331,7 +335,7 @@ final class JarbitsSession {
     /// A Gemini key is configured, so an answer can be shown.
     var canAnswer: Bool { answerClient != nil }
 
-    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, closing: Closing? = nil, log: DecisionLog = .shared, webpages: WebpageStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared, triggers: TriggerStore = .shared) {
+    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, closing: Closing? = nil, log: DecisionLog = .shared, webpages: WebpageStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared, triggers: TriggerStore = .shared, actions: ActionLog = .shared) {
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
@@ -342,6 +346,7 @@ final class JarbitsSession {
         self.sites = sites
         self.notebook = notebook
         self.triggers = triggers
+        self.actions = actions
         triggerClock = TriggerClock(store: triggers)
         self.facts = facts
         self.factResolver = factResolver
@@ -646,12 +651,23 @@ final class JarbitsSession {
             }
         }
         let answer = await pending.wait()
+        recordAsked(title, answer)
         if question === pending { question = nil }
         messenger.withdraw(pending.id)
         if waved, answer != nil, token == requestToken { stage = .routing }   // the plan goes on under the wave
         releaseRun(token)
         pumpFires()
         return answer
+    }
+
+    /// A question and what became of it, on his record.
+    private func recordAsked(_ title: String, _ answer: AskAnswer?) {
+        switch answer {
+        case let .option(_, text)?, let .text(text)?:
+            actions.add("Asked \"\(title)\" and you answered \"\(text)\"", asked: askedQuery)
+        case nil:
+            actions.add("Asked \"\(title)\" and got no answer", asked: askedQuery)
+        }
     }
 
     /// The question to the user: spoken over the bubble when the app is on
@@ -891,6 +907,7 @@ final class JarbitsSession {
         for layer in leaving where !layer.lingers {
             var items = layer.exchanges
             if items.isEmpty, case let .answer(_, query, _, _) = layer.plan, let answer = layer.answer, !answer.displayText.isEmpty {
+                actions.add("Began answering \"\(query)\" and was cut off: \(answer.displayText)", asked: layer.asked)
                 items = [SessionExchange(exchange: .answer(query: query, text: answer.displayText), turn: nil, layerID: layer.id)]
             }
             if !items.isEmpty { archive.append((exchanges: items, at: now)) }
@@ -1213,6 +1230,7 @@ final class JarbitsSession {
 
     /// A new web layer for `url`.
     private func openPage(_ url: URL, query: String, decision: Pick?, byQuery: Bool = true) {
+        if byQuery { recordOpened(url, onMyScreen: false) }
         let layer = Layer(plan: .web(url), query: query, decision: decision)
         open(layer, byQuery: byQuery)
         show(url, in: layer, byQuery: byQuery)
@@ -1224,6 +1242,7 @@ final class JarbitsSession {
     /// ran on; recorded at once unless the instinct records its own line.
     /// On Jarbits's own screen when the plan said so.
     func openPage(_ url: URL, context: InstinctContext, recording: Bool = true) {
+        recordOpened(url, onMyScreen: context.desk)
         if context.desk { openOnDesk(url, context: context, recording: recording); return }
         // A page already open comes forward as it stands, as a browser would,
         // unless the user asked for a new one; a search is always fresh results.
@@ -1240,11 +1259,35 @@ final class JarbitsSession {
         if recording { record(context) }
     }
 
+    /// A page or search he opened, on his record, by where it went.
+    private func recordOpened(_ url: URL, onMyScreen: Bool) {
+        let place = onMyScreen ? " on my own screen" : " on your screen"
+        let term = QueryParser.isSearchResults(url) ? QueryParser.searchTerm(in: url) : nil
+        actions.add((term.map { "Searched \"\($0)\"" } ?? "Opened \(url.absoluteString)") + place, asked: askedQuery)
+    }
+
+    /// What a card or a reply put in front of the user, on his record. A
+    /// page, an answer and a note have their own moment: when it opens,
+    /// when it finishes, and when the note is shown or written.
+    private func recordShown(_ plan: CardPlan) {
+        let what: String
+        switch plan {
+        case let .said(_, text), let .time(_, text): what = "Said: \(text)"
+        case let .weather(snapshot): what = "Showed the weather: \(WeatherText.line(snapshot))"
+        case let .recallPicker(webpages, _): what = "Showed open webpages: \(webpages.map(\.title).joined(separator: "; "))"
+        case let .siteChoices(name, candidates): what = "Offered sites for \"\(name)\": \(candidates.map(\.host).joined(separator: ", "))"
+        case let .notes(notes, _): what = "Showed my notes: \(notes.map(\.title).joined(separator: "; "))"
+        case .web, .answer, .note: return
+        }
+        actions.add(what, asked: askedQuery)
+    }
+
     /// A new card layer, on screen at once. `spoken` is a line Jarbits says
     /// over it (the weather's short answer), with no bubble piece to cover
     /// the card; away from the app it arrives as a message, as a reply's does.
     @discardableResult
     func showCard(_ plan: CardPlan, context: InstinctContext, recording: Bool = true, spoken: String? = nil) -> Layer {
+        recordShown(plan)
         let layer = Layer(plan: plan, query: context.query, decision: context.decision)
         layer.extraction = context.extraction
         layer.fact = context.fact
@@ -1271,6 +1314,7 @@ final class JarbitsSession {
     /// `replies` under the query's earlier pieces rather than being opened.
     @discardableResult
     func showReply(_ plan: CardPlan, context: InstinctContext, recording: Bool = true) -> Layer {
+        recordShown(plan)
         let layer = Layer(plan: plan, query: context.query, decision: context.decision)
         layer.extraction = context.extraction
         layer.fact = context.fact
@@ -1355,6 +1399,8 @@ final class JarbitsSession {
     /// shows at once, where the user is looking.
     func showNote(_ note: Note, wrote summary: String? = nil, lines: String? = nil, context: InstinctContext) {
         lastQuery = context.query
+        // A write went on his record as the file changed.
+        if summary == nil { actions.add("Showed you my note \"\(note.title)\"", noteID: note.id, asked: askedQuery) }
         if let shown = current, stage != .idle, case let .note(old) = shown.plan, old.id == note.id {
             shown.plan = .note(note)
             shown.query = context.query
@@ -1383,7 +1429,7 @@ final class JarbitsSession {
     /// Typed into the note on screen: the file follows, after a pause and on leaving.
     func saveNote(_ note: Note, body: String, title: String) {
         Task {
-            guard let changed = await notebook.replace(note.id, body: body, title: title) else { return }
+            guard let changed = await notebook.replace(note.id, body: body, title: title, by: .user) else { return }
             for layer in layers {
                 if case let .note(old) = layer.plan, old.id == changed.id { layer.plan = .note(changed) }
             }
@@ -1453,12 +1499,13 @@ final class JarbitsSession {
         layer.runToken = requestToken
         layer.messageAtFinish = false
         holdRun(requestToken)
-        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: factTexts, persona: persona, screen: context.screen)
+        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: factTexts, done: actions.newest().map { $0.line() }, persona: persona, screen: context.screen)
     }
 
     /// A site the book knew opens, in a new layer, as opened by name; on
     /// Jarbits's own screen when the plan said so, as a plain page.
     func openSite(_ name: String, url: URL, context: InstinctContext) {
+        recordOpened(url, onMyScreen: context.desk)
         if context.desk { openOnDesk(url, context: context, recording: false); return }
         let layer = Layer(plan: .web(url), query: context.query, decision: context.decision)
         layer.reading = context.reading
@@ -1471,6 +1518,7 @@ final class JarbitsSession {
     /// first site tapped off it is learned as the name. On Jarbits's own
     /// screen nothing is learned: no one taps there.
     func openResultsForSite(_ name: String, context: InstinctContext) {
+        recordOpened(QueryParser.searchURL(for: name), onMyScreen: context.desk)
         if context.desk { openOnDesk(QueryParser.searchURL(for: name), context: context, recording: false); return }
         let layer = Layer(plan: .web(QueryParser.searchURL(for: name)), query: context.query, decision: context.decision)
         layer.reading = context.reading
@@ -1546,6 +1594,7 @@ final class JarbitsSession {
     /// let go. An unloaded one reloads to where its notes say. `byQuery`
     /// is false for the user's own tap under an answer.
     func bringForward(_ layer: Layer, context: InstinctContext? = nil, byQuery: Bool = true) {
+        if context != nil { actions.add("Brought \"\(layer.pageTitle ?? layer.query)\" to your screen", asked: askedQuery) }
         if let at = layers.firstIndex(where: { $0 === layer }) {
             if let context { lastQuery = context.query }
             if at != index { move(to: at) } else if stage == .idle { move(to: at) }
@@ -1794,7 +1843,12 @@ final class JarbitsSession {
         if !shows { stage = stageBefore }
         let conversation = result.conversation   // the whole conversation, not only Jev's chain
         Task {
+            let recordedBefore = actions.count
             let outcome = await instinct.run(context, in: self, token: token)
+            // Whatever an instinct did, it is on the record, even one that wrote no line of its own.
+            if outcome.failed == nil, !outcome.declined, !outcome.text.isEmpty, actions.count == recordedBefore {
+                actions.add("\(instinct.spec.id): \(outcome.text)", asked: askedQuery)
+            }
             guard token == requestToken else { releaseRun(token); return }
             // The instinct could not do the thing: the planner takes the
             // query, told what was tried, under the wave line.
@@ -1945,6 +1999,7 @@ final class JarbitsSession {
         print("sites \"\(name)\" learned as \(SiteBook.origin(of: url)?.absoluteString ?? url.absoluteString)")
         #endif
         Task { await sites.learn(name, url: url) }
+        actions.add("Learned that \"\(name)\" means \(url.host() ?? url.absoluteString)", asked: askedQuery)
         layer.openedSite = OpenedSite(name: Words.key(name), host: url.host() ?? "")
     }
 
@@ -2054,6 +2109,7 @@ final class JarbitsSession {
             await webpages.clear()
             await sites.clear()
             await facts.clear()
+            actions.clear()
             knownFacts = []
             factTexts = []
             userName = nil
@@ -2084,6 +2140,7 @@ final class JarbitsSession {
 
     private func answerFinished(_ summary: AnswerSummary, in layer: Layer) {
         guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
+        if !answer.text.isEmpty { actions.add("Answered \"\(answer.query)\": \(answer.text)", asked: layer.asked) }
         defer {
             if let token = layer.runToken {
                 layer.runToken = nil
@@ -2277,6 +2334,7 @@ final class JarbitsSession {
         question = pending
         put(pending, token: requestToken)
         let answer = await pending.wait()
+        recordAsked(pending.title, answer)
         if question === pending { question = nil }
         messenger.withdraw(pending.id)
         guard await triggers.claim(trigger.id, occurrence: due) else { return }
@@ -2325,6 +2383,10 @@ final class JarbitsSession {
 
     /// A line in the log for a trigger going off, caught up or dropped.
     func recordTrigger(_ trigger: Trigger, action: String, occurrence: Date? = nil) {
+        let said = action == "dropped" ? "Left \(trigger.handle) undone, as it came due while the app was away: \(trigger.jobWords)"
+            : action == "caught up" ? "\(trigger.handle) went off as a notification: \(trigger.line)"
+            : "\(trigger.handle) went off: \(trigger.line)"
+        actions.add(said, asked: trigger.asked, at: occurrence ?? .now)
         let record = DecisionRecord(query: trigger.asked, decision: Pick(instinct: .trigger, source: .plan), trigger: TriggerSummary(action: action, number: trigger.number, kind: trigger.when.kind))
         Task { await log.append(record) }
     }

@@ -56,6 +56,14 @@ public enum AnswerPrompt {
         "What \(Persona.assistant) knows about \(persona.user)"
     }
 
+    /// The heading of the record of what he has done, and the name the rules give it.
+    public static let doneHeading = "What you have done"
+
+    /// How a model reads that record: the one rule, in every prompt where he speaks.
+    public static func doneRule(_ heading: String) -> String {
+        "The block \"\(heading)\" is the full record of your own actions, written the moment each happened. A question about what you did, said, changed or showed is answered from it: what it lists, you did, and you own it plainly; what it does not list, you did not do. Never answer it from how something looks now, and never deny something it lists."
+    }
+
     /// Includes thought tokens, so there is headroom above the visible answer.
     public static func maxOutputTokens(for format: Instinct) -> Int {
         switch format {
@@ -71,7 +79,8 @@ public enum AnswerPrompt {
     /// picture looked at), oldest first; empty for a query that stands alone.
     /// `facts` is everything Jarbits knows about the user, as he noted it,
     /// oldest first; every one goes, there are few.
-    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], persona: Persona = Persona(), screen: Screen? = nil) -> String {
+    /// `done` is the newest of what he has done, oldest first (`ActionLog`).
+    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil) -> String {
         var lines = [
             "Query: \(query)",
             "",
@@ -100,6 +109,13 @@ public enum AnswerPrompt {
                 lines.append("- " + fact)
             }
         }
+        if !done.isEmpty {
+            lines.append("")
+            lines.append("\(doneHeading) (oldest first):")
+            for action in done {
+                lines.append("- " + action)
+            }
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -123,13 +139,14 @@ public enum AnswerPrompt {
         history: [AnswerTurn] = [],
         earlier: [Exchange] = [],
         facts: [String] = [],
+        done: [String] = [],
         persona: Persona = Persona(),
         screen: Screen? = nil
     ) -> InteractionRequest {
         InteractionRequest(
             model: model,
             systemInstruction: system(for: format, persona: persona),
-            input: input(query: query, context: context, earlier: earlier, facts: facts, persona: persona, screen: screen),
+            input: input(query: query, context: context, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen),
             history: history,
             maxOutputTokens: maxOutputTokens(for: format)
         )
@@ -153,6 +170,7 @@ public enum AnswerPrompt {
         - Use the context block for "today" and "now". Do not mention the context unless the query is about it.
         - A block "\(factsHeading(persona))" may follow the context: facts \(persona.user) told you before, as you noted them. Let them shape the answer when they bear on it (a vegetarian gets a vegetarian recipe); ignore them otherwise; never list them back, repeat them or say you were told. When the query says one of them is not so ("I don't have a friend named John"), it is not so: take their word for it, own the mistake in a few words, and answer without it.
         - A question or a request about \(persona.users) own life, people, preferences or situation is answered from that block alone. When it holds nothing on it, say in a line that you don't know that yet; never guess, never answer from the world, never ask for live data, and never tell a story or give a detail about \(persona.users) life that the block does not hold.
+        - \(doneRule(doneHeading))
         - If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
         - Write in the language of the query; in English, British English.
 
@@ -179,6 +197,7 @@ public enum AnswerPrompt {
         - You do know the current date and time from the context block. Compute dates, countdowns and the time in other places from it.
         - A block "\(factsHeading(persona))" may follow the context: facts \(persona.user) told you before, as you noted them. Let them shape the line when they bear on it; ignore them otherwise; never repeat them or say you were told.
         - A question or a request about \(persona.users) own life, people, preferences or situation is answered from that block alone. When it holds nothing on it, reply in a line that you don't know that yet; never guess, never answer from the world, never reply \(liveDataMarker) to it, and never give a detail about \(persona.users) life that the block does not hold.
+        - \(doneRule(doneHeading))
         - If the honest answer is a range or depends on something, give the typical value in the line, such as "Usually 7 to 10 days".
         - If the question cannot be answered in one line, answer its most direct version in one line anyway.
         - Answer in the language of the query; in English, British English.

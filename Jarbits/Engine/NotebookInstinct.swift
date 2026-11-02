@@ -15,6 +15,7 @@ struct NotebookInstinct: InstinctRunner {
 
     func run(_ context: InstinctContext, in session: JarbitsSession, token: UUID) async -> InstinctOutcome {
         let action = context.arguments["action"]?.stringValue ?? (context.arguments["text"] != nil ? "add" : "open")
+        let hand = Notebook.Hand.jarbits(asked: session.askedWords)
         let text = context.arguments["text"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let title = context.arguments["title"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         let topic = context.arguments["topic"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -50,7 +51,7 @@ struct NotebookInstinct: InstinctRunner {
         }
 
         if action == "new" {
-            let note = await session.notebook.create(title: title ?? topic, body: content)
+            let note = await session.notebook.create(title: title ?? topic, body: content, by: hand)
             guard session.isCurrent(token) else { return .nothing }
             session.showNote(note, wrote: "Made the note \(note.title)", context: context)
             return InstinctOutcome(fact: nil, text: "made my note \"\(note.title)\"")
@@ -70,7 +71,7 @@ struct NotebookInstinct: InstinctRunner {
         // sent as a delete is still lines. The rest stays untouched, and
         // anything also written goes in after, as add or replace says.
         if let note = found, !removing.isEmpty {
-            let fewer = await session.notebook.remove(removing, from: note.id)
+            let fewer = await session.notebook.remove(removing, from: note.id, by: hand)
             guard session.isCurrent(token), let fewer else { return .nothing }
             let count = removing.count == 1 ? "a line" : "\(removing.count) lines"
             if content.isEmpty || action == "delete" || action == "open" {
@@ -83,7 +84,7 @@ struct NotebookInstinct: InstinctRunner {
         case "add", "replace":
             guard let note = found else {
                 // No listed note was it: a note by that name is made.
-                let note = await session.notebook.create(title: title ?? topic, body: content)
+                let note = await session.notebook.create(title: title ?? topic, body: content, by: hand)
                 guard session.isCurrent(token) else { return .nothing }
                 session.showNote(note, wrote: "Made the note \(note.title)", context: context)
                 return InstinctOutcome(fact: nil, text: "made my note \"\(note.title)\"")
@@ -98,8 +99,8 @@ struct NotebookInstinct: InstinctRunner {
                 }
             }
             let changed = action == "add"
-                ? await session.notebook.insert(content, into: note.id, after: after)
-                : await session.notebook.replace(note.id, body: content, title: title)
+                ? await session.notebook.insert(content, into: note.id, after: after, by: hand)
+                : await session.notebook.replace(note.id, body: content, title: title, by: hand)
             guard session.isCurrent(token), let changed else { return .nothing }
             // The bubble: where it wrote, over the lines themselves as the
             // note draws them; a rewrite's preview is the note's first lines.
@@ -116,7 +117,7 @@ struct NotebookInstinct: InstinctRunner {
                 session.showNote(note, context: context)
                 return .declined("kept my note \"\(note.title)\"")
             }
-            await session.notebook.delete(note.id)
+            await session.notebook.delete(note.id, by: hand)
             guard session.isCurrent(token) else { return .nothing }
             session.showSaid("\u{201C}\(note.title)\u{201D} is gone.", context: context)
             return InstinctOutcome(fact: nil, text: "deleted my note \"\(note.title)\"")
@@ -124,7 +125,7 @@ struct NotebookInstinct: InstinctRunner {
             guard let note = found else {
                 return .failed(named.map { "no note of mine is \"\($0)\"; the notes I have are listed" } ?? "no note was named; the notes I have are listed")
             }
-            guard let earlier = await session.notebook.undo(note.id) else {
+            guard let earlier = await session.notebook.undo(note.id, by: hand) else {
                 return .failed("my note \"\(note.title)\" has no earlier version to go back to")
             }
             guard session.isCurrent(token) else { return .nothing }

@@ -5,6 +5,16 @@ import Testing
 @testable import Answers
 
 @Suite struct PlanCaseTests {
+    @Test func aPlanCaseJudgesWhetherHeOwnsWhatHeDid() {
+        let owns = PlanCase(query: "did you change this?", calls: [.init(name: "say", arguments: ["text": "<owns>"])])
+        #expect(PlanCheck.failures(owns, calls: [(name: "say", arguments: ["text": "I did, sir. I rewrote it at two."])]).isEmpty)
+        #expect(!PlanCheck.failures(owns, calls: [(name: "say", arguments: ["text": "I haven't touched it."])]).isEmpty)
+        let disowns = PlanCase(query: "did you change this?", calls: [.init(name: "say", arguments: ["text": "<disowns>"])])
+        #expect(PlanCheck.failures(disowns, calls: [(name: "say", arguments: ["text": "No, sir. Not that one."])]).isEmpty)
+        #expect(PlanCheck.failures(disowns, calls: [(name: "say", arguments: ["text": "I didn\u{2019}t touch it."])]).isEmpty)
+        #expect(!PlanCheck.failures(disowns, calls: [(name: "say", arguments: ["text": "I did, sir."])]).isEmpty)
+    }
+
     @Test func aLineParsesAndNamesItself() throws {
         let line = """
         {"query": "open the dyson page from yesterday", "webpages": [{"title": "Dyson PencilVac | Dyson", "url": "https://www.dyson.com/pencilvac", "daysAgo": 1}], "facts": ["Lorcan is vegetarian"], "calls": [{"name": "open", "arguments": {"thing": "w1"}}], "note": "n"}

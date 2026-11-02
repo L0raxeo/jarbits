@@ -83,7 +83,7 @@ final class AnswerSession {
         AnswerMarkup.styled(displayText, for: format)
     }
 
-    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], persona: Persona = Persona(), screen: Screen? = nil) {
+    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil) {
         task?.cancel()
         self.format = format
         self.query = query
@@ -93,7 +93,7 @@ final class AnswerSession {
         text = ""
         summary = nil
         phase = .waiting
-        task = Task { await run(format: format, query: query, history: history, earlier: earlier, facts: facts, persona: persona, screen: screen) }
+        task = Task { await run(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen) }
     }
 
     func cancel() {
@@ -104,11 +104,11 @@ final class AnswerSession {
         }
     }
 
-    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String], persona: Persona, screen: Screen?) async {
+    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String], done: [String], persona: Persona, screen: Screen?) async {
         let clock = ContinuousClock()
         let start = clock.now
         let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
-        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts, persona: persona, screen: screen)
+        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen)
 
         var usage: AnswerUsage?
         var firstTokenMs: Int?

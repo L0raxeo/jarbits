@@ -941,6 +941,44 @@ prompts say "the person you assist". The name lives in
 `facts.profile.json` beside the facts (`FactStore.userName`) and goes with
 "Close everything", which asks it again at once. Jev never sees any of this.
 
+## What Jarbits has done
+
+Jarbits always knows what he has done. Everything he does goes in one record
+on the phone, `Application Support/Browser/actions.jsonl` (`ActionLog`), for
+good: a note made, changed, put back or deleted; a fact noted, changed or
+dropped; a reminder set, cancelled or going off; a page opened; a webpage
+closed; what he said and answered; what he asked and what the answer was; a
+step he tried and could not do. It is a separate thing from the conversation,
+which ends after twenty minutes of silence or a restart, and from the screen,
+which shows only where things stand now.
+
+The record is written where the action happens, not reported afterwards, so a
+request overtaken by a newer one, a screen that moves on or an app that closes
+loses nothing:
+
+- The notebook, the facts and the triggers write it in the same step as their
+  own change. Every notebook write has to say whose hand it is
+  (`Notebook.Hand`, with no default): `.user`, typing in the note, is theirs and
+  stays off the record.
+- The session writes it as a card, a reply, a page or a question is shown, and
+  as an answer finishes.
+- A plan step or a picked instinct that acted and wrote no line of its own goes
+  on the record from its result (`Executor`, `JarbitsSession.apply`). So a new
+  tool is on the record even before it says anything of its own, though it
+  should still write its own line, as the stores do.
+
+A rewrite is recorded by what it did to the note's words, worked out by plain
+comparison (`ActionWords`): "took out 640 of its 760 words and put in 12".
+
+Every planner request and every answer reads the newest `ActionLog.listed` of
+it, whatever the request seems to be about, under the rule that a question about
+what he did, said or changed is answered from it: what it lists, he did; what it
+does not list, he did not. The planner's `past` reads further back, or a single
+note's whole history by its handle.
+
+Anything new that acts must go on this record. Build it into the store or the
+one function the action passes through, so it cannot be left out.
+
 ## Notebook
 
 Jarbits keeps a notebook: notes the user types into, with bold, italic,

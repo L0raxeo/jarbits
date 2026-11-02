@@ -133,6 +133,8 @@ public struct PlanCase: Codable, Equatable, Sendable {
     public var prior: [PriorStep]?
     /// What is set to go off, listed for the planner by handle.
     public var triggers: [TriggerCase]?
+    /// What he has already done, oldest first: the listing's record.
+    public var done: [DoneCase]?
     public var calls: [ExpectedCall]
     /// The expected calls are the first ones; whatever follows in the same round is fine.
     public var prefix: Bool?
@@ -141,6 +143,18 @@ public struct PlanCase: Codable, Equatable, Sendable {
     /// The instinct the classifier picked with confidence that is reasoned, so the planner runs it.
     public var picked: Instinct?
     public var note: String?
+
+    /// An entry of the record of what he has done, in the little a case needs.
+    public struct DoneCase: Codable, Sendable, Equatable {
+        public var what: String
+        /// How long before the example date it happened.
+        public var minutesAgo: Double?
+        public var asked: String?
+
+        public func record(now: Date) -> ActionRecord {
+            ActionRecord(at: now.addingTimeInterval(-(minutesAgo ?? 1) * 60), what: what, asked: asked)
+        }
+    }
 
     /// A trigger as a case lists it: its number, the condition in the
     /// planner's own fields (`when` and the matching values), the job and the line.
@@ -259,12 +273,18 @@ public enum PlanCheck {
                     let loss = NoteMarkdown.wordsLost(from: planCase.notes?.first?.body ?? "", to: got)
                     return loss.lost * 20 <= loss.total
                 }()
+                // "<owns>" accepts a line that does not deny the thing; "<disowns>" one that does.
+                let denies = ["no", "not", "didn't", "haven't", "hadn't", "unchanged", "untouched", "nothing", "n't"].contains { word in
+                    got.lowercased().split { !$0.isLetter && $0 != "'" && $0 != "\u{2019}" }.contains { $0 == word || (word == "n't" && ($0.hasSuffix("n't") || $0.hasSuffix("n\u{2019}t"))) }
+                }
+                let owns = accepted.contains("<owns>") && !got.isEmpty && !denies
+                let disowns = accepted.contains("<disowns>") && !got.isEmpty && denies
                 // A handle pinned on a field may instead be written in braces inside
                 // another field's text ("- {p1}" for item p1): the device fills both.
                 let braced = got.isEmpty && call.arguments.contains { other, text in
                     other != field && accepted.contains { !$0.isEmpty && text.contains("{\($0)}") }
                 }
-                if !prose, !braced, !absent, !keeps, !accepted.contains(got.lowercased()) {
+                if !prose, !braced, !absent, !keeps, !owns, !disowns, !accepted.contains(got.lowercased()) {
                     failures.append("\(expected.name).\(field): expected \"\(value)\", got \(got.isEmpty ? "nothing" : "\"\(got)\"")")
                 }
             }

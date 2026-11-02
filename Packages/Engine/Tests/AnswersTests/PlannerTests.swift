@@ -10,7 +10,7 @@ import Testing
 @Suite struct PlannerTests {
     @Test func everyInstinctIsAToolWithAQueryFieldThenAskSayOpenLookAndDone() throws {
         let tools = Planner.tools(for: InstinctSpec.all)
-        #expect(tools.map(\.name) == InstinctSpec.all.map(\.id) + ["ask", "say", "open", "look", "close", "done"])
+        #expect(tools.map(\.name) == InstinctSpec.all.map(\.id) + ["ask", "say", "open", "look", "close", "past", "done"])
         let recall = try #require(tools.first { $0.name == "recall" })
         #expect(recall.description.contains("In a plan it shows nothing: its result names what it found, by handle"))
         let open = try #require(tools.first { $0.name == "open" })
@@ -22,7 +22,7 @@ import Testing
         #expect(Planner.sayTool.description.contains("Never to retell something the listing holds as a thing"))
         #expect(Planner.openTool.description.contains("every open webpage's handle, which is the grid"))
         #expect(Planner.sayTool.description.contains("say is for a fact with no thing to show"))
-        for tool in tools.dropLast(6) {
+        for tool in tools.dropLast(7) {
             let requiredNames = tool.parameters["required"]?.arrayValue?.compactMap { $0.stringValue }
             let required = try #require(requiredNames)
             #expect(required.contains("query"), "\(tool.name) takes a query")
@@ -103,6 +103,40 @@ import Testing
         #expect(system.contains("- Lorcan is vegetarian\n- Lorcan lives in Austin"))
         #expect(system.contains("Locale: en_US"))
         #expect(Planner.system(facts: [], context: .example).contains("- nothing yet"))
+    }
+
+    @Test func whatHeHasDoneIsInTheListingUnderItsOwnRule() {
+        let now = AnswerContext.example.now
+        let trip = Note(title: "Trip", body: "- passport", created: now, edited: now)
+        let done = ActionRecord(at: now, what: "Rewrote my note \"Trip\": took out 9 of its 12 words and put in 1", noteID: trip.id, asked: "tidy this")
+        let input = Planner.input(query: "did you change this?", things: ThingTable(notes: [trip]), now: now, done: [done], doneEarlier: 40)
+        #expect(input.contains("What I have done (oldest first; 40 earlier, which past reads):\n- "))
+        #expect(input.contains("took out 9 of its 12 words and put in 1 (n1) [for \"tidy this\"]"), "by the note's handle, with the words it was for")
+        #expect(!Planner.input(query: "q", things: ThingTable(), now: now).contains("What I have done"), "no block with nothing done")
+        let system = Planner.system(facts: [], context: .example, persona: .example)
+        #expect(system.contains("is the full record of your own actions"))
+        #expect(system.contains("what it does not list, you did not do"))
+        #expect(system.contains("never deny something it lists"))
+        #expect(system.contains("past reads further back"))
+    }
+
+    @Test func pastSaysHowToGoFurtherBack() {
+        let now = AnswerContext.example.now
+        let older = [ActionRecord(at: now, what: "Said: one"), ActionRecord(at: now, what: "Said: two")]
+        let read = Planner.pastResult(older, earlier: 5, skipped: 60, in: ThingTable())
+        #expect(read.contains("Said: one") && read.contains("Said: two"))
+        #expect(read.hasSuffix("5 earlier: past with from 62 reads them"))
+        #expect(Planner.pastResult([], earlier: 0, skipped: 60, in: ThingTable()) == "the record holds nothing further back")
+        #expect(Planner.pastTool.parameters["required"] == nil, "both are optional")
+    }
+
+    @Test func anAnswerReadsTheRecordToo() {
+        let input = AnswerPrompt.input(query: "did you change it?", context: .example, done: ["Mon 2 Nov 14:00: Rewrote my note \"Trip\""])
+        #expect(input.contains("What you have done (oldest first):\n- Mon 2 Nov 14:00: Rewrote my note \"Trip\""))
+        #expect(!AnswerPrompt.input(query: "x", context: .example).contains("What you have done"), "no block with nothing done")
+        for format in [Instinct.narrative, .oneLine] {
+            #expect(AnswerPrompt.system(for: format, persona: .example).contains("is the full record of your own actions"))
+        }
     }
 
     @Test func everyNoteIsListedWholeAndNumbered() {
@@ -223,8 +257,8 @@ import Testing
         #expect(request.model == Planner.model)
         #expect(request.stream == false)
         #expect(request.toolChoice == .any)
-        #expect(request.tools.count == InstinctSpec.all.count + 6)
-        #expect(request.tools.suffix(6).map(\.name) == ["ask", "say", "open", "look", "close", "done"])
+        #expect(request.tools.count == InstinctSpec.all.count + 7)
+        #expect(request.tools.suffix(7).map(\.name) == ["ask", "say", "open", "look", "close", "past", "done"])
         #expect(Planner.sayTool.parameters["required"]?.arrayValue?.first?.stringValue == "text")
         #expect(request.maxOutputTokens == Planner.maxOutputTokens)
         #expect(request.thinkingLevel == Planner.thinkingLevel)
@@ -232,7 +266,7 @@ import Testing
         #expect(json["model"] as? String == "gemini-3.1-flash-lite")
         #expect(json["stream"] as? Bool == false)
         #expect(json["store"] as? Bool == false)
-        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 6)
+        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 7)
         let config = try #require(json["generation_config"] as? [String: Any])
         #expect(config["tool_choice"] as? String == "any")
         #expect(config["thinking_level"] as? String == "high", "accuracy over speed: the planner thinks")

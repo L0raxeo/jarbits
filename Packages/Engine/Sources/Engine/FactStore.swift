@@ -9,7 +9,7 @@ import Foundation
 /// tested against a file of its own. Nothing in it leaves the phone except
 /// inside a Gemini request, which keeps nothing.
 public actor FactStore {
-    public static let shared = FactStore()
+    public static let shared = FactStore(actions: .shared)
 
     public nonisolated let fileURL: URL
     /// The user's name, as a one-field JSON object.
@@ -18,8 +18,11 @@ public actor FactStore {
     public static let warnPast = 100
 
     private var loaded: [Fact]?
+    /// Where what changes here goes on Jarbits's record, in the same step.
+    private let actions: ActionLog?
 
-    public init(fileURL: URL? = nil) {
+    public init(fileURL: URL? = nil, actions: ActionLog? = nil) {
+        self.actions = actions
         if let fileURL {
             self.fileURL = fileURL
         } else {
@@ -69,6 +72,7 @@ public actor FactStore {
         all.append(fact)
         loaded = all
         append(fact)
+        actions?.add("Noted about you: \(fact.text)", asked: fact.madeBy)
         return fact
     }
 
@@ -93,6 +97,7 @@ public actor FactStore {
         guard let i = all.firstIndex(where: { $0.id == id }) else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return all[i] }
+        actions?.add("Changed what I hold about you, from \"\(all[i].text)\" to \"\(trimmed)\"", asked: madeBy)
         all[i].previous = all[i].text
         all[i].text = trimmed
         all[i].source = .inferred
@@ -106,6 +111,7 @@ public actor FactStore {
     public func forget(_ id: UUID) {
         var all = facts()
         guard let i = all.firstIndex(where: { $0.id == id }) else { return }
+        actions?.add("Dropped what I held about you: \(all[i].text)")
         all.remove(at: i)
         loaded = all
         rewrite(all)

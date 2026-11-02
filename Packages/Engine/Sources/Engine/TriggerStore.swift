@@ -7,7 +7,7 @@ import Foundation
 /// gate on going off: the tap, the on-screen signal and the catch-up can
 /// all arrive for one occurrence, and only the first gets true.
 public actor TriggerStore {
-    public static let shared = TriggerStore()
+    public static let shared = TriggerStore(actions: .shared)
     /// Finished triggers are kept this long, then pruned.
     public static let keepFinished: TimeInterval = 30 * 24 * 60 * 60
 
@@ -48,7 +48,11 @@ public actor TriggerStore {
         }
     }
 
-    public init(fileURL: URL? = nil) {
+    /// Where what is set or cancelled goes on Jarbits's record, in the same step.
+    private let actions: ActionLog?
+
+    public init(fileURL: URL? = nil, actions: ActionLog? = nil) {
+        self.actions = actions
         self.fileURL = fileURL ?? URL.applicationSupportDirectory
             .appending(path: "Browser", directoryHint: .isDirectory)
             .appending(path: "triggers.jsonl")
@@ -78,6 +82,7 @@ public actor TriggerStore {
         state.nextNumber += 1
         state.triggers.append(trigger)
         save(state)
+        actions?.add("Set \(trigger.handle): \(trigger.whenWords(now: now)), \(trigger.jobWords)", asked: asked, at: now)
         return trigger
     }
 
@@ -96,6 +101,7 @@ public actor TriggerStore {
         guard let at = state.triggers.firstIndex(where: { $0.number == number && $0.isLive(at: now) }) else { return nil }
         state.triggers[at].finished = now
         save(state)
+        actions?.add("Cancelled \(state.triggers[at].handle): \(state.triggers[at].jobWords)", at: now)
         return state.triggers[at]
     }
 
@@ -109,6 +115,7 @@ public actor TriggerStore {
             count += 1
         }
         save(state)
+        if count > 0 { actions?.add("Cancelled everything set to go off, \(count) in all", at: now) }
         return count
     }
 

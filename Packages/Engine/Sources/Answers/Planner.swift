@@ -163,6 +163,21 @@ public struct Planner: Sendable {
         ]
     )
 
+    /// Older entries of the record of what he has done, for a question
+    /// that reaches past what the listing holds.
+    public static let pastTool = ToolDeclaration(
+        name: "past",
+        description: "Read further back in the record of what I have done, when a question about what I did reaches past the block in the listing. Shows nothing; the result lists the entries, oldest first, and says how many are earlier still.",
+        parameters: [
+            "type": "object",
+            "properties": [
+                "thing": ["type": "string", "description": "a note's handle (n1), for what I have done to that note alone, however long ago; omit for everything"],
+                "from": ["type": "integer", "description": "how many of the newest to skip, as the last result said, to go further back; omit to start where the block ends, or from the newest when thing is given"],
+            ],
+            "additionalProperties": false,
+        ]
+    )
+
     public static let doneTool = ToolDeclaration(
         name: "done",
         description: "Call once the request has been handled, or once nothing you can do would help. A step that showed something has handled it; a line saying so adds nothing.",
@@ -175,12 +190,12 @@ public struct Planner: Sendable {
         self.client = client
     }
 
-    /// Every instinct as a tool, in registry order, then `ask`, `say`, `open`, `look`, `close` and `done`.
+    /// Every instinct as a tool, in registry order, then `ask`, `say`, `open`, `look`, `close`, `past` and `done`.
     public static func tools(for registry: [InstinctSpec]) -> [ToolDeclaration] {
         registry.map { spec in
             let schema = ArgumentSchema(fields: fields(for: spec))
             return ToolDeclaration(name: spec.id, description: describe(spec), parameters: schema.jsonSchema())
-        } + [askTool, sayTool, openTool, lookTool, closeTool, doneTool]
+        } + [askTool, sayTool, openTool, lookTool, closeTool, pastTool, doneTool]
     }
 
     /// A tool's fields: the query, the screen and fresh for a page-opening
@@ -196,7 +211,7 @@ public struct Planner: Sendable {
             // In a plan the recall finds; the plan decides what to do with what it found.
             text += " In a plan it shows nothing: its result names what it found, by handle, for open, say, or an answer's about."
         } else if spec.instinct == .notebook {
-            text += " Every note of my notebook is in the listing: the one the request means goes in note, by handle, whatever words it used for it (\"my watchlist\" means a note titled Watch List); a page or answer to keep goes in item, by handle, or several handles separated by commas (\"s5, s6, s7\" after a look at the links), each becoming a line of its own where {item} stands. A topic with no note handle makes a new note by that name (add, new) or fails (open, delete). text is the lines to write: when the request dictates them, they are the request's own words, never a retelling of the thing on screen. Every note is listed whole with its lines numbered, and a line whose words stand in square brackets is a link (the address is the device's, never written): \"the ones with links\" and \"the ones without\" are read off the brackets, and a rewrite copies a bracketed title as it stands, which the device writes back as the link; text is the exact lines to add, in the marks of the lines around where they go, and after is the number of the line they follow. \"add milk\" to a bulleted shopping list writes \"- milk\" after its last item; \"add eggs to the groceries\" in a note with a groceries list and a packing list writes \"- eggs\" after the last grocery line, not at the end; \"start a packing list here with passport\" in a note of prose writes a blank line, \"## Packing\" and \"- [ ] passport\" at the end; a page kept by handle goes as \"- {item}\" in a list and \"{item}\" alone in prose; a link always goes into a note as the thing's handle in braces inside text, on its own line (\"- {s3}\", \"{p1}\"), with the handle in item as well, which the device writes as a clickable link carrying the page's title, never as an address written out, which would stand in the note as plain text; and a note that is empty starts the way its purpose reads (a watch list or shopping list as a list, a thought as prose); \"add that the plumber comes tuesday\" to a note of prose, or as a new note, writes the sentence \"The plumber comes Tuesday.\", never a one-item list; a numbered list gets the next number. The note to write in is the one the request names, else the one note in view; in view means on the screen or in the bubble (the listing's last blocks name them), and a note merely listed in my notebook is not in view. Only when two notes are in view and the request names neither (\"change the bullet points to checkboxes\" with one note on screen and another in the bubble) ask which first, by their titles, and never write to both; with one note in view, write to it without asking, whatever else the notebook holds. A page or video kept into a note still goes in item by handle, whichever note takes it. Taking lines out is remove, by their numbers, never a rewrite of the rest, and a note emptied is a note with no lines, never a deleted one (delete only when the request says delete): the listing shows a kept page as its title, and a rewrite that copies the title loses nothing only because the device writes the link back, so replace is for new wording of the whole note. Tidying, organizing or cleaning up a note keeps everything written in it, its sentences and examples as they stand: lines are moved and grouped and typing and formatting fixed, and nothing is shortened, dropped or reworded unless the request names it; the device asks the user first before a rewrite that takes out much of a note. \"undo that\" or \"put it back\" after a change to a note is undo on that note, which puts it back as it was before its last change. Whether I changed a note is read from the earlier things listed, where a write names what it did, and from what I said, never from how the note reads now: never say a note is unchanged when they show a change. A write shows a line naming the note and what went in; open shows the note itself as a card the user reads on into: a request to see a note (\"what's on my watchlist\") is open, never a retelling of its lines in say."
+            text += " Every note of my notebook is in the listing: the one the request means goes in note, by handle, whatever words it used for it (\"my watchlist\" means a note titled Watch List); a page or answer to keep goes in item, by handle, or several handles separated by commas (\"s5, s6, s7\" after a look at the links), each becoming a line of its own where {item} stands. A topic with no note handle makes a new note by that name (add, new) or fails (open, delete). text is the lines to write: when the request dictates them, they are the request's own words, never a retelling of the thing on screen. Every note is listed whole with its lines numbered, and a line whose words stand in square brackets is a link (the address is the device's, never written): \"the ones with links\" and \"the ones without\" are read off the brackets, and a rewrite copies a bracketed title as it stands, which the device writes back as the link; text is the exact lines to add, in the marks of the lines around where they go, and after is the number of the line they follow. \"add milk\" to a bulleted shopping list writes \"- milk\" after its last item; \"add eggs to the groceries\" in a note with a groceries list and a packing list writes \"- eggs\" after the last grocery line, not at the end; \"start a packing list here with passport\" in a note of prose writes a blank line, \"## Packing\" and \"- [ ] passport\" at the end; a page kept by handle goes as \"- {item}\" in a list and \"{item}\" alone in prose; a link always goes into a note as the thing's handle in braces inside text, on its own line (\"- {s3}\", \"{p1}\"), with the handle in item as well, which the device writes as a clickable link carrying the page's title, never as an address written out, which would stand in the note as plain text; and a note that is empty starts the way its purpose reads (a watch list or shopping list as a list, a thought as prose); \"add that the plumber comes tuesday\" to a note of prose, or as a new note, writes the sentence \"The plumber comes Tuesday.\", never a one-item list; a numbered list gets the next number. The note to write in is the one the request names, else the one note in view; in view means on the screen or in the bubble (the listing's last blocks name them), and a note merely listed in my notebook is not in view. Only when two notes are in view and the request names neither (\"change the bullet points to checkboxes\" with one note on screen and another in the bubble) ask which first, by their titles, and never write to both; with one note in view, write to it without asking, whatever else the notebook holds. A page or video kept into a note still goes in item by handle, whichever note takes it. Taking lines out is remove, by their numbers, never a rewrite of the rest, and a note emptied is a note with no lines, never a deleted one (delete only when the request says delete): the listing shows a kept page as its title, and a rewrite that copies the title loses nothing only because the device writes the link back, so replace is for new wording of the whole note. Tidying, organizing or cleaning up a note keeps everything written in it, its sentences and examples as they stand: lines are moved and grouped and typing and formatting fixed, and nothing is shortened, dropped or reworded unless the request names it; the device asks the user first before a rewrite that takes out much of a note. \"undo that\" or \"put it back\" after a change to a note is undo on that note, which puts it back as it was before its last change. A write shows a line naming the note and what went in; open shows the note itself as a card the user reads on into: a request to see a note (\"what's on my watchlist\") is open, never a retelling of its lines in say."
         } else if spec.instinct == .weather {
             text += " Shows nothing, and reads the forecast for me to answer from with say, one_line or narrative; on the user's screen when screen is user."
         } else if spec.instinct == .trigger {
@@ -235,6 +250,7 @@ public struct Planner: Sendable {
             "- remember and forget show \(persona.user) a mark saying what was kept or dropped: never also say it.",
             "- Anything to be done later goes through trigger, and only a trigger step that ran makes it so: never say \"I'll remind you\" or promise anything later without one. Its task and line must stand on their own weeks from now, when this conversation is gone: \"remind me about that\" is written out as what that is, never \"this\" or \"the page\"; task holds the job alone, never the condition. After a set, say in one short line what was set and when, with the time from the step's result (the device worked it out, so hearing it back lets \(persona.user) catch a mistake); for a task set for a time, say once that with the app closed it comes as a notification to tap; for a site, that I watch for it here in Jarbits, since I cannot see other apps; for \"wake me up\", that it is a notification, not an alarm. When no time is given, ask; only \"randomly\" or \"sometime\" lets me choose the moment. Monthly and yearly repeats I cannot do yet: say so. What is set is answered from the listing with say; cancel names the handle.",
             "- A request about \(persona.users) own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about \(persona.user).",
+            "- \(AnswerPrompt.doneRule(doneHeading)) When \(persona.user) asks to take something back, this is what says what there is to take back. past reads further back than the block goes, when the question reaches past it.",
             "- Call several tools in one turn only when none needs another's result; otherwise one at a time, and read the result before the next.",
             "- A step whose result says it ran is done: never call it again with the same arguments.",
             "- Before the first step, judge what the request needs. An effect in the world no tool of yours produces (a booking, a call, a payment, a message sent) is not something to try: say in one line what you cannot do and what would do it (\"I'm afraid I can't book tables yet, sir. Their website or a quick call will.\"), then done. Information is always worth trying: a search often holds it outright.",
@@ -245,6 +261,17 @@ public struct Planner: Sendable {
             "\(AnswerPrompt.factsHeading(persona)) (told earlier; let it shape what you do, never repeat it):",
         ]
         lines += facts.isEmpty ? ["- nothing yet"] : facts.map { "- " + $0 }
+        return lines.joined(separator: "\n")
+    }
+
+    /// The record of what he has done, as the listing heads it and the rules name it.
+    public static let doneHeading = "What I have done"
+
+    /// What `past` read, as a step's result: the entries, and how to go further back.
+    public static func pastResult(_ records: [ActionRecord], earlier: Int, skipped: Int, in things: ThingTable, calendar: Calendar = .current) -> String {
+        guard !records.isEmpty else { return "the record holds nothing further back" }
+        var lines = records.map { "- " + $0.line(calendar: calendar, noteHandles: things.noteHandles) }
+        if earlier > 0 { lines.append("\(earlier) earlier: past with from \(skipped + records.count) reads them") }
         return lines.joined(separator: "\n")
     }
 
@@ -260,7 +287,7 @@ public struct Planner: Sendable {
     /// `lead` is the one line before the request that says why the planner
     /// has it: what an instinct tried and could not do (`failureLead`), or
     /// that the classifier picked an instinct that is reasoned (`pickedLead`).
-    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil, bubble: Screen? = nil, bubbleNoteID: UUID? = nil, spoken: String? = nil, triggers: [Trigger] = []) -> String {
+    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil, bubble: Screen? = nil, bubbleNoteID: UUID? = nil, spoken: String? = nil, triggers: [Trigger] = [], done: [ActionRecord] = [], doneEarlier: Int = 0) -> String {
         var lines = ["Request: \(query)"]
         // The words as the user said them, when the reading changed them: the
         // planner resolves "it" and "this" from these, never from a rewrite.
@@ -278,6 +305,12 @@ public struct Planner: Sendable {
             // The newest few carry the user's words, so "the rules I talked about" has them in view.
             let worded = max(exchanges.count - askedListed, 0)
             lines += exchanges.enumerated().map { "- " + ThingTable.line($0.element, now: now, calendar: calendar, noteHandles: noteHandles, webpageHandles: webpageHandles, withWords: $0.offset >= worded) }
+        }
+        // The record of what I have done: not things to show, and never thinned by what the request seems to be about.
+        if !done.isEmpty {
+            lines.append("")
+            lines.append("\(doneHeading) (oldest first\(doneEarlier > 0 ? "; \(doneEarlier) earlier, which past reads" : "")):")
+            lines += done.map { "- " + $0.line(calendar: calendar, noteHandles: things.noteHandles) }
         }
         let webpages = things.webpageEntries
         if !webpages.isEmpty {
