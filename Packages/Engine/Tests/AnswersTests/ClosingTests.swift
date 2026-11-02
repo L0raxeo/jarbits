@@ -13,6 +13,8 @@ import Testing
         #expect(system.contains("Never a tool name, a handle, a count of steps or rounds"))
         #expect(system.contains("do not repeat it: add only what is new"))
         #expect(system.contains("never that you did something not listed as tried, and never that you are unable to do a kind of thing"))
+        #expect(system.contains("never name another, such as the connection, a timeout or a site being down"), "\"the time ran out\" came back as \"the connection timed out\" (2026-11-01)")
+        #expect(system.contains("never promise to look again or to do anything later"), "the plan is over when this line is written")
     }
 
     @Test func theInputSaysWhatWasTriedInPlainWordsAndWhatWasSaid() {
@@ -29,7 +31,7 @@ import Testing
         - searched the web for "campus pizza bethlehem" and got something
         - read the page and read it
         - searched the web for "campus pizza to maginnes hall distance" and it did not work
-        Why it stopped: the time ran out
+        Why it stopped: I had looked for as long as I allow myself and stopped before settling it
         Already said to Lorcan:
         - I can't measure distances yet; Maps will tell you which is closer. I'll keep checking.
         """, "no handles, no tool names, no counts; the say step is what was said, not a step")

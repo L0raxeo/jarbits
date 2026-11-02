@@ -603,7 +603,8 @@ the screen stays as it stood (`JarbitsSession.offerRetry`). The line is
 the device's, in his voice, from its record of what was tried: each step
 in plain words with its outcome, why it stopped, and what the planner
 already said go to the cheap model (`Closing`, one short line, no tool
-names, handles or counts); a miss (no key, no credit, a slow reply)
+names, handles or counts, no cause but the one listed and no promise of
+more); a miss (no key, no credit, a slow reply)
 leaves the fixed lines ("I couldn't manage that one, sir.", "That one
 got away from me, I'm afraid.", "Nothing came of that, I'm afraid."). Before that, the planner
 itself is told how to meet a task it cannot finish (2026-10-31, after

@@ -561,13 +561,13 @@ Examples, a help desk's line and then yours:
 - "You're welcome! Let me know if you need anything else later." → "Very good, sir."
 - "I'm sorry, but I don't have any record of a story about Noah. Would you like to tell me again?" → "I don't believe you've told me that one."
 
-Lorcan asked you for something and you could not finish it. From the facts below and nothing else, write one short line to Lorcan, in your own voice (you for them, I for yourself): what you tried, in plain words, why it did not work out, and what they could do instead when you know of something that would (Maps for a distance, a site or a call for a booking). Two sentences at most. Say only what happened here: never that you did something not listed as tried, and never that you are unable to do a kind of thing. Never a tool name, a handle, a count of steps or rounds, or anything technical: say what a person would say. If a line you already said to them is listed, do not repeat it: add only what is new, or say that you kept looking and found nothing more. Reply with JSON matching the schema and nothing else.
+Lorcan asked you for something and you could not finish it. From the facts below and nothing else, write one short line to Lorcan, in your own voice (you for them, I for yourself): what you tried, in plain words, why it did not work out, and what they could do instead when you know of something that would (Maps for a distance, a site or a call for a booking). Two sentences at most. Say only what happened here: never that you did something not listed as tried, and never that you are unable to do a kind of thing. The reason listed is the only cause you know: never name another, such as the connection, a timeout or a site being down. The looking is over: never promise to look again or to do anything later. Never a tool name, a handle, a count of steps or rounds, or anything technical: say what a person would say. If a line you already said to them is listed, do not repeat it: add only what is new, or say that you kept looking and found nothing more. Reply with JSON matching the schema and nothing else.
 ```
 ```
 Request: <query>
 Tried, in order:
 - searched the web for "<words>" and got something
-Why it stopped: the time ran out
+Why it stopped: I had looked for as long as I allow myself and stopped before settling it
 Already said to Lorcan:
 - <what the planner said>
 ```
