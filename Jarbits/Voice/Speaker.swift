@@ -3,6 +3,7 @@ import CallKit
 import Foundation
 import Observation
 import os
+import UIKit
 
 /// Jarbits's voice. Each reply the bubble shows is read aloud, word for word
 /// as displayed, in the order the replies land; a reply queues until the one
@@ -12,8 +13,11 @@ import os
 /// for a web search) is cut. A long answer is spoken from its first sentence
 /// while the rest streams in. The check whether to speak at all happens
 /// once, as the reply starts: the phone's volume at 20% or more and no call
-/// in progress. ElevenLabs Flash is the voice; Apple's reads instead when
-/// the keys are missing, the socket cannot be had, or no audio comes.
+/// in progress. ElevenLabs Flash is the voice. A socket that goes between
+/// replies (the server's inactivity limit, iOS suspending the app) is opened
+/// again by the next reply. Apple's reads when the keys are missing, and a
+/// reply ElevenLabs lets down after one more try on a new socket, or declines;
+/// the next reply tries ElevenLabs again.
 @Observable
 @MainActor
 final class Speaker {
@@ -32,8 +36,6 @@ final class Speaker {
     private let apple = AppleVoice()
     private let calls = CXCallObserver()
     private let logger = Logger(subsystem: "jarbits", category: "voice")
-    /// ElevenLabs has failed this session; Apple's voice for the rest of it.
-    private var useApple = false
     private var queue: [Utterance] = []
     private var current: Utterance?
     private var firstAudioWatch: Task<Void, Never>?
@@ -44,11 +46,18 @@ final class Speaker {
             voice = ElevenLabsVoice(apiKey: apiKey, voiceID: voiceID)
         } else {
             voice = nil
-            useApple = true
         }
         voice?.onEvent = { [weak self] event in self?.handle(event) }
         player.onDrained = { [weak self] in self?.playedOut() }
         apple.onFinished = { [weak self] in self?.playedOut() }
+        // A socket iOS took while the app was away can look alive until it is
+        // used: back with nothing being read, the next reply starts on a new one.
+        NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.current == nil else { return }
+                self.voice?.disconnect()
+            }
+        }
     }
 
     // MARK: What to say
@@ -126,7 +135,7 @@ final class Speaker {
             speaking = true
             microphone.duck()
         }
-        if useApple || voice == nil {
+        if voice == nil {
             next.viaApple = true
         } else {
             voice?.open(context: next.context)
@@ -177,15 +186,33 @@ final class Speaker {
         firstAudioWatch = Task { [weak self] in
             try? await Task.sleep(for: Self.firstAudioTimeout)
             guard !Task.isCancelled, let self, let current = self.current, current === utterance, !current.heard else { return }
-            self.fallBack("no audio within \(Self.firstAudioTimeout)")
+            self.connectionLost("no audio within \(Self.firstAudioTimeout)")
         }
     }
 
-    /// ElevenLabs has let the current reply down: Apple's voice reads it, and
-    /// everything after it this session.
+    /// The socket went, or stayed silent. With no reply on it nothing is
+    /// lost, and the next reply opens a new one. A reply none of which has
+    /// been heard goes once more from the start on a new socket; after that,
+    /// Apple's voice.
+    private func connectionLost(_ reason: String) {
+        guard let current, !current.viaApple else { return }
+        guard !current.heard, !current.retried else { fallBack(reason); return }
+        logger.error("voice: trying a new socket: \(reason, privacy: .public)")
+        current.retried = true
+        firstAudioWatch?.cancel()
+        firstAudioWatch = nil
+        voice?.disconnect()
+        current.sent = 0
+        current.anySent = false
+        voice?.open(context: current.context)
+        sendReady(current)
+        if current.complete { flush(current) }
+    }
+
+    /// ElevenLabs has let the current reply down: Apple's voice reads it,
+    /// and the next reply tries ElevenLabs again on a new socket.
     private func fallBack(_ reason: String) {
         logger.error("voice: falling back to Apple's: \(reason, privacy: .public)")
-        useApple = true
         firstAudioWatch?.cancel()
         firstAudioWatch = nil
         voice?.disconnect()
@@ -205,10 +232,10 @@ final class Speaker {
         switch event {
         case let .audio(context, pcm):
             guard let current, current.context == context, !current.viaApple else { return }
+            guard player.play(pcm: pcm) else { fallBack("the player could not start"); return }
             current.heard = true
             firstAudioWatch?.cancel()
             firstAudioWatch = nil
-            player.play(pcm: pcm)
         case let .final(context):
             guard let current, current.context == context, !current.viaApple else { return }
             // A final with no audio at all is how the server declines (a
@@ -216,7 +243,7 @@ final class Speaker {
             guard current.heard else { fallBack("final with no audio"); return }
             player.finish()
         case let .failed(reason):
-            fallBack(reason)
+            connectionLost(reason)
         }
     }
 
@@ -247,6 +274,8 @@ final class Speaker {
         var viaApple = false
         /// Audio has come for it.
         var heard = false
+        /// It has been sent again on a new socket.
+        var retried = false
         init(id: UUID) {
             self.id = id
             context = id.uuidString.lowercased()
@@ -274,17 +303,21 @@ private final class Playback {
         engine.connect(node, to: engine.mainMixerNode, format: format)
     }
 
-    func play(pcm: Data) {
-        guard let buffer = Self.buffer(from: pcm, format: format) else { return }
+    /// False when the engine cannot start: nothing will be heard.
+    func play(pcm: Data) -> Bool {
+        guard let buffer = Self.buffer(from: pcm, format: format) else { return true }
         if !engine.isRunning {
-            do { try engine.start() } catch { return }
+            do { try engine.start() } catch { return false }
+            node.play()   // the system can stop the engine under a node that still says it is playing
+        } else if !node.isPlaying {
+            node.play()
         }
-        if !node.isPlaying { node.play() }
         scheduled += 1
         let generation = generation
         node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor in self?.playedOne(generation) }
         }
+        return true
     }
 
     /// No more audio for this reply: `onDrained` once what is scheduled has played.

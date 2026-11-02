@@ -498,12 +498,18 @@ The voice is ElevenLabs Flash (`eleven_flash_v2_5`, `ElevenLabsVoice`):
 one websocket (the multi-context stream input) kept across replies, each
 reply a context, text sent as it is known and flushed at the end, audio
 back as 16-bit PCM at 24 kHz played as it arrives through an engine of
-the speaker's own, separate from the microphone's. Apple's voice reads
-instead when the keys are missing (`ELEVENLABS_API_KEY`,
+the speaker's own, separate from the microphone's. The socket does not
+outlive three minutes of silence or the app being suspended; that is no
+failure, and the next reply opens a new one (back from the background with
+nothing being read, the old one is dropped first). A reply none of which
+has been heard goes once more from the start on a new socket when the
+socket fails or no audio has come three seconds after its first text.
+Apple's voice reads when the keys are missing (`ELEVENLABS_API_KEY`,
 `ELEVENLABS_VOICE_ID` in `Config/Secrets.xcconfig`, through Info.plist
-like the Gemini key), the socket cannot be had, or no audio has come three
-seconds after a reply's first text; once it has fallen back it stays
-there for the session. Flash is half a credit a character (a long answer
+like the Gemini key), and a reply that try also failed, the server declined,
+or the player could not start; the next reply tries ElevenLabs again
+(2026-11-02; before, one failure meant Apple's voice until the app was
+closed). Flash is half a credit a character (a long answer
 of 1,500 characters is about 750 credits); the free plan then
 pay-as-you-go, the key capped at 100,000 credits.
 

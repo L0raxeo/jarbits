@@ -19,7 +19,7 @@ final class ElevenLabsVoice {
         case audio(context: String, pcm: Data)
         /// The context's last message: no more audio for it.
         case final(context: String)
-        /// The socket is gone, with every context on it; the speaker falls back.
+        /// The socket is gone, with every context on it; the next context opens a new one.
         case failed(String)
     }
 
@@ -99,7 +99,10 @@ final class ElevenLabsVoice {
         let text = String(decoding: data, as: UTF8.self)
         socket.send(.string(text)) { [weak self] error in
             guard let error else { return }
-            Task { @MainActor in self?.failed("send: \(error.localizedDescription)") }
+            Task { @MainActor in
+                guard let self, self.socket === socket else { return }   // a socket already given up
+                self.failed("send: \(error.localizedDescription)")
+            }
         }
     }
 
