@@ -124,13 +124,13 @@ import Testing
         #expect(!EngineRequest.instructions.contains("exchanges"), "the standalone question is unchanged")
     }
 
-    @Test func aLongSessionSendsTheNewestTwentyWhole() {
+    @Test func aLongSessionSendsTheNewestFiftyWhole() {
         let long = String(repeating: "x", count: 20_000)
-        let exchanges = (0..<30).map { Exchange.answer(query: "q\($0)", text: $0 == 29 ? long : "a\($0)") }
+        let exchanges = (0..<60).map { Exchange.answer(query: "q\($0)", text: $0 == 59 ? long : "a\($0)") }
         let request = EngineRequest.request(for: "why", locale: locale, exchanges: exchanges)
         let sent = request.state.exchanges ?? []
         #expect(sent.count == EngineRequest.maxExchanges)
-        #expect(sent.first?.query == "q10" && sent.last?.query == "q29", "the newest, oldest first")
+        #expect(sent.first?.query == "q10" && sent.last?.query == "q59", "the newest, oldest first")
         #expect(sent.last?.text == long, "no answer is cut")
         #expect(request.questions.filter { $0.id.hasPrefix("x") }.count == EngineRequest.maxExchanges)
     }

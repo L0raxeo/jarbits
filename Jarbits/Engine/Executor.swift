@@ -28,12 +28,24 @@ final class Executor {
     func run(query: String, decision: Pick, exchanges: [Exchange], lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil, bubble: Screen? = nil, bubbleNoteID: UUID? = nil, spoken: String? = nil, token: UUID) async -> EngineSummary {
         let clock = ContinuousClock()
         let start = clock.now
+        /// The two minutes run from here; a wait on the user moves it, so
+        /// the time they take to answer is never the plan's.
+        var budgetStart = start
         var steps: [EngineSummary.Step] = []
         var usage = AnswerUsage(inputTokens: 0, outputTokens: 0, thoughtTokens: 0)
         var counted = false
         var rounds = 0
+        /// The rounds since the user last answered a question: a request
+        /// made inside the plan has its full rounds; `rounds` keeps the total for the log.
+        var roundsSinceAsk = 0
         /// The connection failed before the model replied.
         var lostConnection = false
+        /// "Shall I go ahead, sir?", with the wait on the user left out of the plan's time.
+        func confirmedHere(_ spec: InstinctSpec, _ stepQuery: String) async -> Bool {
+            let okay = await confirmed(spec, stepQuery, token: token)
+            budgetStart = clock.now
+            return okay
+        }
         let facts = session.factTexts
         func finish(_ outcome: EngineSummary.Outcome, webpages: Int) -> EngineSummary {
             EngineSummary(
@@ -89,9 +101,10 @@ final class Executor {
         /// The step before was an answered question: a remember next keeps a chosen fact.
         var answered = false
 
-        while rounds < ReasoningPolicy.maxRounds {
-            guard clock.now - start < ReasoningPolicy.timeBudget else { return finish(.budget, webpages: listedWebpages.count) }
+        while roundsSinceAsk < ReasoningPolicy.maxRounds {
+            guard clock.now - budgetStart < ReasoningPolicy.timeBudget else { return finish(.budget, webpages: listedWebpages.count) }
             rounds += 1
+            roundsSinceAsk += 1
             session.planProgress(round: rounds, of: ReasoningPolicy.maxRounds)
             let round = await planner.propose(bundle, transcript: transcript)
             guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
@@ -205,8 +218,11 @@ final class Executor {
                 } else if call.name == Planner.askTool.name {
                     let question = call.arguments["question"]?.stringValue ?? "?"
                     let options = (call.arguments["options"]?.arrayValue ?? []).compactMap(\.stringValue).prefix(3)
-                    let input: PendingQuestion.Input = options.isEmpty ? .text(placeholder: nil) : .options(Array(options))
-                    let answer = await session.ask(question, input, token: token)
+                    let input: PendingQuestion.Input = options.isEmpty ? .text(placeholder: "Your answer") : .options(Array(options))
+                    // The planner's question takes the user's next words as its answer; the
+                    // wait on them is not the plan's time, and the rounds start over.
+                    let answer = await session.ask(question, input, takesWords: true, token: token)
+                    budgetStart = clock.now
                     guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
                     switch answer {
                     case let .option(_, text)?, let .text(text)?:
@@ -215,6 +231,7 @@ final class Executor {
                         if !options.isEmpty { result += " (options: \(options.joined(separator: ", ")))" }
                         outcome = "asked"
                         answered = true
+                        roundsSinceAsk = 0
                     case nil:
                         result = "the user dismissed the question"
                         outcome = "dismissed"
@@ -374,7 +391,7 @@ final class Executor {
                         result = deskByKey[key].map { "already done: it is on my screen as \($0)" } ?? "already done"
                         outcome = "already ran"
                     } else if ReasoningPolicy.needsConfirmation(spec),
-                              !(await confirmed(spec, stepQuery, token: token)) {
+                              !(await confirmedHere(spec, stepQuery)) {
                         guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
                         result = "the user said no"
                         outcome = "declined"

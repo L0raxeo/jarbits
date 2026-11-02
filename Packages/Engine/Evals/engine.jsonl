@@ -158,3 +158,4 @@
 {"query": "what was the weather like last tuesday", "instinct": "web_results", "note": "past weather is not in the forecast (2026-11-01)"}
 {"query": "show me this week's forecast", "instinct": "weather", "note": "asks to see it: the screen at once (2026-11-01)"}
 {"query": "pull up the weather", "instinct": "weather", "note": "asks to see it; no site named (2026-11-01)"}
+{"query": "San Francisco", "exchanges": [{"query": "what will the weather be tomorrow in cali", "kind": "answer", "text": "Which part of California?"}], "instinct": "weather", "chain": 1, "source": "jev", "note": "a bare place after a question asked over the answer: the fallback for a question never asked properly or expired; a miss is reported, never ruled around (2026-11-01)"}

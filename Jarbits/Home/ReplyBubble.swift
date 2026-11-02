@@ -183,10 +183,13 @@ struct ReplyBubble: View {
                             question.answer(.text(text))
                         }
                     Rectangle()
-                        .fill(Color(white: 0.85))
+                        .fill(Color(white: 0.6))
                         .frame(height: 1)
                 }
-                .onAppear { focused = true }
+                // Tap to type: the keyboard does not rise on its own, so the
+                // microphone stays open for an answer said aloud, and the
+                // query box stays in reach.
+                .onChange(of: question.id, initial: true) { _, _ in typed = "" }
             }
             ReplyFootRow(label: nil, readOn: nil, onClose: close)
         }

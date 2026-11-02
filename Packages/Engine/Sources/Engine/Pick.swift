@@ -114,6 +114,15 @@ public struct Pick: Codable, Sendable, Equatable {
         instinct.isAnswered && (continues ?? false)
     }
 
+    /// Whether the chain's newest exchange is the layer on screen: only
+    /// then does an answer grow that thread. An answer the conversation
+    /// still holds but the screen does not (archived from the bubble, a
+    /// page swiped past) is context for a fresh reply, never the thread.
+    public static func continuesOnScreen(chainEndsOn layer: UUID?, current: UUID?) -> Bool {
+        guard let layer, let current else { return false }
+        return layer == current
+    }
+
     /// How many exchanges, from the newest back, the query depends on.
     public var chainedCount: Int { chain ?? 0 }
 

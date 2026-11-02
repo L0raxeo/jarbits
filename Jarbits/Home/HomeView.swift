@@ -92,8 +92,9 @@ struct HomeView: View {
     /// recording on purpose stands it aside. The inactive phase is ignored:
     /// the permission alert itself causes it.
     private var listening: Bool {
-        // A question in the bubble is the user's to answer; nothing listens under it.
-        guard scenePhase != .background, !session.microphone.exclusive, session.question == nil else { return false }
+        // A question in the bubble is the user's to answer; nothing listens
+        // under it, unless it is the planner's, which takes their words.
+        guard scenePhase != .background, !session.microphone.exclusive, session.question == nil || session.question?.takesWords == true else { return false }
         if mode == .circle { return true }
         return session.stage == .ready && !followingUp && !capsuleLoading && !swiping && session.attention.idle
     }

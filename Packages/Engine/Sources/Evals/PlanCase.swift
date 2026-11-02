@@ -165,6 +165,8 @@ public struct PlanCase: Codable, Equatable, Sendable {
         if let last = exchanges?.last { name += " after \"\(last.query)\"" }
         if let screen { name += " over \"\(screen.title)\"" }
         if let prior, !prior.isEmpty { name += " after \(prior.map(\.name).joined(separator: ", "))" }
+        // The same question answered differently is a different case.
+        if let last = prior?.last, last.name == "ask" { name += " answered \"\(last.result.prefix(48))\"" }
         if failure != nil { name += " after a failure" }
         if let picked { name += " picked \(picked.rawValue)" }
         return name

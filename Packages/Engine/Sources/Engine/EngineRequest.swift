@@ -45,8 +45,10 @@ public enum EngineRequest {
 
     // MARK: Relevance, one question per exchange
 
-    /// The most exchanges sent, the newest; older ones are recall's job.
-    public static let maxExchanges = 20
+    /// The most exchanges sent, the newest, a backstop only: the session
+    /// keeps one conversation (twenty minutes of silence end it; see
+    /// `ConversationMemory`) and sends all of it. Older ones are recall's job.
+    public static let maxExchanges = 50
 
     /// The question for the exchange at `index` of the ones sent, oldest first.
     public static func relevanceQuestionID(_ index: Int) -> String { "x\(index)" }

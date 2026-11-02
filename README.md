@@ -164,8 +164,24 @@ reading (see "The reading") in parallel:
     "Facts"), and `rejects` while a site this app opened by name is on
     screen (see "Sites");
   - one yes/no question per exchange, `x0` for the oldest sent: does the
-    query depend on it to be understood or acted on? The newest 20 exchanges
-    go (`EngineRequest.maxExchanges`); older things are recall's job;
+    query depend on it to be understood or acted on? The whole conversation
+    goes, the newest 50 at most (`EngineRequest.maxExchanges`, a backstop;
+    2026-11-01, from 20): one conversation lasts as long as the user keeps
+    talking, twenty minutes of silence end it and the next words start a
+    new one (`ConversationMemory`, in the package), and a restart of the app
+    does too. The session keeps what left the screen (the bubble's replies
+    when the next request's first piece landed or the x put them away, pages
+    closed by word, layers dropped ahead) in an archive stamped with when it
+    left, and `exchanges` is that archive plus the layers up to the one on
+    screen and Jarbits's own pages, each kept while the conversation keeps
+    the time it was last in view (the layer on screen whatever the clock
+    says), ordered by that time, then the replies up now. The planner reads
+    the whole of it (`EngineResult.conversation`), whatever Jev chained, so
+    "San Francisco" after "Which part of California?" is understood even
+    when Jev scores it standalone; an instinct that runs straight keeps the
+    chain. An answer grows its thread only when the chain ends on the layer
+    on screen (`Pick.continuesOnScreen`): an archived answer is context for
+    a fresh reply. Older things are recall's job;
   - the `reasoning` score, three levels: direct, a value must be read out of
     the words first, several steps or a condition or a schedule (see
     "Advanced reasoning").
@@ -543,7 +559,7 @@ shut down meanwhile gets "Sorry, sir, I lost my place on that one:
 longer holds it (a relaunch, a newer query) and nothing is up, the words
 are shown as a piece so the tap lands on something. Permission is asked
 at the first query of a launch; declined, the bubble alone, as before.
-The decision log marks a query that reached the user this way (`away`). Only an active app counts as on screen (2026-11-01, Lorcan): the app switcher, the notification shade and Control Center are away; the permission alert over the first query is the one exception.
+The decision log marks a query that reached the user this way (`away`).
 
 Four limits, stated to Lorcan: the system can end the task under
 pressure; developers report the task pausing on a truly locked phone
@@ -1286,10 +1302,27 @@ Lorcan 2026-10-29; `store: false`; prices in `GeminiPricing`), with every instin
 each taking a `query` and its own fields (and, on the page-opening ones,
 `screen`: see "Jarbits's screen and the user's"), plus five the executor answers
 itself: `ask` puts one question in the bubble (up to three options, or a
-line to type; the plan waits, and the tap goes back as the step's result
+line to type in a box plainly there, "Your answer", tapped to type so the
+microphone stays open; the plan waits, and the tap goes back as the step's result
 with the question beside it, `the user answered "Keep" to "Delete the
 watchlist?" (options: Delete, Keep)`, since a bare word once read as a
-delete done; the rules say asking changes nothing on its own, 2026-10-31),
+delete done; the rules say asking changes nothing on its own, 2026-10-31).
+The planner's question takes the user's next words as its answer
+(`PendingQuestion.takesWords`, 2026-11-01): whatever they type in either
+box or say aloud while it is open goes back to the planner as the reply,
+and the planner decides whether it answers the question or is a new
+request, which it then serves with the question dropped (a model decides,
+never a word rule); the question stays open through a swipe to another
+page and the Action button, and lasts as long as the conversation does
+(twenty minutes of silence); the x, the circle and a guarded question
+(delete, forget, the go-ahead), which never takes words, are as before.
+The question itself goes into the conversation when asked, so an
+abandoned one is still in history. While it waits the screen stands where
+it stood, so the query box works, and the wave returns once answered. The
+time the user takes to answer is not the plan's: the two-minute budget
+runs again from the answer, and so do the six rounds (the log keeps the
+total). `say` never asks: a question goes through `ask`, which gives them
+somewhere to answer and keeps the plan going;
 `say` shows the planner's own text in the bubble as it is,
 `open` shows a thing by its handle, `look` reads a thing in full by its
 handle (a page's text further down, links, outline or tables by its own

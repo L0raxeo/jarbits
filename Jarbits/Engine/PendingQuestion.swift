@@ -25,14 +25,23 @@ final class PendingQuestion: Identifiable {
     /// A destructive or paid step: answered from a notification only with
     /// the phone unlocked.
     let guarded: Bool
+    /// The planner's own question: whatever the user types or says next is
+    /// its answer (the planner decides whether it answers or is a new
+    /// request), it stays open through a swipe or the Action button, and
+    /// it lasts as long as the conversation does. Never for a guarded
+    /// question or the name.
+    let takesWords: Bool
+    /// When it was put, for the conversation's twenty minutes.
+    let asked = Date.now
     private var continuation: CheckedContinuation<AskAnswer?, Never>?
     private var resumed = false
     private var result: AskAnswer?
 
-    init(title: String, input: Input, guarded: Bool = false) {
+    init(title: String, input: Input, guarded: Bool = false, takesWords: Bool = false) {
         self.title = title
         self.input = input
         self.guarded = guarded
+        self.takesWords = takesWords && !guarded
     }
 
     /// The answer, or nil when the sheet was dismissed or the question overtaken.

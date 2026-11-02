@@ -49,7 +49,7 @@ struct Engine {
         let sent = Array(exchanges.suffix(EngineRequest.maxExchanges))
         var query = typed
         var reading: ReadingSummary?
-        let decision: Pick
+        var decision: Pick
         func read() async -> ReadingSummary? {
             guard let reader else { return nil }
             // The reader cleans the words and nothing more: no exchanges, no
@@ -74,6 +74,12 @@ struct Engine {
             decision = .noKey()
         }
         let chained = Array(sent.suffix(decision.chainedCount))
+        // The thread grows only when the chain ends on the layer on screen:
+        // an answer the conversation still holds but the screen does not is
+        // context for a fresh reply, never the thread.
+        if decision.continuesThread, !Pick.continuesOnScreen(chainEndsOn: chained.last?.layerID, current: current?.id) {
+            decision.continues = false
+        }
         let screen = await screenRead?.value
         // An unsure pick, a sure one that needs several steps, or an
         // instinct that has not earned the shortcut: the session plans it
@@ -81,7 +87,7 @@ struct Engine {
         let picked = InstinctSpec.spec(for: decision.instinct)
         if planner != nil, ReasoningPolicy.entersReasoning(decision, spec: picked) {
             let lead = decision.source == .jev && !picked.shortcut ? Planner.pickedLead(decision.instinct) : nil
-            return EngineResult(query: query, decision: decision, reading: reading, reasoning: true, chained: chained.map(\.exchange), lead: lead, screen: screen)
+            return EngineResult(query: query, decision: decision, reading: reading, reasoning: true, chained: chained.map(\.exchange), conversation: sent.map(\.exchange), lead: lead, screen: screen)
         }
         // The values the pick takes: what Jev read for its closed-set
         // fields, and what the extractor reads out of the words for every
@@ -154,7 +160,7 @@ struct Engine {
         )
         context.things = things
         context.screen = screen
-        return EngineResult(query: query, decision: decision, extraction: extraction, reading: reading, instinct: instinct(for: format), context: context, screen: screen)
+        return EngineResult(query: query, decision: decision, extraction: extraction, reading: reading, instinct: instinct(for: format), context: context, conversation: sent.map(\.exchange), screen: screen)
     }
 
     func instinct(for format: Instinct) -> any InstinctRunner {
@@ -178,6 +184,9 @@ struct EngineResult {
     /// The query goes to advanced reasoning, with these exchanges as what it depends on.
     var reasoning = false
     var chained: [Exchange] = []
+    /// The whole conversation as sent to Jev, oldest first: what a plan
+    /// reads, whether or not Jev chained the query to any of it.
+    var conversation: [Exchange] = []
     /// Why the planner has it, when the pick itself is reasoned.
     var lead: String? = nil
     /// What was on screen as the query began, when it could be read.

@@ -62,6 +62,13 @@ final class JarbitsSession {
     let messenger = Messenger.shared
     /// The query in flight, from sent to nothing still running; see `QueryRun`.
     private(set) var run: QueryRun?
+    /// One conversation: twenty minutes of silence end it. See `ConversationMemory`.
+    private var conversation = ConversationMemory()
+    /// What left the screen but the conversation still holds: the bubble's
+    /// replies when the next request's first piece arrived or the x put
+    /// them away, pages closed by word, layers dropped ahead. Each row is
+    /// stamped with when it left, for the conversation's window.
+    private var archive: [(exchanges: [SessionExchange], at: Date)] = []
     /// The one session the app makes, for the actions the system runs (the
     /// Action button's "Ask Jarbits").
     static weak var current: JarbitsSession?
@@ -131,6 +138,7 @@ final class JarbitsSession {
     private func append(_ layer: Layer) {
         if bubbleToken != requestToken {
             for piece in replies { piece.answer?.cancel() }
+            archive(replies)
             replies = []
             bubbleToken = requestToken
         }
@@ -419,6 +427,7 @@ final class JarbitsSession {
         guard layers.contains(where: { $0.webpageID.map(gone.contains) ?? false }) else { return }
         let wasCurrent = current
         for layer in layers where layer.webpageID.map(gone.contains) ?? false { layer.page?.close(); layer.page = nil }
+        archive(layers.filter { $0.webpageID.map(gone.contains) ?? false })
         layers.removeAll { $0.webpageID.map(gone.contains) ?? false }
         Task { [webpages] in await webpages.close(ids) }
         #if DEBUG
@@ -465,7 +474,24 @@ final class JarbitsSession {
     func submit(_ query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        question?.cancel()
+        conversation.heard(at: .now)
+        archive.removeAll { !conversation.keeps($0.at) }
+        if let question, question.takesWords {
+            // The planner's question is open: these words are its answer,
+            // typed in either box or said aloud, and the planner decides
+            // whether they answer it or are a new request. A question
+            // older than the conversation's silence is gone.
+            if Date.now.timeIntervalSince(question.asked) < ConversationMemory.silence {
+                lastQuery = trimmed
+                askedQuery = trimmed
+                stage = .routing   // a spoken reply left the stage at cleaning
+                question.answer(.text(trimmed))
+                return
+            }
+            question.cancel()
+        } else {
+            question?.cancel()
+        }
         takePicture(reason: "leave")   // before anything moves: the page as last seen
         let exchanges = exchanges   // the session so far, before anything moves
         let opened = openedSite   // and the site opened by name, if one is on screen
@@ -528,16 +554,28 @@ final class JarbitsSession {
     /// the app went back to idle. One question at a time: a new one cancels
     /// the old. `token` is the request asking; a stale one is answered nil
     /// at once.
-    func ask(_ title: String, _ input: PendingQuestion.Input, guarded: Bool = false, token: UUID) async -> AskAnswer? {
+    func ask(_ title: String, _ input: PendingQuestion.Input, guarded: Bool = false, takesWords: Bool = false, token: UUID) async -> AskAnswer? {
         guard token == requestToken else { return nil }
         question?.cancel()
-        let pending = PendingQuestion(title: title, input: input, guarded: guarded)
+        let pending = PendingQuestion(title: title, input: input, guarded: guarded, takesWords: takesWords)
         question = pending
         holdRun(token)
         put(pending, token: token)
+        var waved = false
+        if pending.takesWords {
+            // The question is part of the conversation even if it is never
+            // answered, and while it waits the screen stands where it stood,
+            // so the query box and the microphone can take the answer.
+            archive.append((exchanges: [SessionExchange(exchange: .answer(query: lastQuery, text: title), turn: nil, layerID: pending.id)], at: .now))
+            if stage == .routing || stage == .loading {
+                waved = true
+                stage = stageBefore
+            }
+        }
         let answer = await pending.wait()
         if question === pending { question = nil }
         messenger.withdraw(pending.id)
+        if waved, answer != nil, token == requestToken { stage = .routing }   // the plan goes on under the wave
         releaseRun(token)
         return answer
     }
@@ -744,14 +782,39 @@ final class JarbitsSession {
         }
     }
 
-    /// This session's exchanges up to the layer on screen, and the pages
-    /// Jarbits read on its own screen, in the order they came, oldest
-    /// first, for the engine: the layers ahead are history a new query
-    /// drops. A page read on Jarbits's screen is marked as its, so the
-    /// planner tells what the user saw from what it read.
+    /// The conversation, oldest first, for the engine: what left the
+    /// screen but the twenty minutes still hold (the archive), the layers
+    /// up to the one on screen and the pages Jarbits read on its own
+    /// screen, each kept while the conversation keeps the time it was last
+    /// in view (the layer on screen whatever the clock says), ordered by
+    /// that time, and last the replies up now. The layers ahead are history
+    /// a new query drops. A page read on Jarbits's screen is marked as its,
+    /// so the planner tells what the user saw from what it read. Jev's walk
+    /// back from the newest (`EngineRequest.chain`) is kept as it is: a
+    /// query that leans on the page on screen behind a newer unrelated
+    /// reply gets chain 0, but is still served, since `plan` always adds
+    /// the on-screen exchange and `route` falls back to `current`.
     var exchanges: [SessionExchange] {
-        let stacked = (Array(layers.prefix(index + 1)) + desk).sorted { $0.created < $1.created }.flatMap(\.exchanges)
-        return stacked + replies.filter { !$0.lingers }.flatMap(\.exchanges)
+        var stamped: [(at: Date, items: [SessionExchange])] = archive.filter { conversation.keeps($0.at) }.map { ($0.at, $0.exchanges) }
+        for layer in Array(layers.prefix(index + 1)) + desk where layer === current || conversation.keeps(layer.lastShown) {
+            stamped.append((layer.lastShown, layer.exchanges))
+        }
+        stamped.sort { $0.at < $1.at }
+        return stamped.flatMap(\.items) + replies.filter { !$0.lingers }.flatMap(\.exchanges)
+    }
+
+    /// Layers leaving the screen join the archive, as of now: their
+    /// exchanges, and for an answer cut mid-stream the text it had (its
+    /// thread is empty once cancelled). Marks that linger are not kept.
+    private func archive(_ leaving: [Layer]) {
+        let now = Date.now
+        for layer in leaving where !layer.lingers {
+            var items = layer.exchanges
+            if items.isEmpty, case let .answer(_, query, _, _) = layer.plan, let answer = layer.answer, !answer.displayText.isEmpty {
+                items = [SessionExchange(exchange: .answer(query: query, text: answer.displayText), turn: nil, layerID: layer.id)]
+            }
+            if !items.isEmpty { archive.append((exchanges: items, at: now)) }
+        }
     }
 
     /// The layer on screen is up and usable. A query in flight leaves it up
@@ -915,7 +978,7 @@ final class JarbitsSession {
     /// new words become the next query. The microphone opens through the
     /// home screen's own rule once nothing keeps it shut.
     func wake() {
-        question?.cancel()
+        if question?.takesWords != true { question?.cancel() }   // the planner's question takes the words to come
         attention.touched()
         woke = UUID()
     }
@@ -1044,6 +1107,7 @@ final class JarbitsSession {
             // Ahead of the one the user was on: closed, as browser history goes.
             let dropped = Array(layers[(index + 1)...])
             for layer in dropped { layer.page?.close() }
+            archive(dropped)
             layers.removeSubrange((index + 1)...)
             let ids = dropped.compactMap(\.webpageID)
             if !ids.isEmpty { Task { [webpages] in await webpages.close(ids) } }
@@ -1153,6 +1217,7 @@ final class JarbitsSession {
     /// The bubble put away, every piece with it.
     func dismissReply() {
         for piece in replies { piece.answer?.cancel() }
+        archive(replies)
         replies = []
         bubbleToken = nil
         replyFoot = nil
@@ -1543,7 +1608,7 @@ final class JarbitsSession {
     private func move(to target: Int) {
         takePicture(reason: "leave")
         dropEarlyPicture()
-        question?.cancel()
+        if question?.takesWords != true { question?.cancel() }   // the planner's question follows the user across pages
         // An answer still on its way to the bubble is the query's: it shows when its text comes.
         if replyHasContent { dismissReply() }
         let leaving = current
@@ -1624,7 +1689,7 @@ final class JarbitsSession {
         // beside every query and logs its own line; nothing is kept here.
         let factSummary: FactSummary? = nil
         if result.reasoning {
-            plan(query: query, decision: decision, exchanges: result.chained, reading: result.reading, lead: result.lead, screen: result.screen, token: token)
+            plan(query: query, decision: decision, exchanges: result.conversation, reading: result.reading, lead: result.lead, screen: result.screen, token: token)
             return
         }
         guard let instinct = result.instinct, var context = result.context else { releaseRun(token); return }
@@ -1634,7 +1699,7 @@ final class JarbitsSession {
         // stage itself.
         let shows = instinct.spec.showsLayer
         if !shows { stage = stageBefore }
-        let chained = result.chained
+        let conversation = result.conversation   // the whole conversation, not only Jev's chain
         Task {
             let outcome = await instinct.run(context, in: self, token: token)
             guard token == requestToken else { releaseRun(token); return }
@@ -1645,7 +1710,7 @@ final class JarbitsSession {
                 print("\(instinct.spec.id) could not: \(reason)")
                 #endif
                 stage = .routing
-                plan(query: query, decision: decision, exchanges: chained, reading: context.reading, lead: Planner.failureLead(reason), screen: context.screen, token: token)
+                plan(query: query, decision: decision, exchanges: conversation, reading: context.reading, lead: Planner.failureLead(reason), screen: context.screen, token: token)
                 return
             }
             defer { releaseRun(token) }
@@ -1858,6 +1923,8 @@ final class JarbitsSession {
         layers = []
         index = 0
         reset()
+        archive = []
+        conversation = ConversationMemory()
         Task {
             await webpages.clear()
             await sites.clear()
