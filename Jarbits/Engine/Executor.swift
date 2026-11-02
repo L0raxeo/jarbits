@@ -40,6 +40,8 @@ final class Executor {
         var roundsSinceAsk = 0
         /// The connection failed before the model replied.
         var lostConnection = false
+        /// The plan ended here after something happened, without the planner's done.
+        var cutShort = false
         /// "Shall I go ahead, sir?", with the wait on the user left out of the plan's time.
         func confirmedHere(_ spec: InstinctSpec, _ stepQuery: String) async -> Bool {
             let okay = await confirmed(spec, stepQuery, token: token)
@@ -52,7 +54,8 @@ final class Executor {
                 model: planner.client.model, rounds: rounds, steps: steps, usage: counted ? usage : nil,
                 latencyMs: Int((clock.now - start) / .milliseconds(1)), factsGiven: facts.count, webpagesGiven: webpages, outcome: outcome,
                 screenChars: screen.map { $0.visible.count + $0.rest.count }, screenItems: screen?.items.count, pictureBytes: screen?.picture?.count,
-                lostConnection: lostConnection ? true : nil
+                lostConnection: lostConnection ? true : nil,
+                cutShort: cutShort ? true : nil
             )
         }
         func add(_ found: AnswerUsage?) {
@@ -115,10 +118,12 @@ final class Executor {
             switch round {
             case let .failed(reason, _):
                 let happened = shown || steps.contains { $0.outcome == "ran" }
+                cutShort = happened
                 return finish(happened ? .completed : .fellBackToWeb("round \(rounds): \(reason)"), webpages: listedWebpages.count)
             case let .unreachable(reason, _):
                 let happened = shown || steps.contains { $0.outcome == "ran" }
                 lostConnection = !happened
+                cutShort = happened
                 return finish(happened ? .completed : .fellBackToWeb("round \(rounds): \(reason)"), webpages: listedWebpages.count)
             case let .silent(modelSteps, found, _, incomplete):
                 add(found)
@@ -130,6 +135,7 @@ final class Executor {
                 }
                 transcript += modelSteps.map { .verbatim($0) }
                 let happened = shown || steps.contains { $0.outcome == "ran" }
+                cutShort = happened && incomplete
                 return finish(happened ? .completed : .fellBackToWeb("round \(rounds): \(incomplete ? "incomplete, the budget ran out while thinking" : "no calls")"), webpages: listedWebpages.count)
             case let .calls(found, modelSteps, roundUsage, _):
                 add(roundUsage)
@@ -495,6 +501,7 @@ final class Executor {
                 if let ended { return finish(ended, webpages: listedWebpages.count) }
             }
             if failures >= 2 {
+                cutShort = true
                 return finish(shown ? .completed : .fellBackToWeb("two steps failed"), webpages: listedWebpages.count)
             }
         }

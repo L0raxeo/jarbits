@@ -51,8 +51,12 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     /// The plan stopped because the model could not be reached: the
     /// connection failed before a reply. Nil otherwise.
     public var lostConnection: Bool?
+    /// The device ended the plan after something happened, with the planner
+    /// not having called done: two steps failed, or the model stopped
+    /// replying. Nil otherwise.
+    public var cutShort: Bool?
 
-    public init(model: String, rounds: Int, steps: [Step], usage: AnswerUsage? = nil, latencyMs: Int, factsGiven: Int, webpagesGiven: Int, outcome: Outcome, screenChars: Int? = nil, screenItems: Int? = nil, pictureBytes: Int? = nil, lostConnection: Bool? = nil) {
+    public init(model: String, rounds: Int, steps: [Step], usage: AnswerUsage? = nil, latencyMs: Int, factsGiven: Int, webpagesGiven: Int, outcome: Outcome, screenChars: Int? = nil, screenItems: Int? = nil, pictureBytes: Int? = nil, lostConnection: Bool? = nil, cutShort: Bool? = nil) {
         self.model = model
         self.rounds = rounds
         self.steps = steps
@@ -65,10 +69,11 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         self.screenItems = screenItems
         self.pictureBytes = pictureBytes
         self.lostConnection = lostConnection
+        self.cutShort = cutShort
     }
 
     enum CodingKeys: String, CodingKey {
-        case model, rounds, steps, usage, latencyMs, factsGiven, webpagesGiven, outcome, screenChars, screenItems, pictureBytes, lostConnection
+        case model, rounds, steps, usage, latencyMs, factsGiven, webpagesGiven, outcome, screenChars, screenItems, pictureBytes, lostConnection, cutShort
         /// The field's name before 2026-11-01, read from older logs.
         case memoriesGiven
     }
@@ -87,6 +92,7 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         screenItems = try c.decodeIfPresent(Int.self, forKey: .screenItems)
         pictureBytes = try c.decodeIfPresent(Int.self, forKey: .pictureBytes)
         lostConnection = try c.decodeIfPresent(Bool.self, forKey: .lostConnection)
+        cutShort = try c.decodeIfPresent(Bool.self, forKey: .cutShort)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -103,6 +109,7 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         try c.encodeIfPresent(screenItems, forKey: .screenItems)
         try c.encodeIfPresent(pictureBytes, forKey: .pictureBytes)
         try c.encodeIfPresent(lostConnection, forKey: .lostConnection)
+        try c.encodeIfPresent(cutShort, forKey: .cutShort)
     }
 
     /// A step put a result on screen.
@@ -111,4 +118,11 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     public var didSomething: Bool { steps.contains { $0.outcome == "ran" } }
     /// A step opened a page on Jarbits's own screen, unseen by the user.
     public var readSomething: Bool { steps.contains { $0.outcome == "read" } }
+    /// Something happened, and part of the request may not have: a step
+    /// failed or the plan was cut short. The user said no and the time
+    /// running out have their own endings.
+    public var mayHaveLeftSomething: Bool {
+        guard outcome != .declined, outcome != .budget, outcome != .stale, shownSomething || didSomething else { return false }
+        return cutShort == true || steps.contains { $0.outcome.hasPrefix("failed") }
+    }
 }

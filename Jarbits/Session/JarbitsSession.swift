@@ -1797,12 +1797,39 @@ final class JarbitsSession {
                     offerRetry(query: query, decision: decision, message: message, token: token)
                 }
             }
+            if summary.mayHaveLeftSomething {
+                // Part of it may not have happened: said as a line, never with
+                // Try again, which would do the part that did happen twice.
+                // The model reads whether anything is left; a plan the planner
+                // ended itself says nothing on a miss, having seen the failure.
+                var line = summary.cutShort == true ? Self.cutShortLine : nil
+                if let closing {
+                    let (remainder, ms) = await closing.remainder(query: query, steps: summary.steps, persona: persona)
+                    guard token == requestToken else { return }
+                    #if DEBUG
+                    print("remainder \(remainder) (\(ms) ms)")
+                    #endif
+                    switch remainder {
+                    case let .line(said): line = said
+                    case .nothing: line = nil
+                    case .missed: break
+                    }
+                }
+                if let line {
+                    lastQuery = query
+                    let context = InstinctContext(query: query, decision: decision, opened: nil, canAnswer: canAnswer, thread: [], earlier: exchanges, arguments: [:])
+                    showReply(.said(query: query, text: line), context: context, recording: false).sources = readThisQuery
+                }
+            }
             record(decision, query: query, engine: summary, reading: reading)
         }
     }
 
     /// The connection failed before the model could plan anything.
     static let lostConnectionLine = "I lost the connection before I could do that, sir."
+
+    /// A plan cut short after part of it happened, when no model can word it.
+    static let cutShortLine = "I'm afraid I didn't get all the way through that, sir."
 
     /// A query that brought nothing: the screen as it stood, and the
     /// question in the bubble, "Try again" or "Search instead". Nothing is
@@ -2003,7 +2030,22 @@ final class JarbitsSession {
             speaker.cancel(layer.id)
             if replies.contains(where: { $0 === layer }) { remove(layer) }
             if let decision = layer.decision {
-                offerRetry(query: answer.query, decision: decision, message: "Nothing came of that, I'm afraid.", token: requestToken)
+                // Said in his voice from what was tried, as a plan's end is; a miss leaves the fixed line.
+                let token = requestToken
+                holdRun(token)
+                Task {
+                    defer { releaseRun(token) }
+                    var message = "Nothing came of that, I'm afraid."
+                    if let closing {
+                        let (line, ms) = await closing.line(query: answer.query, steps: Closing.failedAnswer(query: answer.query, format: summary.format), reason: .failed, persona: persona)
+                        guard token == requestToken else { return }
+                        #if DEBUG
+                        print("closing \(line.map { "\"\($0)\"" } ?? "missed") (\(ms) ms)")
+                        #endif
+                        if let line { message = line }
+                    }
+                    offerRetry(query: answer.query, decision: decision, message: message, token: token)
+                }
             } else {
                 stage = stageBefore
             }

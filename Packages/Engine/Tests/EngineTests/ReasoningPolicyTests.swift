@@ -101,4 +101,19 @@ import Testing
         let plan = AnswerUsage(inputTokens: 9000, outputTokens: 300, thoughtTokens: 300)
         #expect(GeminiPricing.cost(plan, model: "gemini-3.8-flash") < 0.011, "three rounds of a plan stay around a cent")
     }
+
+    @Test func onlyAPlanWhereSomethingHappenedCanHaveLeftSomething() {
+        func summary(_ outcomes: [String], outcome: EngineSummary.Outcome = .completed, cutShort: Bool? = nil) -> EngineSummary {
+            EngineSummary(model: "m", rounds: 1, steps: outcomes.map { EngineSummary.Step(name: "s", arguments: [:], outcome: $0, latencyMs: 1) }, latencyMs: 1, factsGiven: 0, webpagesGiven: 0, outcome: outcome, cutShort: cutShort)
+        }
+        #expect(summary(["shown", "failed: no such thing", "done"]).mayHaveLeftSomething)
+        #expect(summary(["ran", "failed: a", "failed: b"], outcome: .fellBackToWeb("two steps failed"), cutShort: true).mayHaveLeftSomething)
+        #expect(summary(["shown"], cutShort: true).mayHaveLeftSomething, "the model stopped replying before done")
+        #expect(!summary(["shown", "done"]).mayHaveLeftSomething)
+        #expect(!summary(["failed: a", "failed: b"], outcome: .fellBackToWeb("two steps failed")).mayHaveLeftSomething, "nothing happened: the retry's case")
+        #expect(!summary(["shown", "failed: a"], outcome: .budget).mayHaveLeftSomething, "the time running out has its own line")
+        #expect(!summary(["shown", "failed: a", "declined"], outcome: .declined).mayHaveLeftSomething, "the user said no")
+        let decoded = try? DecisionRecord.decoder.decode(EngineSummary.self, from: DecisionRecord.encoder.encode(summary(["shown"], cutShort: true)))
+        #expect(decoded?.cutShort == true)
+    }
 }

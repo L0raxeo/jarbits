@@ -628,7 +628,12 @@ already said go to the cheap model (`Closing`, one short line, no tool
 names, handles or counts, no cause but the one listed and no promise of
 more); a miss (no key, no credit, a slow reply)
 leaves the fixed lines ("I couldn't manage that one, sir.", "That one
-got away from me, I'm afraid.", "Nothing came of that, I'm afraid."). Before that, the planner
+got away from me, I'm afraid.", "Nothing came of that, I'm afraid."). A
+long answer that brought nothing is closed the same way. A plan that partly
+worked (something shown or done, then a step failed or the plan was cut
+short) gets a line about what did not happen, with no "Try again", which
+would do the rest twice; the model replies with nothing when all of it
+happened after all. Before that, the planner
 itself is told how to meet a task it cannot finish (2026-10-31, after
 "which is closer to Maginnes Hall" ran the two minutes out in silence):
 an effect no tool produces (a booking, a call, a payment) is said at once

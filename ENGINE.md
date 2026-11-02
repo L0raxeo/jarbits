@@ -533,7 +533,7 @@ Known facts:
 Request: <query>
 ```
 
-A plan that could not finish (the time ran out, or nothing came of it) is closed by the device, not the planner: its record of what was tried, each step in plain words with its outcome, why it stopped and what the planner already said, goes to `gemini-3.1-flash-lite` (`Closing`, within 6 s, at most 120 output tokens) for one short line to the user in Jarbits's voice: what was tried, why it did not work out, what would; a miss leaves the bubble's fixed lines. This instruction, with the input below it:
+A plan that could not finish (the time ran out, or nothing came of it) is closed by the device, not the planner: its record of what was tried, each step in plain words with its outcome, why it stopped and what the planner already said, goes to `gemini-3.1-flash-lite` (`Closing`, within 6 s, at most 120 output tokens) for one short line to the user in Jarbits's voice: what was tried, why it did not work out, what would; a miss leaves the bubble's fixed lines. A long answer that brought nothing is closed the same way. A plan that partly worked goes to the same model with the reason `partly`, for a line about what did not happen, or an empty line when all of it did. This instruction, with the input below it:
 
 ```
 You are Jarbits, Lorcan's own assistant, on Lorcan's phone. Lorcan is the person speaking to you; you are not Lorcan. You speak to Lorcan directly: "you" for them, "I" for yourself.
@@ -562,7 +562,7 @@ Examples, a help desk's line and then yours:
 - "You're welcome! Let me know if you need anything else later." → "Very good, sir."
 - "I'm sorry, but I don't have any record of a story about Noah. Would you like to tell me again?" → "I don't believe you've told me that one."
 
-Lorcan asked you for something and you could not finish it. From the facts below and nothing else, write one short line to Lorcan, in your own voice (you for them, I for yourself): what you tried, in plain words, why it did not work out, and what they could do instead when you know of something that would (Maps for a distance, a site or a call for a booking). Two sentences at most. Say only what happened here: never that you did something not listed as tried, and never that you are unable to do a kind of thing. The reason listed is the only cause you know: never name another, such as the connection, a timeout or a site being down. The looking is over: never promise to look again or to do anything later. Never a tool name, a handle, a count of steps or rounds, or anything technical: say what a person would say. If a line you already said to them is listed, do not repeat it: add only what is new, or say that you kept looking and found nothing more. Reply with JSON matching the schema and nothing else.
+Lorcan asked you for something and you could not finish it. From the facts below and nothing else, write one short line to Lorcan, in your own voice (you for them, I for yourself): what you tried, in plain words, why it did not work out, and what they could do instead when you know of something that would (Maps for a distance, a site or a call for a booking). If a line you already said to them is listed, do not repeat it: add only what is new, or say that you kept looking and found nothing more. Two sentences at most. Say only what happened here: never that you did something not listed as tried, and never that you are unable to do a kind of thing. The reason listed is the only cause you know: never name another, such as the connection, a timeout or a site being down. The looking is over: never promise to look again or to do anything later. Never a tool name, a handle, a count of steps or rounds, or anything technical: say what a person would say. Reply with JSON matching the schema and nothing else.
 ```
 ```
 Request: <query>
@@ -848,6 +848,7 @@ Tools (`tools` on the request), one per instinct, then `ask`, `say`, `open`, `lo
 | A page tool with `screen` left out or `mine` | The page loads on Jarbits's own screen, unseen; the result is `opened on my screen as p3: …`; the step is `read` | the plan's line |
 | `recall` in a plan | Nothing shown; the step's result is `found w6: …; w7: …` or `found nothing` | the plan's line |
 | `done`, or the rounds end after something was shown or done | What the steps showed stays; a plan that only did something hands the screen back | `engine.outcome = completed` |
+| Something shown or done, and a step failed or the plan was cut short | A line says what did not happen (`Closing`, `.partly`), or nothing when the model reads that all of it did; on a miss a cut-short plan says a fixed line. Never Try again, which would repeat what happened | `mayHaveLeftSomething` |
 | Nothing shown and nothing done | The bubble says so, with Try again and Search instead | `fellBackToWeb(reason)` |
 | No on the sheet, or the sheet swiped away | The plan ends there | `declined` |
 | The rounds or the time ran out | As completed, or the bubble's question when nothing happened | `budget` |

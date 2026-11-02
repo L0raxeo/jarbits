@@ -8,11 +8,15 @@ import Engine
 /// do instead. A line the planner already said (its promise to keep
 /// checking, its reason) is listed so the closing adds only what is new.
 /// A miss (no key, no credit, a slow reply) leaves the fixed lines the
-/// bubble has always had (2026-10-31).
+/// bubble has always had (2026-10-31). A long answer that brought nothing is
+/// closed the same way, and a plan that partly worked gets a line about what
+/// did not happen, or none when all of it did (2026-11-02).
 public struct Closing: Sendable {
     public static let model = GeminiClient.defaultModel
     public static let timeout: Duration = .seconds(6)
     public static let maxOutputTokens = 120
+    /// A reading of the request, thing by thing, comes before the line.
+    public static let partlyMaxOutputTokens = 500
 
     public var client: GeminiClient
     public var timeout: Duration
@@ -27,6 +31,19 @@ public struct Closing: Sendable {
         case budget = "I had looked for as long as I allow myself and stopped before settling it"
         case failed = "every step failed"
         case nothing = "nothing came of it"
+        /// The plan showed or did something, and a step did not work or the
+        /// plan stopped short: the line is about what did not happen.
+        case partly = "some of it got done, and a step did not work or I stopped short"
+    }
+
+    /// What the model made of a plan that partly worked.
+    public enum Remainder: Sendable, Equatable {
+        /// What did not happen, to tell the user.
+        case line(String)
+        /// Nothing to add: all of it happened after all, or it has been said.
+        case nothing
+        /// No usable reply.
+        case missed
     }
 
     public static var schema: JSONValue {
@@ -40,11 +57,44 @@ public struct Closing: Sendable {
         ]
     }
 
+    /// A plan that partly worked is read thing by thing, so whether anything
+    /// is left is the model's reading of the request and the line follows it:
+    /// asked only for a line, it wrote one every time, about nothing.
+    public static var partlySchema: JSONValue {
+        [
+            "type": "object",
+            "properties": [
+                "things": [
+                    "type": "array",
+                    "description": "each thing the request asks for",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "thing": ["type": "string"],
+                            "got": ["type": "boolean"],
+                            "already_said": ["type": "boolean"],
+                        ],
+                        "required": ["thing", "got", "already_said"],
+                        "additionalProperties": false,
+                    ],
+                ],
+                "line": ["type": "string", "description": "one short line to the user about what is left, or empty"],
+            ],
+            "required": ["things", "line"],
+            "additionalProperties": false,
+        ]
+    }
+
     public static var system: String { system(Persona()) }
 
-    public static func system(_ persona: Persona) -> String {
-        persona.speakerLine + "\n\n" + Voice.guide(persona) + "\n\n" + """
-        \(persona.user.capitalizedFirst) asked you for something and you could not finish it. From the facts below and nothing else, write one short line to \(persona.user), in your own voice (you for them, I for yourself): what you tried, in plain words, why it did not work out, and what they could do instead when you know of something that would (Maps for a distance, a site or a call for a booking). Two sentences at most. Say only what happened here: never that you did something not listed as tried, and never that you are unable to do a kind of thing. The reason listed is the only cause you know: never name another, such as the connection, a timeout or a site being down. The looking is over: never promise to look again or to do anything later. Never a tool name, a handle, a count of steps or rounds, or anything technical: say what a person would say. If a line you already said to them is listed, do not repeat it: add only what is new, or say that you kept looking and found nothing more. Reply with JSON matching the schema and nothing else.
+    public static func system(_ persona: Persona, reason: Reason = .nothing) -> String {
+        let task = reason == .partly ? """
+        \(persona.user.capitalizedFirst) asked you for something and part of it may not have happened; what did happen is already in front of \(persona.user). From the facts below and nothing else, list under things each thing the request asks for, in the request's own terms, never a step you took. A step that did not work is only one way you tried: if any step got the thing, got is true. already_said is true when a line you already said to \(persona.user) covers it. Then line is about the things with got false and already_said false, if any: one short line to \(persona.user), in your own voice (you for them, I for yourself): that thing, in plain words, and what they could do instead when you know of something that would ("I couldn't send Noah that text, sir. You'll have to do that one yourself."). Speak only of what is left, never of what got done. If nothing is left, line is empty.
+        """ : """
+        \(persona.user.capitalizedFirst) asked you for something and you could not finish it. From the facts below and nothing else, write one short line to \(persona.user), in your own voice (you for them, I for yourself): what you tried, in plain words, why it did not work out, and what they could do instead when you know of something that would (Maps for a distance, a site or a call for a booking). If a line you already said to them is listed, do not repeat it: add only what is new, or say that you kept looking and found nothing more.
+        """
+        return persona.speakerLine + "\n\n" + Voice.guide(persona) + "\n\n" + task + " " + """
+        Two sentences at most. Say only what happened here: never that you did something not listed as tried, and never that you are unable to do a kind of thing. The reason listed is the only cause you know: never name another, such as the connection, a timeout or a site being down. The looking is over: never promise to look again or to do anything later. Never a tool name, a handle, a count of steps or rounds, or anything technical: say what a person would say. Reply with JSON matching the schema and nothing else.
         """
     }
 
@@ -104,11 +154,11 @@ public struct Closing: Sendable {
     public static func request(query: String, steps: [EngineSummary.Step], reason: Reason, persona: Persona = Persona(), model: String = model) -> InteractionRequest {
         InteractionRequest(
             model: model,
-            systemInstruction: system(persona),
+            systemInstruction: system(persona, reason: reason),
             input: input(query: query, steps: steps, reason: reason, said: said(in: steps), persona: persona),
-            maxOutputTokens: maxOutputTokens,
+            maxOutputTokens: reason == .partly ? partlyMaxOutputTokens : maxOutputTokens,
             stream: false,
-            outputSchema: schema
+            outputSchema: reason == .partly ? partlySchema : schema
         )
     }
 
@@ -117,6 +167,33 @@ public struct Closing: Sendable {
         guard let parsed = try? JSONSerialization.jsonObject(with: Data(text.utf8)), let object = try? JSONValue(any: parsed).objectValue,
               let line = object["line"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty else { return nil }
         return line
+    }
+
+    /// What a reply's text says about a plan that partly worked: the line
+    /// stands only when a thing is left, by the reply's own reading.
+    public static func remainder(in text: String) -> Remainder {
+        guard let parsed = try? JSONSerialization.jsonObject(with: Data(text.utf8)), let object = try? JSONValue(any: parsed).objectValue,
+              let things = object["things"]?.arrayValue?.compactMap(\.objectValue) else { return .missed }
+        let left = things.contains { $0["got"]?.boolValue == false && $0["already_said"]?.boolValue != true }
+        guard left else { return .nothing }
+        return line(in: text).map(Remainder.line) ?? .missed
+    }
+
+    /// The record of a long or one-line answer that brought nothing, for
+    /// `line`: the one step there was.
+    public static func failedAnswer(query: String, format: Instinct) -> [EngineSummary.Step] {
+        [EngineSummary.Step(name: format == .oneLine ? "one_line" : "narrative", arguments: ["query": .string(query)], outcome: "failed: nothing came back", latencyMs: 0)]
+    }
+
+    /// What did not happen in a plan that partly worked: one call within `timeout`.
+    public func remainder(query: String, steps: [EngineSummary.Step], persona: Persona = Persona()) async -> (remainder: Remainder, latencyMs: Int) {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let request = Self.request(query: query, steps: steps, reason: .partly, persona: persona, model: client.model)
+        guard let interaction = try? await client.interact(request, timeout: timeout), interaction.usable else {
+            return (.missed, Int((clock.now - start) / .milliseconds(1)))
+        }
+        return (Self.remainder(in: interaction.text), Int((clock.now - start) / .milliseconds(1)))
     }
 
     /// One call within `timeout`; nil on any miss, so the fixed line stands.

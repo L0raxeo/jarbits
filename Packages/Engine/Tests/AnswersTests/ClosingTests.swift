@@ -45,4 +45,38 @@ import Testing
         #expect(Closing.line(in: #"{"line": ""}"#) == nil)
         #expect(Closing.line(in: "not json") == nil)
     }
+
+    @Test func aPlanThatPartlyWorkedIsReadThingByThing() {
+        let system = Closing.system(.example, reason: .partly)
+        #expect(system.hasPrefix(Persona.example.speakerLine + "\n"))
+        #expect(system.contains("if any step got the thing, got is true"), "a recall that failed before a search found it came back as a shortfall (2026-11-02)")
+        #expect(system.contains("never of what got done"))
+        #expect(system.contains("never promise to look again or to do anything later"))
+        #expect(!Closing.system(.example).contains("If nothing is left"), "a plan that could not finish always gets its line")
+        let request = Closing.request(query: "q", steps: [], reason: .partly, persona: .example)
+        #expect(request.systemInstruction == system && request.outputSchema == Closing.partlySchema)
+        #expect(request.maxOutputTokens == Closing.partlyMaxOutputTokens, "120 cut the reply off before its closing brace (2026-11-02)")
+        #expect(Closing.request(query: "q", steps: [], reason: .failed, persona: .example).outputSchema == Closing.schema)
+    }
+
+    @Test func theLineStandsOnlyWhenAThingIsLeft() {
+        let left = #"{"things": [{"thing": "milk", "got": true, "already_said": false}, {"thing": "text Noah", "got": false, "already_said": false}], "line": " I couldn't send that text, sir. "}"#
+        #expect(Closing.remainder(in: left) == .line("I couldn't send that text, sir."))
+        #expect(Closing.remainder(in: #"{"things": [{"thing": "the article", "got": true, "already_said": false}], "line": "I've brought it up, sir."}"#) == .nothing, "all of it happened: whatever the line says goes unsaid")
+        #expect(Closing.remainder(in: #"{"things": [{"thing": "call", "got": false, "already_said": true}], "line": "I can't call."}"#) == .nothing, "said already")
+        #expect(Closing.remainder(in: #"{"things": [{"thing": "call", "got": false, "already_said": false}], "line": ""}"#) == .missed)
+        #expect(Closing.remainder(in: "not json") == .missed)
+        #expect(Closing.remainder(in: #"{"line": "no reading"}"#) == .missed)
+    }
+
+    @Test func aFailedAnswerIsTheOneStepTried() {
+        let steps = Closing.failedAnswer(query: "who wrote it", format: .narrative)
+        #expect(Closing.input(query: "who wrote it", steps: steps, reason: .failed, said: []) == """
+        Request: who wrote it
+        Tried, in order:
+        - tried to answer "who wrote it" and it did not work
+        Why it stopped: every step failed
+        """)
+        #expect(Closing.failedAnswer(query: "q", format: .oneLine).first?.name == "one_line")
+    }
 }
