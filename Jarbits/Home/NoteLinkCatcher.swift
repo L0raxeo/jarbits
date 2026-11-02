@@ -62,8 +62,14 @@ final class CatcherView: UIView {
         DispatchQueue.main.async { [weak self] in self?.attach() }
     }
 
-    private func attach() {
-        guard recognizer == nil, let textView = Self.textView(near: self) else { return }
+    /// Its own editor may not be in the hierarchy yet: looked for again, a
+    /// frame or so later, for up to a second.
+    private func attach(tries: Int = 20) {
+        guard recognizer == nil, window != nil else { return }
+        guard let textView = Self.textView(near: self) else {
+            if tries > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.attach(tries: tries - 1) } }
+            return
+        }
         let ours = NoteLinkRecognizer(textView: textView)
         ours.onLink = { [weak self] url in self?.onLink(url) }
         ours.onCheckbox = { [weak self] offset in self?.onCheckbox(offset) }
@@ -115,20 +121,21 @@ final class CatcherView: UIView {
     }
 
     /// The editor's text view: the first found under the nearest ancestor
-    /// that holds one.
+    /// that holds one, and no other catcher has. While one note cross-fades
+    /// into another both editors are on screen, and the old one has its catcher.
     private static func textView(near view: UIView) -> UITextView? {
         var ancestor = view.superview
         while let container = ancestor {
-            if let found = firstTextView(in: container) { return found }
+            if let found = freeTextView(in: container) { return found }
             ancestor = container.superview
         }
         return nil
     }
 
-    private static func firstTextView(in view: UIView) -> UITextView? {
+    private static func freeTextView(in view: UIView) -> UITextView? {
         for child in view.subviews {
-            if let textView = child as? UITextView { return textView }
-            if let found = firstTextView(in: child) { return found }
+            if let textView = child as? UITextView, !(textView.gestureRecognizers ?? []).contains(where: { $0 is NoteLinkRecognizer }) { return textView }
+            if let found = freeTextView(in: child) { return found }
         }
         return nil
     }
