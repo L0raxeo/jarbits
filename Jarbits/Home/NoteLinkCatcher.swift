@@ -207,10 +207,23 @@ final class NoteLinkRecognizer: UIGestureRecognizer {
         start = nil
     }
 
+    /// How far from a character a finger still counts as on it.
+    private static let reach: CGFloat = 10
+
+    /// The character under `point`, when the finger is on it. The text view
+    /// answers with the nearest character wherever the point is, so a tap on
+    /// the blank space under the text, or past the end of a line, would
+    /// count as a tap on the last character or the line's last.
+    private static func character(in textView: UITextView, at point: CGPoint) -> UITextRange? {
+        guard let range = textView.characterRange(at: point),
+              textView.firstRect(for: range).insetBy(dx: -reach, dy: -reach).contains(point) else { return nil }
+        return range
+    }
+
     /// The offset of a checkbox marker under `point`: the marker itself or
     /// the space after it, at the start of a line.
     static func checkbox(in textView: UITextView, at point: CGPoint) -> Int? {
-        guard let range = textView.characterRange(at: point) else { return nil }
+        guard let range = character(in: textView, at: point) else { return nil }
         let offset = textView.offset(from: textView.beginningOfDocument, to: range.start)
         let string = textView.textStorage.string as NSString
         for candidate in [offset, offset - 1] where candidate >= 0 && candidate < string.length {
@@ -223,7 +236,7 @@ final class NoteLinkRecognizer: UIGestureRecognizer {
 
     /// The link under `point`, if the character there carries one.
     static func link(in textView: UITextView, at point: CGPoint) -> URL? {
-        guard let range = textView.characterRange(at: point) else { return nil }
+        guard let range = character(in: textView, at: point) else { return nil }
         let offset = textView.offset(from: textView.beginningOfDocument, to: range.start)
         let storage = textView.textStorage
         guard offset >= 0, offset < storage.length else { return nil }

@@ -944,7 +944,10 @@ bar above the keyboard offers the six forms while the note has the
 keyboard, and not while the capsule does. A page kept in the note is its
 title in link colour in the text, and a tap opens the page in Jarbits,
 caught before the editor can hand it to the system (`NoteLinkCatcher`);
-while typing, a tap on a link places the cursor, as on any text. There is
+while typing, a tap on a link places the cursor, as on any text. Only a
+tap on the link's or the checkbox's own characters counts: a tap on the
+blank space below the text or past the end of a line brings up the
+keyboard (2026-11-01). There is
 no separate list of links. The editor keeps to what Notes does
 (2026-10-31): a return in a list item starts the next item, the next
 number in a numbered list, with the items below renumbered; a return on
