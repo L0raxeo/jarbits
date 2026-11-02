@@ -150,8 +150,6 @@ struct HomeView: View {
                                     height: proxy.size.height + insets.top + insets.bottom)
 
                 ZStack {
-                    JarbitsScreen(window: window)
-
                     // The background takes taps and swipes only on the clay
                     // screen; under a result the page or the answer has them.
                     if session.stage == .idle {
@@ -280,6 +278,10 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity)
                     .animation(.spring(duration: 0.45, bounce: 0.25), value: bubbleKey)
                 }
+                // Behind everything, and out of the stack's sizing: its pages
+                // are the window's height, taller than the safe area, and as
+                // a child they would stretch the stack past the screen's foot.
+                .background { JarbitsScreen(window: window) }
                 .onChange(of: window, initial: true) { _, window in
                     session.window = window
                     session.topInset = insets.top
