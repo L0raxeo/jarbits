@@ -1127,6 +1127,8 @@ final class JarbitsSession {
         switch plan {
         case let .time(_, text), let .said(_, text):
             layer.spoken = text
+        case let .weather(snapshot):
+            layer.spoken = WeatherText.line(snapshot)
         default:
             break
         }

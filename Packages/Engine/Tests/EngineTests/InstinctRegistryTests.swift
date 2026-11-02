@@ -39,9 +39,10 @@ import Testing
             case .weather:
                 #expect(spec.showsLayer && spec.sideEffects == .none && spec.shortcut, "the whole ask is in the words")
                 #expect(spec.arguments.freeForm.map(\.name) == ["place", "when"], "the place and the day or hour are the extractor's")
-                #expect(spec.arguments.closedSet.map(\.name) == ["focus"], "which detail is Jev's question")
+                #expect(spec.arguments.closedSet.map(\.name) == ["focus", "screen"], "which detail, and whether to see it all, are Jev's questions")
                 #expect(spec.arguments.fields.allSatisfy { !$0.required }, "nothing named means here and now, in general")
                 if case let .choice(options) = spec.arguments.fields[2].kind { #expect(options == WeatherFocus.allCases.map(\.rawValue)) } else { Issue.record("focus is a choice") }
+                if case let .choice(options) = spec.arguments.fields[3].kind { #expect(options == ["mine", "user"], "the first is what words that say nothing of it get: the bubble") } else { Issue.record("screen is a choice") }
             case .narrative, .oneLine:
                 #expect(spec.showsLayer && spec.sideEffects == .none)
                 #expect(spec.arguments.fields.map(\.name) == ["about"] && spec.arguments.things.count == 1, "an answer can be about a thing; nothing for the extractor")

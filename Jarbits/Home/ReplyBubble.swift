@@ -9,7 +9,8 @@ import SwiftUI
 /// next query; a question joins the stack at the bottom. The pieces above
 /// the newest shrink to a compact height, each with its own "Read on"; the
 /// newest gets the rest of the room. A piece is a line (a one-liner, the
-/// time, a mark, a short say) or a card (a narrative, a longer say, a note),
+/// time, a mark, a short say) or a card (a narrative, a longer say, a note,
+/// the weather's answer with its module),
 /// and becomes the full answer layer on "Read on", on a tap, or, for the
 /// newest, on a pull down. Never modal: the page stays live around it. The
 /// x sits at the foot of the bottom entry; a push up puts the bubble away
@@ -238,7 +239,7 @@ private struct ReplyPiece: View {
         if layer.lingers { return false }
         switch layer.plan {
         case let .answer(format, _, _, _): return format == .narrative && !(layer.answer?.text.isEmpty ?? true)
-        case .said, .note: return true
+        case .said, .note, .weather: return true
         default: return false
         }
     }
@@ -326,6 +327,13 @@ private struct ReplyPiece: View {
             case let .note(note):
                 // The note as written, its marks drawn as the note card draws them, read-only.
                 noteCard(note)
+            case let .weather(snapshot):
+                // The answer and the module asked about; Apple's mark is never cut.
+                VStack(alignment: .leading, spacing: 10) {
+                    capped(WeatherReply(snapshot: snapshot))
+                    WeatherCredit(attribution: snapshot.attribution)
+                    foot(readOn: true)
+                }
             default:
                 card(AnswerMarkup.styled(layer.plan.replyText, for: .narrative), stoppedEarly: false)
             }

@@ -631,8 +631,14 @@ place's own time zone, and a bare "6pm" as the next one); Jev
 reads `focus`, the one detail asked about (overview, temperature, rain,
 wind, uv, sun, humidity), as a closed-set question.
 
-- **Picked by Jev**, it opens the weather screen (`WeatherView`): the panel
-  the focus names, large, on top; the panels that go with it around it; the
+- **Picked by Jev**, it answers in the bubble, as Siri does (`WeatherReply`):
+  the short answer said aloud, a severe warning when there is one, and the
+  module the focus names ("what's the UV like tomorrow" shows tomorrow's UV),
+  with Apple's mark. A tap, "Read on" or a pull down opens the weather screen.
+  Words that ask to see it ("show me the forecast", Jev's `screen` question
+  answered user) open that screen at once.
+- **The weather screen** (`WeatherView`) scrolls through the whole forecast: the
+  panel the focus names, large, on top; the panels that go with it around it; the
   rest of the forecast below; a severe weather warning pinned above all.
   The arrangement is `WeatherLayout`, fixed per focus: it arranges the
   screen and never interprets the words. A later day puts its summary where
@@ -645,11 +651,10 @@ wind, uv, sun, humidity), as a closed-set question.
 - What falls is named as the forecast names it: snow is said as snow, with
   its amount ("An 80% chance of snow in Denver Friday, about 12 cm"), and so
   are sleet, hail and rain and snow together; the rain panel's title and
-  bars follow. A day with nothing forecast still speaks of rain. Jarbits says the short answer (`WeatherText.line`) over the
-  screen with no bubble piece, or sends it as a message when away.
+  bars follow. A day with nothing forecast still speaks of rain. Jarbits says the short answer (`WeatherText.line`), or sends it as a message when away.
 - **In a plan**, the tool takes a `screen` value like the page tools: `user`
-  shows the screen as above; `mine` reads the forecast for Jarbits's own
-  answer and shows nothing. Either way the result the planner gets is the
+  shows the screen as above; `mine`, or none, reads the forecast for Jarbits's
+  own answer and shows nothing. Either way the result the planner gets is the
   forecast in words (`WeatherText.summary`), so "what should I wear for my
   run at 6" is answered from real numbers. A forecast read on `mine` is
   kept as a source of the query: the answer carries Apple's mark, and a tap

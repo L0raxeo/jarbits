@@ -103,15 +103,44 @@ struct WeatherView: View {
         return rows
     }
 
-    /// Apple's mark and its legal page: required wherever WeatherKit's data shows.
     private var attribution: some View {
+        WeatherCredit(attribution: snapshot.attribution)
+            .padding(.top, 12)
+    }
+}
+
+/// The weather in the bubble, as Siri has it: the answer in words, a severe
+/// warning when there is one, and the one module the request asked about,
+/// the one the weather screen leads with. A tap on the piece opens that screen.
+struct WeatherReply: View {
+    let snapshot: WeatherSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(WeatherText.line(snapshot))
+                .font(.body)
+                .foregroundStyle(Palette.ink)
+            if let alert = snapshot.alerts.first {
+                Label(alert.summary, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.red)
+            }
+            WeatherPanel(module: WeatherLayout.arrange(snapshot).lead, snapshot: snapshot, large: false, tiled: false)
+        }
+    }
+}
+
+/// Apple's mark and its legal page: required wherever WeatherKit's data shows.
+struct WeatherCredit: View {
+    let attribution: WeatherSnapshot.Attribution
+
+    var body: some View {
         HStack(spacing: 10) {
-            WeatherMark(attribution: snapshot.attribution)
-            Link("Legal", destination: snapshot.attribution.legalPage)
+            WeatherMark(attribution: attribution)
+            Link("Legal", destination: attribution.legalPage)
                 .font(.caption)
                 .foregroundStyle(Palette.quiet)
         }
-        .padding(.top, 12)
     }
 }
 
@@ -168,11 +197,13 @@ private struct AlertTile: View {
     }
 }
 
-/// One panel of the weather screen. `large` is the one on top.
+/// One panel of the weather screen. `large` is the one on top; the bubble's
+/// sits on the bubble itself, with no tile of its own.
 private struct WeatherPanel: View {
     let module: WeatherModule
     let snapshot: WeatherSnapshot
     let large: Bool
+    var tiled = true
 
     private var locale: Locale { .current }
     private func temp(_ c: Double) -> String { WeatherText.temperature(c, locale: locale) }
@@ -183,13 +214,19 @@ private struct WeatherPanel: View {
     private var kind: WeatherSnapshot.Precipitation { snapshot.precipitationKind }
 
     var body: some View {
-        Tile {
-            VStack(alignment: .leading, spacing: large ? 12 : 8) {
-                Text(title)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(Palette.quiet)
-                content
-            }
+        if tiled {
+            Tile { panel }
+        } else {
+            panel
+        }
+    }
+
+    private var panel: some View {
+        VStack(alignment: .leading, spacing: large ? 12 : 8) {
+            Text(title)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(Palette.quiet)
+            content
         }
     }
 

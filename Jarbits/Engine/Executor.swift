@@ -331,7 +331,7 @@ final class Executor {
                     // A page opens on Jarbits's own screen unless the planner said the user's.
                     let onDesk = Planner.opensPage(spec) && values[Planner.screenField.name]?.stringValue != "user"
                     // The weather read for the plan's own answer: nothing on the user's screen.
-                    let readsWeather = spec.instinct == .weather && values[Planner.screenField.name]?.stringValue == "mine"
+                    let readsWeather = spec.instinct == .weather && values[Planner.screenField.name]?.stringValue != "user"
                     let fresh = values[Planner.freshField.name]?.boolValue == true
                     if spec.instinct == .remember, answered { values[RememberInstinct.sourceField] = .string(Fact.Source.chosen.rawValue) }
                     answered = false
@@ -385,7 +385,7 @@ final class Executor {
                             query: stepQuery,
                             decision: Pick(instinct: spec.instinct, suggested: nil, confidence: 1, source: .plan),
                             opened: nil, canAnswer: session.canAnswer, thread: [], earlier: exchanges,
-                            arguments: values.filter { $0.key != Planner.queryField.name && $0.key != Planner.screenField.name }
+                            arguments: values.filter { $0.key != Planner.queryField.name && ($0.key != Planner.screenField.name || spec.instinct == .weather) }
                         )
                         context.things = resolved
                         context.manyThings = resolvedMany

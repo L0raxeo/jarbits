@@ -3,9 +3,11 @@ import Foundation
 
 /// The weather, from WeatherKit, for the place the extractor read (here
 /// when none) and the day or hour it read (now when none). Picked by Jev,
-/// it shows the weather screen with the asked-for detail on top and says
-/// the short answer; in a plan that reads it for itself (`lookup`), it shows
-/// nothing and hands the forecast back as text. Either way the forecast in
+/// it answers in the bubble, as Siri does: the short answer said, with the
+/// asked-for module under it and the whole screen a tap away; words that ask
+/// to see it (`screen` is user) open that screen at once. In a plan that
+/// reads it for itself (`lookup`), it shows nothing and hands the forecast
+/// back as text. Either way the forecast in
 /// words is the result, so the planner can answer from it. A place it cannot
 /// find, or a day out of reach, goes to the planner like any failure.
 struct WeatherInstinct: InstinctRunner {
@@ -36,7 +38,11 @@ struct WeatherInstinct: InstinctRunner {
             session.keepWeather(snapshot)
             return InstinctOutcome(fact: nil, text: summary)
         }
-        session.showCard(.weather(snapshot), context: context, spoken: WeatherText.line(snapshot))
+        if context.arguments["screen"]?.stringValue == "user" {
+            session.showCard(.weather(snapshot), context: context, spoken: WeatherText.line(snapshot))
+        } else {
+            session.showReply(.weather(snapshot), context: context)
+        }
         return InstinctOutcome(fact: nil, text: summary)
     }
 }

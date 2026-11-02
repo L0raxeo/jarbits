@@ -156,3 +156,5 @@
 {"query": "pull up the weather channel", "instinct": "site", "note": "a weather site by name is a site (2026-11-01)"}
 {"query": "what's the difference between weather and climate", "instinct": "narrative", "note": "weather as a topic is an explanation (2026-11-01)"}
 {"query": "what was the weather like last tuesday", "instinct": "web_results", "note": "past weather is not in the forecast (2026-11-01)"}
+{"query": "show me this week's forecast", "instinct": "weather", "note": "asks to see it: the screen at once (2026-11-01)"}
+{"query": "pull up the weather", "instinct": "weather", "note": "asks to see it; no site named (2026-11-01)"}
