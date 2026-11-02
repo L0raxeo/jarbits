@@ -12,12 +12,16 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         /// `unknown`, `skipped: …` or `failed: …`.
         public var outcome: String
         public var latencyMs: Int
+        /// What the user answered, for an `ask` step they answered: the
+        /// option tapped or the words given. Nil otherwise, and in older logs.
+        public var answer: String?
 
-        public init(name: String, arguments: JSONValue, outcome: String, latencyMs: Int) {
+        public init(name: String, arguments: JSONValue, outcome: String, latencyMs: Int, answer: String? = nil) {
             self.name = name
             self.arguments = arguments
             self.outcome = outcome
             self.latencyMs = latencyMs
+            self.answer = answer
         }
     }
 
@@ -28,7 +32,8 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         case fellBackToWeb(String)
         /// The user said no on the sheet, or swiped it away.
         case declined
-        /// The rounds or the time ran out.
+        /// The rounds or the time ran out with nothing shown or done. After
+        /// something happened it is `completed` and `cutShort`.
         case budget
         /// A newer query took the screen before the plan ended.
         case stale
@@ -52,8 +57,8 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     /// connection failed before a reply. Nil otherwise.
     public var lostConnection: Bool?
     /// The device ended the plan after something happened, with the planner
-    /// not having called done: two steps failed, or the model stopped
-    /// replying. Nil otherwise.
+    /// not having called done: two steps failed, the model stopped
+    /// replying, or the rounds or the time ran out. Nil otherwise.
     public var cutShort: Bool?
 
     public init(model: String, rounds: Int, steps: [Step], usage: AnswerUsage? = nil, latencyMs: Int, factsGiven: Int, webpagesGiven: Int, outcome: Outcome, screenChars: Int? = nil, screenItems: Int? = nil, pictureBytes: Int? = nil, lostConnection: Bool? = nil, cutShort: Bool? = nil) {
@@ -119,8 +124,7 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     /// A step opened a page on Jarbits's own screen, unseen by the user.
     public var readSomething: Bool { steps.contains { $0.outcome == "read" } }
     /// Something happened, and part of the request may not have: a step
-    /// failed or the plan was cut short. The user said no and the time
-    /// running out have their own endings.
+    /// failed or the plan was cut short. The user saying no has its own ending.
     public var mayHaveLeftSomething: Bool {
         guard outcome != .declined, outcome != .budget, outcome != .stale, shownSomething || didSomething else { return false }
         return cutShort == true || steps.contains { $0.outcome.hasPrefix("failed") }

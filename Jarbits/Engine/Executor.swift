@@ -103,9 +103,16 @@ final class Executor {
         var deskByKey: [String: String] = [:]
         /// The step before was an answered question: a remember next keeps a chosen fact.
         var answered = false
+        /// The rounds or the time ran out. After something happened that is a
+        /// plan cut short, not a failure: "Try again" would do it all twice.
+        func ranOut() -> EngineSummary {
+            let happened = shown || steps.contains { $0.outcome == "ran" }
+            cutShort = happened
+            return finish(happened ? .completed : .budget, webpages: listedWebpages.count)
+        }
 
         while roundsSinceAsk < ReasoningPolicy.maxRounds {
-            guard clock.now - budgetStart < ReasoningPolicy.timeBudget else { return finish(.budget, webpages: listedWebpages.count) }
+            guard clock.now - budgetStart < ReasoningPolicy.timeBudget else { return ranOut() }
             rounds += 1
             roundsSinceAsk += 1
             session.planProgress(round: rounds, of: ReasoningPolicy.maxRounds)
@@ -147,6 +154,7 @@ final class Executor {
                 var result: String
                 var outcome: String
                 var ended: EngineSummary.Outcome?
+                var answerGiven: String?
                 if call.name == Planner.doneTool.name {
                     result = "done"
                     outcome = "done"
@@ -236,6 +244,7 @@ final class Executor {
                         result = "the user answered \"\(text)\" to \"\(question)\""
                         if !options.isEmpty { result += " (options: \(options.joined(separator: ", ")))" }
                         outcome = "asked"
+                        answerGiven = text
                         answered = true
                         roundsSinceAsk = 0
                     case nil:
@@ -496,7 +505,7 @@ final class Executor {
                     outcome = "unknown"
                     answered = false
                 }
-                steps.append(EngineSummary.Step(name: call.name, arguments: call.arguments, outcome: outcome, latencyMs: Int((clock.now - stepStart) / .milliseconds(1))))
+                steps.append(EngineSummary.Step(name: call.name, arguments: call.arguments, outcome: outcome, latencyMs: Int((clock.now - stepStart) / .milliseconds(1)), answer: answerGiven))
                 session.planProgress(step: call.name)
                 transcript.append(.functionResult(FunctionResult(callID: call.id, name: call.name, text: result)))
                 if let ended { return finish(ended, webpages: listedWebpages.count) }
@@ -506,7 +515,7 @@ final class Executor {
                 return finish(shown ? .completed : .fellBackToWeb("two steps failed"), webpages: listedWebpages.count)
             }
         }
-        return finish(.budget, webpages: listedWebpages.count)
+        return ranOut()
     }
 
     /// A thing that is not a page, read: its lead line, what was read, and

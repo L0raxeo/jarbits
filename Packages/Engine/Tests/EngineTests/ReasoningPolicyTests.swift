@@ -102,6 +102,14 @@ import Testing
         #expect(GeminiPricing.cost(plan, model: "gemini-3.8-flash") < 0.011, "three rounds of a plan stay around a cent")
     }
 
+    @Test func aStepKeepsTheAnswerGiven() throws {
+        let step = EngineSummary.Step(name: "ask", arguments: [:], outcome: "asked", latencyMs: 1, answer: "AI assistant project")
+        let decoded = try DecisionRecord.decoder.decode(EngineSummary.Step.self, from: DecisionRecord.encoder.encode(step))
+        #expect(decoded.answer == "AI assistant project")
+        let older = #"{"name":"ask","arguments":{},"outcome":"asked","latencyMs":1}"#
+        #expect(try DecisionRecord.decoder.decode(EngineSummary.Step.self, from: Data(older.utf8)).answer == nil, "older logs have none")
+    }
+
     @Test func onlyAPlanWhereSomethingHappenedCanHaveLeftSomething() {
         func summary(_ outcomes: [String], outcome: EngineSummary.Outcome = .completed, cutShort: Bool? = nil) -> EngineSummary {
             EngineSummary(model: "m", rounds: 1, steps: outcomes.map { EngineSummary.Step(name: "s", arguments: [:], outcome: $0, latencyMs: 1) }, latencyMs: 1, factsGiven: 0, webpagesGiven: 0, outcome: outcome, cutShort: cutShort)
