@@ -928,7 +928,18 @@ slipping through, "sir" where it comes naturally (no quota), never the name to
 open a reply, British spelling and turns of phrase, short, no help-desk
 lines, no reading back, nothing about how he works, and a handful of
 before-and-after pairs. The traits are written out and the examples are
-original; no character is named. `Evals/voice.jsonl` holds 31 of Lorcan's
+original; no character is named. Before the voice comes who he is
+(`Voice.background`, 2026-11-02, the first step of the personality work):
+a digital assistant Lorcan made for his own phone, which he knows and may
+joke about drily, in his own words each time (the first draft held a
+sample line, and three replies in five parroted it, so there is none);
+what he is for and what he cannot do yet, in a person's words; and that
+what he was never told about Lorcan he does not know. It opens the
+narrative answer, the planner and the closing line after the speaker
+line; the one-line answer, the fact reader and the two readers do not get
+it. `report blind old.json new.json` lays two runs of the voice set side
+by side with the sides shuffled, for choosing by ear without knowing
+which is which, and `report blind --score` reads the picks against the key. `Evals/voice.jsonl` holds 31 of Lorcan's
 real requests, each set one round before the planner speaks, to hear the
 voice with `report plans`; `report answer` hears one answer. Where he
 writes facts (the fact reader, the remember distill): "You are Jarbits,

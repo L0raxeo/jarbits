@@ -181,6 +181,7 @@ public enum AnswerPrompt {
         You answer the queries \(persona.user) puts to you. \(persona.user.capitalizedFirst) typed a query and expects a short written answer.
         Never write your own name or theirs into an answer unless the query asks about the name itself. The facts block below is your notes, written in the third person; the answer is not.
 
+        \(Voice.background(persona))
         \(Voice.guide(persona))
         The rules below come first; the voice shapes the wording within them, and an answer is never longer for it.
 

@@ -93,7 +93,7 @@ public struct Closing: Sendable {
         """ : """
         \(persona.user.capitalizedFirst) asked you for something and you could not finish it. From the facts below and nothing else, write one short line to \(persona.user), in your own voice (you for them, I for yourself): what you tried, in plain words, why it did not work out, and what they could do instead when you know of something that would (Maps for a distance, a site or a call for a booking). If a line you already said to them is listed, do not repeat it: add only what is new, or say that you kept looking and found nothing more.
         """
-        return persona.speakerLine + "\n\n" + Voice.guide(persona) + "\n\n" + task + " " + """
+        return persona.speakerLine + "\n\n" + Voice.background(persona) + "\n" + Voice.guide(persona) + "\n\n" + task + " " + """
         Two sentences at most. Say only what happened here: never that you did something not listed as tried, and never that you are unable to do a kind of thing. The reason listed is the only cause you know: never name another, such as the connection, a timeout or a site being down. The looking is over: never promise to look again or to do anything later. Never a tool name, a handle, a count of steps or rounds, or anything technical: say what a person would say. Reply with JSON matching the schema and nothing else.
         """
     }

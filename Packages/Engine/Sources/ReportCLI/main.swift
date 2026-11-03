@@ -36,6 +36,10 @@ import Sites
 //     (one answer as the app asks it, narrative unless --one-line; with the key, one small metered call,
 //      printing the answer as written, for hearing the voice; --facts-file and --pick as for plan, and an
 //      answer that asks for every fact is asked once more with them, as the app does)
+//   swift run --package-path Packages/Engine report blind old.json new.json [--key key.json] [--seed n]
+//     (the ear test: two runs of the same plan cases (report plans --out, before and after a change) side by
+//     side with the sides shuffled per case, so the listener picks without knowing which is which; then
+//     report blind --score key.json A B - A … says how many picks went to the new run)
 //   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Engine report picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>]
 //     (every case of Evals/picks.jsonl scored over Evals/picks-pool.txt, as the app chooses which facts an
 //     answer sees: the needed facts reached and the facts sent at each pool size, the lowest needed scores,
@@ -644,6 +648,40 @@ case "picks":
         FileHandle.standardError.write(Data("wrote \(out.path(percentEncoded: false))\n".utf8))
     }
     exit(regressed || results.contains { $0.status == .fail } ? 1 : 0)
+case "blind":
+    // The ear test: two plan runs side by side, shuffled, and the score afterwards.
+    let usage = "usage: report blind <old results.json> <new results.json> [--key <key.json>] [--seed n] | report blind --score <key.json> <picks such as A B - A>"
+    var rest = Array(arguments.dropFirst())
+    if rest.first == "--score" {
+        guard rest.count >= 3, let data = try? Data(contentsOf: URL(fileURLWithPath: rest[1])), let key = try? JSONDecoder().decode([Blind.Pair].self, from: data) else { fail(usage) }
+        print(Blind.score(rest.dropFirst(2).joined(separator: " "), key: key), terminator: "")
+        exit(0)
+    }
+    guard rest.count >= 2 else { fail(usage) }
+    let oldFile = URL(fileURLWithPath: rest[0]), newFile = URL(fileURLWithPath: rest[1])
+    rest.removeFirst(2)
+    var keyFile = newFile.deletingLastPathComponent().appending(path: "blind-key.json")
+    var seed = UInt64(Date.now.timeIntervalSince1970)
+    while let flag = rest.first {
+        switch flag {
+        case "--key":
+            guard rest.count >= 2 else { fail(usage) }
+            keyFile = URL(fileURLWithPath: rest[1])
+            rest.removeFirst(2)
+        case "--seed":
+            guard rest.count >= 2, let number = UInt64(rest[1]) else { fail(usage) }
+            seed = number
+            rest.removeFirst(2)
+        default: fail(usage)
+        }
+    }
+    guard let oldData = try? Data(contentsOf: oldFile), let old = try? JSONDecoder().decode([PlanResult].self, from: oldData) else { fail("could not read \(oldFile.path(percentEncoded: false))") }
+    guard let newData = try? Data(contentsOf: newFile), let new = try? JSONDecoder().decode([PlanResult].self, from: newData) else { fail("could not read \(newFile.path(percentEncoded: false))") }
+    let pairs = Blind.pairs(old: old, new: new, seed: seed)
+    guard let keyData = try? JSONEncoder().encode(pairs) else { fail("could not write the key") }
+    try? keyData.write(to: keyFile, options: .atomic)
+    print(Blind.sheet(pairs), terminator: "")
+    FileHandle.standardError.write(Data("key: \(keyFile.path(percentEncoded: false)); score with: report blind --score <key> A B - ...\n".utf8))
 case "plans":
     let usage = "usage: report plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>]"
     let packageRoot = URL(fileURLWithPath: #filePath)
@@ -876,5 +914,5 @@ case "sample":
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] | picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>] [--out <results.json>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] | blind <old.json> <new.json> [--key <key.json>] | picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>] [--out <results.json>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }

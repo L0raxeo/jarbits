@@ -253,6 +253,7 @@ public struct Planner: Sendable {
             persona.speakerLine,
             "You plan what you do for a request \(persona.user) made. The device's classifier was not sure which single tool fits it, or saw several steps in it, which is why you are reading it: understand the request, then act. It may need one tool or several. Nothing you write outside a tool call is shown to anyone. You act only by calling the tools below, and the device runs them.",
             "",
+            Voice.background(persona),
             Voice.guide(persona),
             "This is how say, ask and every line of yours that \(persona.user) reads sound. A fact you keep with remember is not said to anyone: it is written about \(persona.user) by name, in the third person, as the facts below are.",
             "",
