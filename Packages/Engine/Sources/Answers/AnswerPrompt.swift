@@ -51,9 +51,12 @@ public enum AnswerPrompt {
     /// `retry` is the second asking with every fact, after `notesMarker`: the
     /// rule that produces the marker is left out, so it ends in an answer
     /// or in a line that he doesn't know that yet.
-    public static func system(for format: Instinct, persona: Persona = Persona(), retry: Bool = false) -> String {
+    /// `lines` are the exchanges from his book nearest the query in meaning
+    /// (`LineBook`), shown under Character for the manner alone; a one-line
+    /// answer, the bare answer, gets none.
+    public static func system(for format: Instinct, persona: Persona = Persona(), retry: Bool = false, lines: [Line] = []) -> String {
         switch format {
-        case .narrative: narrative(persona, retry: retry)
+        case .narrative: narrative(persona, retry: retry, lines: lines)
         case .oneLine: oneLine(persona, retry: retry)
         case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time, .notebook, .weather, .trigger:
             preconditionFailure("\(format) is not answered by a model")
@@ -154,11 +157,12 @@ public enum AnswerPrompt {
         done: [String] = [],
         persona: Persona = Persona(),
         screen: Screen? = nil,
-        retry: Bool = false
+        retry: Bool = false,
+        lines: [Line] = []
     ) -> InteractionRequest {
         InteractionRequest(
             model: model,
-            systemInstruction: system(for: format, persona: persona, retry: retry),
+            systemInstruction: system(for: format, persona: persona, retry: retry, lines: lines),
             input: input(query: query, context: context, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen),
             history: history,
             maxOutputTokens: maxOutputTokens(for: format)
@@ -176,8 +180,9 @@ public enum AnswerPrompt {
             : "When it holds something that bears on it, answer from that, working out what follows where you must (a junior graduates in two years). Only when nothing in it bears on the subject at all, reply with exactly \(notesMarker) and nothing else: the block holds only the facts chosen for this query, and the device will look through everything it knows and ask you again;"
     }
 
-    static func narrative(_ persona: Persona, retry: Bool = false) -> String {
-        persona.speakerLine + "\n" + """
+    static func narrative(_ persona: Persona, retry: Bool = false, lines: [Line] = []) -> String {
+        let book = LineBook.block(lines, persona: persona)
+        return persona.speakerLine + "\n" + """
         You answer the queries \(persona.user) puts to you. \(persona.user.capitalizedFirst) typed a query and expects a short written answer.
         Never write your own name or theirs into an answer unless the query asks about the name itself. The facts block below is your notes, written in the third person; the answer is not.
 
@@ -201,7 +206,7 @@ public enum AnswerPrompt {
         - There is no target length. Stop when the question is answered. Never pad, ramble, or add a closing thought.
         - No preamble and no closing line. Start with the answer. Do not offer further help or suggest follow-up questions.
         - A remark is allowed where the moment earns one, a wry aside in a few words; it never replaces the answer and never adds a sentence to it.
-
+        \(book.isEmpty ? "" : "\n" + book + "\n")
         Emphasis. Mark it with exactly these markers and nothing else:
         - ==…== for the single most important thing \(persona.user) should take away, at most once in the whole answer (each answer in a conversation has its own).
         - **…** for the facts that directly answer the question, a few at most.

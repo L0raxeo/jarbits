@@ -318,6 +318,13 @@ final class JarbitsSession {
     /// The facts as kept, beside their texts: what the reader is shown, and
     /// what a same or changed finding points back at.
     private(set) var knownFacts: [Fact] = []
+    /// His book of lines as marked on the phone: loved and not him.
+    let lineStore: LineStore
+    /// Picks the lines of the book nearest a request in meaning; nil
+    /// without a Gemini key, in which case a reply goes without lines.
+    let linePicker: LinePicker?
+    /// Embeds a request once, beside its route, for the book; nil without a key.
+    private let embedder: GeminiEmbedder?
     /// A mark shown at the foot of a reply that is up, for a moment, so the
     /// reply stays: "Remembered: …". Nil otherwise; see `note(_:)`.
     private(set) var replyFoot: FactMark?
@@ -352,6 +359,14 @@ final class JarbitsSession {
         self.actions = actions
         triggerClock = TriggerClock(store: triggers)
         self.facts = facts
+        lineStore = LineStore.shared
+        let embedder = Secrets.geminiAPIKey.map { GeminiEmbedder(apiKey: $0) }
+        self.embedder = embedder
+        linePicker = embedder.map { LinePicker(fileURL: LineStore.shared.fileURL.deletingLastPathComponent().appending(path: "lines.index"), embedder: $0) }
+        if let linePicker {
+            // The loved lines join the seed in the index; embedded on the first pick.
+            Task { await linePicker.include(await LineStore.shared.loved()) }
+        }
         self.factResolver = factResolver
         self.factReader = factReader
         self.closing = closing
@@ -592,6 +607,8 @@ final class JarbitsSession {
         requestToken = token
         beginRun(token: token, query: trimmed)
         let known = knownFacts
+        // The request's meaning, for the book of lines: one embedding, beside the route.
+        if let embedder { run?.meaning = Task { await embedder.vector(for: trimmed, as: .request) } }
         let routing = Task { await engine.route(trimmed, exchanges: exchanges, current: newest, opened: opened, persona: persona, screen: screenRead, facts: known) }
         // The fact reader beside the route: every lasting fact the words
         // state, read whatever the query becomes, applied when it is back.
@@ -829,6 +846,38 @@ final class JarbitsSession {
         }
         #endif
         return selection
+    }
+
+    /// The lines of his book nearest the query in meaning, when the meaning
+    /// embedded beside the route has landed within `LineBook.wait` of this
+    /// call; none otherwise, and the reply goes without.
+    func linesForQuery(token: UUID) async -> [Line] {
+        guard let linePicker, let run, run.token == token, let task = run.meaning else { return [] }
+        guard let vector = (try? await withTimeout(LineBook.wait) { await task.value }) ?? nil else { return [] }
+        let lines = await linePicker.nearest(to: vector, query: run.query)
+        #if DEBUG
+        print("lines \(lines.count): " + lines.map { "\"\($0.user)\"" }.joined(separator: ", "))
+        #endif
+        return lines
+    }
+
+    /// A reply marked by a long press: loved joins his book and its index,
+    /// not him is kept beside it for review and never shown to a model. On
+    /// the record either way, with a mark for a moment.
+    func mark(_ layer: Layer, loved: Bool) {
+        let said = layer.spoken ?? layer.answer?.displayText ?? ""
+        let text = AnswerMarkup.plain(said).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let line = Line(user: layer.asked ?? layer.query, jarbits: text, source: loved ? .loved : .hated, at: .now)
+        actions.add("\(loved ? "Marked as loved" : "Marked as not him"): \(text)", asked: layer.asked ?? layer.query)
+        note(FactMark(text: text, kind: loved ? .loved : .notHim))
+        #if DEBUG
+        print("line \(loved ? "loved" : "not him"): \"\(line.user)\" → \"\(text)\"")
+        #endif
+        Task { [lineStore, linePicker] in
+            await lineStore.add(line)
+            if loved { await linePicker?.add(line) }
+        }
     }
 
     /// The planner's `facts` tool: the same judge over every fact, on words
@@ -1537,7 +1586,7 @@ final class JarbitsSession {
         layer.runToken = requestToken
         layer.messageAtFinish = false
         holdRun(requestToken)
-        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: context.facts ?? factTexts, done: actions.newest().map { $0.line() }, persona: persona, screen: context.screen)
+        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: context.facts ?? factTexts, done: actions.newest().map { $0.line() }, persona: persona, screen: context.screen, lines: context.lines ?? [])
     }
 
     /// A site the book knew opens, in a new layer, as opened by name; on
@@ -1882,12 +1931,16 @@ final class JarbitsSession {
         let conversation = result.conversation   // the whole conversation, not only Jev's chain
         Task {
             var context = context
-            // An answer gets the facts chosen for the query; the wait is bounded.
+            // An answer gets the facts chosen for the query and the lines of
+            // his book nearest it; both waits are bounded and run together.
             if instinct.spec.instinct.isAnswered, context.canAnswer, !decision.recent {
-                let picked = await pickedFacts(token: token)
+                async let picking = pickedFacts(token: token)
+                async let reading = linesForQuery(token: token)
+                let (picked, lines) = await (picking, reading)
                 guard token == requestToken else { releaseRun(token); return }
                 context.facts = picked.facts.map(\.text)
                 context.factPick = picked.summary
+                context.lines = lines
             }
             let recordedBefore = actions.count
             let outcome = await instinct.run(context, in: self, token: token)

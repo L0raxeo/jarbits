@@ -939,7 +939,41 @@ narrative answer, the planner and the closing line after the speaker
 line; the one-line answer, the fact reader and the two readers do not get
 it. `report blind old.json new.json` lays two runs of the voice set side
 by side with the sides shuffled, for choosing by ear without knowing
-which is which, and `report blind --score` reads the picks against the key. `Evals/voice.jsonl` holds 31 of Lorcan's
+which is which, and `report blind --score` reads the picks against the key.
+After the voice, the line between what is never bent and what is his to
+bend (`Voice.divider`, 2026-11-02, the second step): the narrative
+instruction's rules stand under Truth (the cutoff, the facts, the record,
+the markers) and Character (the answer first, the scope, no padding, a wry
+aside where the moment earns one); the planner and the closing line have
+the voice alone and get the line in a form that names no Character block.
+What Lorcan's ear preferred in the first blind test is one bullet of the
+voice guide.
+
+**His book of lines** (`LineBook` in the Answers library, 2026-11-02, the
+third step): eighty short exchanges in his voice, by situation (small
+talk, being thanked, teasing, bad news, being wrong, disagreeing, asked
+what he is, can't do, a plain answer, a question back), written by hand
+with made-up details, in `Packages/Engine/Sources/Answers/Resources/lines.jsonl`.
+A reply gets the six nearest the request in meaning: the request is
+embedded once as it is sent, beside the route (`QueryRun.meaning`,
+Gemini's embedder), the book's lines are embedded as kept and indexed
+(`LinePicker`, a `MeaningIndex` keyed by line id, `lines.index` beside
+the facts on the phone, caught up on first use), and the session waits
+up to 1.5 s past the route for the meaning, else the reply goes without.
+The lines stand under Character in the narrative instruction and after
+the voice in the planner's, headed "How you have spoken before", with one
+rule: they teach the manner alone, and no name, number, place or detail
+from them may enter the reply. The bare one-line answer takes none. A
+long press on a reply, in the bubble or the full view, offers "Love it",
+"Not him" and "Copy": a loved reply joins the book in
+`Application Support/Browser/lines.jsonl` (`LineStore`) and the index, so
+the book grows from Lorcan's taste; a reply marked as not him is kept in
+the same file for review and never shown to a model; both go on the
+record. `report lines "<request>"` prints the six a request would get,
+`report book [lines.jsonl]` the seed by situation and what was marked on
+the phone, `report answer --lines` and `report plans` (lines on by default,
+`--no-lines` for the bare prompt, `--book` for a phone's file) run with them;
+embeddings are cached under `.evalcache/embeddings/`. `Evals/voice.jsonl` holds 31 of Lorcan's
 real requests, each set one round before the planner speaks, to hear the
 voice with `report plans`; `report answer` hears one answer. Where he
 writes facts (the fact reader, the remember distill): "You are Jarbits,

@@ -23,6 +23,9 @@ final class QueryRun {
     /// scored, the read words after a rewrite.
     var factPick: Task<FactPickVerdict, Never>?
     var factPickQuery = ""
+    /// The request's meaning, embedded beside the route for the book of
+    /// lines (and, later, the callbacks); nil without a Gemini key.
+    var meaning: Task<[Float]?, Never>?
     private(set) var over = false
     var onOver: ((QueryRun) -> Void)?
 

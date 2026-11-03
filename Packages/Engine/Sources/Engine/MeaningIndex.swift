@@ -121,6 +121,13 @@ public actor MeaningIndex {
     /// nothing is indexed.
     public func nearest(to text: String, among ids: Set<UUID>? = nil, limit: Int) async -> [(id: UUID, closeness: Float)] {
         guard limit > 0, !load().isEmpty, let probe = await embedder.vector(for: text, as: .request) else { return [] }
+        return nearest(toVector: probe, among: ids, limit: limit)
+    }
+
+    /// The same, with the request already embedded (once, for every index
+    /// that reads it: the session embeds a query beside its route).
+    public func nearest(toVector probe: [Float], among ids: Set<UUID>? = nil, limit: Int) -> [(id: UUID, closeness: Float)] {
+        guard limit > 0, !probe.isEmpty, !load().isEmpty else { return [] }
         var scored: [(id: UUID, closeness: Float)] = []
         for (id, vector) in load() where ids?.contains(id) ?? true {
             scored.append((id, Self.cosine(probe, vector)))

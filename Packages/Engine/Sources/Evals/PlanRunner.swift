@@ -28,22 +28,27 @@ public struct PlanRunner: Sendable {
     public var client: GeminiClient?
     public var cache: PlanCache
     public var timeout: Duration
+    /// The lines of his book for a request, as the app picks them (by the
+    /// request's meaning); nil runs without lines. They ride in the request
+    /// body, so the cache keeps a run with lines apart from one without.
+    public var pickLines: (@Sendable (String) async -> [Line])?
 
-    public init(client: GeminiClient?, cache: PlanCache, timeout: Duration = ReasoningPolicy.roundTimeout) {
+    public init(client: GeminiClient?, cache: PlanCache, timeout: Duration = ReasoningPolicy.roundTimeout, pickLines: (@Sendable (String) async -> [Line])? = nil) {
         self.client = client
         self.cache = cache
         self.timeout = timeout
+        self.pickLines = pickLines
     }
 
     /// The first round's request for a case, as the app would send it.
-    public static func request(for planCase: PlanCase, model: String = Planner.model) -> InteractionRequest {
+    public static func request(for planCase: PlanCase, model: String = Planner.model, lines: [Line] = []) -> InteractionRequest {
         let context = AnswerContext.example
         // Newest first, as the app lists them.
         let webpages = (planCase.webpages ?? []).map { $0.webpage(now: context.now) }.sorted { $0.opened > $1.opened }
         let screen = planCase.screen?.screen
         let bundle = PlanBundle(
             query: planCase.query, exchanges: planCase.exchanges ?? [], facts: planCase.facts ?? [],
-            tools: Planner.tools(for: InstinctSpec.all), context: context, persona: .example, screen: screen
+            tools: Planner.tools(for: InstinctSpec.all), context: context, persona: .example, screen: screen, lines: lines
         )
         let notes = (planCase.notes ?? []).map { $0.note(now: context.now) }
         let things = ThingTable(exchanges: planCase.exchanges ?? [], webpages: webpages, notes: notes, items: screen?.items ?? [])
@@ -68,7 +73,8 @@ public struct PlanRunner: Sendable {
     }
 
     public func run(_ planCase: PlanCase) async -> PlanResult {
-        let request = Self.request(for: planCase, model: client?.model ?? Planner.model)
+        let lines = await pickLines?(planCase.query) ?? []
+        let request = Self.request(for: planCase, model: client?.model ?? Planner.model, lines: lines)
         func result(calls: [PlanResult.Call], cached: Bool, latencyMs: Int, status: EvalStatus? = nil, failures: [String]? = nil) -> PlanResult {
             let found = failures ?? PlanCheck.failures(planCase, calls: calls.map { ($0.name, $0.arguments) })
             return PlanResult(name: planCase.name, query: planCase.query, expected: planCase.calls, calls: calls, cached: cached, latencyMs: latencyMs, status: status ?? (found.isEmpty ? .pass : .fail), failures: found)

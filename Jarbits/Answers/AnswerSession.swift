@@ -30,6 +30,8 @@ final class AnswerSession {
     private var done: [String] = []
     private var persona = Persona()
     private var screen: Screen?
+    /// The lines of his book nearest the query, for the manner.
+    private var lines: [Line] = []
     /// The second asking with every fact, after the first came back as
     /// `AnswerPrompt.notesMarker`; its instruction leaves the marker out.
     private(set) var retry = false
@@ -102,7 +104,7 @@ final class AnswerSession {
         AnswerMarkup.styled(displayText, for: format)
     }
 
-    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil, retry: Bool = false) {
+    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil, retry: Bool = false, lines: [Line] = []) {
         task?.cancel()
         self.format = format
         self.query = query
@@ -113,15 +115,16 @@ final class AnswerSession {
         self.persona = persona
         self.screen = screen
         self.retry = retry
+        self.lines = lines
         text = ""
         summary = nil
         phase = .waiting
-        task = Task { await run(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry) }
+        task = Task { await run(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry, lines: lines) }
     }
 
     /// The same answer once more, with every fact, after `needsNotes`.
     func retryWithAllFacts(_ facts: [String]) {
-        start(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: true)
+        start(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: true, lines: lines)
     }
 
     func cancel() {
@@ -132,11 +135,11 @@ final class AnswerSession {
         }
     }
 
-    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String], done: [String], persona: Persona, screen: Screen?, retry: Bool) async {
+    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String], done: [String], persona: Persona, screen: Screen?, retry: Bool, lines: [Line]) async {
         let clock = ContinuousClock()
         let start = clock.now
         let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
-        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry)
+        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry, lines: lines)
 
         var usage: AnswerUsage?
         var firstTokenMs: Int?

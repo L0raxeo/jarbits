@@ -92,13 +92,13 @@ struct ResultView: View {
             if let answer = layer.answer {
                 AnswerView(
                     spans: answer.styledSpans, stoppedEarly: answer.stoppedEarly, format: format, clayY: clayY, barCompact: $barCompact,
-                    history: history, query: query, failed: answer.failedBeforeText, needsLiveData: answer.needsLiveData, sources: layer.sources
+                    history: history, query: query, failed: answer.failedBeforeText, needsLiveData: answer.needsLiveData, sources: layer.sources, onMark: { session.mark(layer, loved: $0) }
                 )
             }
         case let .time(_, text):
             AnswerView(spans: AnswerMarkup.styled(text, for: .oneLine), stoppedEarly: false, format: .oneLine, clayY: clayY, barCompact: $barCompact)
         case let .said(_, text):
-            AnswerView(spans: AnswerMarkup.styled(text, for: .narrative), stoppedEarly: false, format: .narrative, clayY: clayY, barCompact: $barCompact, sources: layer.sources)
+            AnswerView(spans: AnswerMarkup.styled(text, for: .narrative), stoppedEarly: false, format: .narrative, clayY: clayY, barCompact: $barCompact, sources: layer.sources, onMark: { session.mark(layer, loved: $0) })
         case let .recallPicker(webpages, title):
             RecallGridView(webpages: webpages, title: title, topInset: topInset, barCompact: $barCompact)
         case let .siteChoices(name, candidates):
@@ -249,6 +249,8 @@ private struct AnswerView: View {
     /// The pages Jarbits read on its own screen for this answer: listed in
     /// the footer, a tap brings one forward.
     var sources: [Layer] = []
+    /// A long press on the answer: loved or not him, into his book.
+    var onMark: ((Bool) -> Void)?
 
     /// A source as the footer names it: the page's title and host, or the
     /// weather Jarbits read.
@@ -278,7 +280,7 @@ private struct AnswerView: View {
             Text(AttributedString(spans: spans, ink: ink))
                 .font(.largeTitle.weight(.semibold))
                 .multilineTextAlignment(.center)
-                .textSelection(.enabled)
+                .contextMenu { markMenu }
             footer
         }
         .padding(.horizontal, 24)
@@ -293,7 +295,7 @@ private struct AnswerView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     ForEach(history.indices, id: \.self) { index in
                         queryLine(history[index].query)
-                        prose(AnswerMarkup.styled(history[index].answer, for: history[index].format), as: history[index].format)
+                        prose(AnswerMarkup.styled(history[index].answer, for: history[index].format), as: history[index].format, markable: false)
                     }
                     if !history.isEmpty, let query {
                         queryLine(query).id(Self.latestTurn)
@@ -329,12 +331,25 @@ private struct AnswerView: View {
 
     private static let latestTurn = "latest-turn"
 
-    /// A narrative as prose; a one-line turn as the short fact it is.
-    private func prose(_ spans: [StyledSpan], as format: Instinct) -> some View {
-        Text(AttributedString(spans: spans, ink: ink))
+    /// A narrative as prose; a one-line turn as the short fact it is. The
+    /// newest answer takes the mark menu on a long press; earlier turns select.
+    @ViewBuilder
+    private func prose(_ spans: [StyledSpan], as format: Instinct, markable: Bool = true) -> some View {
+        let text = Text(AttributedString(spans: spans, ink: ink))
             .font(format == .oneLine ? .title3.weight(.semibold) : .body)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        if markable {
+            text.contextMenu { markMenu }.frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            text.textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var markMenu: some View {
+        Group {
+            Button { onMark?(true) } label: { Label("Love it", systemImage: "heart") }
+            Button { onMark?(false) } label: { Label("Not him", systemImage: "hand.thumbsdown") }
+            Button { UIPasteboard.general.string = AnswerMarkup.plain(spans.map(\.text).joined()) } label: { Label("Copy", systemImage: "doc.on.doc") }
+        }
     }
 
     /// What the user asked, over its answer: quiet, so the answers carry the page.

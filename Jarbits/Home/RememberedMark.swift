@@ -9,6 +9,10 @@ struct FactMark: Equatable {
         /// A known fact changed by what was just said: the new words.
         case updated
         case forgotten
+        /// A reply marked by a long press: it joins his book of lines.
+        case loved
+        /// A reply marked as not him: kept for review, never shown to a model.
+        case notHim
     }
 
     var text: String
@@ -20,6 +24,8 @@ struct FactMark: Equatable {
         case .remembered: "Remembered: " + text
         case .updated: "Updated: " + text
         case .forgotten: "Forgotten: " + text
+        case .loved: "Loved: " + text
+        case .notHim: "Not him: " + text
         }
     }
 

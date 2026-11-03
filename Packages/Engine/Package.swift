@@ -14,7 +14,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "Engine"),
-        .target(name: "Answers", dependencies: ["Engine"]),
+        .target(name: "Answers", dependencies: ["Engine"], resources: [.copy("Resources/lines.jsonl")]),
         .target(name: "Sites", dependencies: ["Engine"]),
         .target(name: "Evals", dependencies: ["Engine", "Answers"]),
         .executableTarget(name: "ReportCLI", dependencies: ["Engine", "Answers", "Sites", "Evals"]),

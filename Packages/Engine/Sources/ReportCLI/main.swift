@@ -36,6 +36,12 @@ import Sites
 //     (one answer as the app asks it, narrative unless --one-line; with the key, one small metered call,
 //      printing the answer as written, for hearing the voice; --facts-file and --pick as for plan, and an
 //      answer that asks for every fact is asked once more with them, as the app does)
+//   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report lines "you're useless" [--book lines.jsonl]
+//     (the lines of his book nearest a request in meaning, as a reply gets them; the seed from the
+//     package, plus the loved lines of a file exported from the phone; embeddings cached under .evalcache)
+//   swift run --package-path Packages/Engine report book [lines.jsonl]
+//     (the seed by situation, and what was marked on the phone: loved lines, which the models see, and
+//     not-him lines, kept for review)
 //   swift run --package-path Packages/Engine report blind old.json new.json [--key key.json] [--seed n]
 //     (the ear test: two runs of the same plan cases (report plans --out, before and after a change) side by
 //     side with the sides shuffled per case, so the listener picks without knowing which is which; then
@@ -68,6 +74,36 @@ import Sites
 //     the draw is fixed by the day, or by --seed, so a repeat the same day runs from the cache)
 
 let arguments = Array(CommandLine.arguments.dropFirst())
+
+/// The book's picker for the Mac: the seed lines (and any file of marked
+/// lines given) in an index under .evalcache, embedded once through the
+/// embedding cache; nil without a Gemini key when nothing is cached yet.
+func linePicker(root: URL, book: URL? = nil, network: Bool = true) async -> LinePicker? {
+    let key = network ? ProcessInfo.processInfo.environment["GEMINI_API_KEY"] : nil
+    let embedder = CachedEmbedder(inner: key.flatMap { $0.isEmpty ? nil : GeminiEmbedder(apiKey: $0) }, directory: root.appending(path: ".evalcache/embeddings"))
+    var loved: [Line] = []
+    if let book, let data = try? Data(contentsOf: book) {
+        loved = ((try? LineBook.parse(data)) ?? []).filter { $0.source == .loved }
+    }
+    let picker = LinePicker(fileURL: root.appending(path: ".evalcache/lines.index"), embedder: embedder, loved: loved)
+    await picker.catchUp()
+    return picker
+}
+
+/// The lines nearest a request, through the same embedder, printed.
+func pickLines(_ query: String, picker: LinePicker?, embedder: any Embedder, quietly: Bool = false) async -> [Line] {
+    guard let picker, let vector = await embedder.vector(for: query, as: .request) else {
+        if !quietly { print("no lines: the request could not be embedded (no GEMINI_API_KEY, or not cached)") }
+        return []
+    }
+    let lines = await picker.nearest(to: vector, query: query)
+    await picker.flush()
+    if !quietly {
+        print("lines (\(lines.count) of \(await picker.count), nearest the request in meaning):")
+        for line in lines { print("  \(line.shown)\(line.situation.map { "  [\($0)]" } ?? "")") }
+    }
+    return lines
+}
 
 /// Jev choosing which of `facts` go with `query`, as the app does
 /// (`FactPicking`), printing the chosen ones with their scores and the
@@ -439,12 +475,16 @@ case "answer":
     var format: Instinct = .narrative
     var facts: [String] = []
     var pick = false
+    var withLines = false
     var history: [AnswerTurn] = []
     var dryRun = false
     while let flag = rest.first {
         switch flag {
         case "--one-line":
             format = .oneLine
+            rest.removeFirst()
+        case "--lines":
+            withLines = true
             rest.removeFirst()
         case "--fact":
             guard rest.count >= 2 else { fail(usage) }
@@ -469,8 +509,15 @@ case "answer":
     }
     let every = facts
     if pick { facts = await pickFacts(query, from: facts, exchanges: Exchange.fromTurns(history)) }
+    var lines: [Line] = []
+    if withLines {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let picker = await linePicker(root: root)
+        let embedder = CachedEmbedder(inner: ProcessInfo.processInfo.environment["GEMINI_API_KEY"].flatMap { $0.isEmpty ? nil : GeminiEmbedder(apiKey: $0) }, directory: root.appending(path: ".evalcache/embeddings"))
+        lines = await pickLines(query, picker: picker, embedder: embedder)
+    }
     let context = AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now)
-    let request = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: facts, persona: .example)
+    let request = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: facts, persona: .example, lines: lines)
     guard !dryRun, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
         print("request body (\(GeminiClient.defaultModel)):")
         print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
@@ -483,7 +530,7 @@ case "answer":
         if text.contains(AnswerPrompt.notesMarker) {
             // As the app does: once more with every fact, whose instruction says to say he doesn't know instead.
             print("\(AnswerPrompt.notesMarker): asking again with every fact (\(every.count))")
-            let again = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: every, persona: .example, retry: true)
+            let again = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: every, persona: .example, retry: true, lines: lines)
             print(try await client.interact(again).text)
         } else {
             print(text)
@@ -648,6 +695,42 @@ case "picks":
         FileHandle.standardError.write(Data("wrote \(out.path(percentEncoded: false))\n".utf8))
     }
     exit(regressed || results.contains { $0.status == .fail } ? 1 : 0)
+case "lines":
+    // The lines of his book nearest a request, as a reply would get them.
+    let usage = "usage: report lines <query> [--book <lines.jsonl>]"
+    var rest = Array(arguments.dropFirst())
+    guard let query = rest.first else { fail(usage) }
+    rest.removeFirst()
+    var book: URL?
+    while let flag = rest.first {
+        switch flag {
+        case "--book":
+            guard rest.count >= 2 else { fail(usage) }
+            book = URL(fileURLWithPath: rest[1])
+            rest.removeFirst(2)
+        default: fail(usage)
+        }
+    }
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let picker = await linePicker(root: root, book: book)
+    let embedder = CachedEmbedder(inner: ProcessInfo.processInfo.environment["GEMINI_API_KEY"].flatMap { $0.isEmpty ? nil : GeminiEmbedder(apiKey: $0) }, directory: root.appending(path: ".evalcache/embeddings"))
+    _ = await pickLines(query, picker: picker, embedder: embedder)
+case "book":
+    // A file of marked lines from the phone (lines.jsonl), and the seed: what he has been taught.
+    let usage = "usage: report book [lines.jsonl]"
+    let rest = Array(arguments.dropFirst())
+    let seed = LineBook.seed()
+    let situations = Dictionary(grouping: seed, by: { $0.situation ?? "unsorted" })
+    print("seed: \(seed.count) lines in \(situations.count) situations: " + situations.keys.sorted().map { "\($0) \(situations[$0]!.count)" }.joined(separator: ", "))
+    if let path = rest.first {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)), let marked = try? LineBook.parse(data) else { fail("could not read \(path)") }
+        let loved = marked.filter { $0.source == .loved }, hated = marked.filter { $0.source == .hated }
+        print("marked on the phone: \(loved.count) loved, \(hated.count) not him")
+        if !loved.isEmpty { print("\nloved (these join the seed in what the models see):"); for line in loved { print("  \(line.shown)") } }
+        if !hated.isEmpty { print("\nnot him (for review; never shown to a model):"); for line in hated { print("  \(line.shown)") } }
+    } else if rest.count > 1 {
+        fail(usage)
+    }
 case "blind":
     // The ear test: two plan runs side by side, shuffled, and the score afterwards.
     let usage = "usage: report blind <old results.json> <new results.json> [--key <key.json>] [--seed n] | report blind --score <key.json> <picks such as A B - A>"
@@ -683,7 +766,7 @@ case "blind":
     print(Blind.sheet(pairs), terminator: "")
     FileHandle.standardError.write(Data("key: \(keyFile.path(percentEncoded: false)); score with: report blind --score <key> A B - ...\n".utf8))
 case "plans":
-    let usage = "usage: report plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>] [--cache <dir>]"
+    let usage = "usage: report plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>] [--cache <dir>] [--no-lines] [--book <lines.jsonl>]"
     let packageRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()   // main.swift → ReportCLI/
         .deletingLastPathComponent()   // → Sources/
@@ -698,6 +781,11 @@ case "plans":
     // change's flips from the run-to-run noise (about one case in five on
     // identical prompts, measured 2026-10-29).
     var cache = packageRoot.appending(path: ".evalcache/plans")
+    // The lines of his book go with every case, as in the app, picked by the
+    // request's meaning (embedded once, cached under .evalcache/embeddings);
+    // --no-lines runs the prompt bare, --book adds a file of marked lines.
+    var withLines = true
+    var book: URL?
     var rest = Array(arguments.dropFirst())
     while let argument = rest.first {
         rest.removeFirst()
@@ -706,6 +794,11 @@ case "plans":
             guard let next = rest.first else { fail(usage) }
             rest.removeFirst()
             out = URL(fileURLWithPath: next)
+        case "--no-lines": withLines = false
+        case "--book":
+            guard let next = rest.first else { fail(usage) }
+            rest.removeFirst()
+            book = URL(fileURLWithPath: next)
         case "--cache":
             guard let next = rest.first else { fail(usage) }
             rest.removeFirst()
@@ -730,7 +823,13 @@ case "plans":
     if network, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty {
         client = GeminiClient(apiKey: key, model: model, totalTimeout: ReasoningPolicy.roundTimeout)
     }
-    let runner = PlanRunner(client: client, cache: PlanCache(directory: cache))
+    var pick: (@Sendable (String) async -> [Line])?
+    if withLines {
+        let picker = await linePicker(root: packageRoot, book: book, network: network)
+        let embedder = CachedEmbedder(inner: network ? ProcessInfo.processInfo.environment["GEMINI_API_KEY"].flatMap { $0.isEmpty ? nil : GeminiEmbedder(apiKey: $0) } : nil, directory: packageRoot.appending(path: ".evalcache/embeddings"))
+        pick = { query in await pickLines(query, picker: picker, embedder: embedder, quietly: true) }
+    }
+    let runner = PlanRunner(client: client, cache: PlanCache(directory: cache), pickLines: pick)
     let results = await runner.run(cases)
     if let data = try? JSONEncoder().encode(results) {
         try? FileManager.default.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -922,5 +1021,5 @@ case "sample":
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>] [--cache <dir>] | blind <old.json> <new.json> [--key <key.json>] | picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>] [--out <results.json>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>] [--cache <dir>] | lines <query> [--book <lines.jsonl>] | book [lines.jsonl] | blind <old.json> <new.json> [--key <key.json>] | picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>] [--out <results.json>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }

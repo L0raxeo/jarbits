@@ -247,7 +247,14 @@ public struct Planner: Sendable {
     /// `facts` are the ones chosen for the request (`FactPicking`), `held`
     /// how many Jarbits holds in all; when more are held than shown, the
     /// block says so and the `facts` tool is the way to the rest.
-    public static func system(facts: [String], held: Int? = nil, context: AnswerContext, persona: Persona = Persona()) -> String {
+    /// Situations whose lines the planner never sees: a question back is a
+    /// manner for an answer, but shown to the planner it taught asking
+    /// where the rules say act ("randomly through the day remind me to
+    /// stretch" asked for hours in two runs of two, 2026-11-02).
+    public static let linesLeftOut: Set<String> = ["a question back"]
+
+    public static func system(facts: [String], held: Int? = nil, context: AnswerContext, persona: Persona = Persona(), lines given: [Line] = []) -> String {
+        let book = given.filter { $0.situation.map { !linesLeftOut.contains($0) } ?? true }
         let held = max(held ?? facts.count, facts.count)
         var lines = [
             persona.speakerLine,
@@ -278,6 +285,12 @@ public struct Planner: Sendable {
             "- While you work, judge progress, not attempts. A step that gained ground (an address where there was none, a page where there was a name) earns the next step, however many it takes. A step that gained nothing (the same results again, nothing usable) is the moment to tell \(persona.user), in one short line in your own voice, what you could not find and what would find it (\"I'm afraid I can't measure distances yet; Maps will tell you which is closer. I'll keep looking in the meantime.\"): say it first, in the very next call, since \(persona.user) is waiting and has no idea why, and only then keep checking with a different kind of step or a new angle, in case one more holds it; you have the time. Never say round counts, handles or tool names to \(persona.user).",
             "- Call done when the request has been handled, or, after saying what you could not do, when you have checked what was worth checking.",
             "- Date and time: \(AnswerPrompt.dateText(context)). Locale: \(context.locale.identifier).",
+        ]
+        // The book's lines after the rules, so the rules stay the last word
+        // on what to do: before them they made the planner ask where the
+        // rules said act (two runs of 105: 97 and 97, against 101 and 99 without).
+        if !book.isEmpty { lines += ["", LineBook.block(book, persona: persona)] }
+        lines += [
             "",
             "\(AnswerPrompt.factsHeading(persona)) (told earlier; let it shape what you do, never repeat it\(held > facts.count ? "; the \(facts.count) of \(held) chosen as bearing on this request, facts finds others" : "")):",
         ]
@@ -435,7 +448,7 @@ public struct Planner: Sendable {
     public static func request(bundle: PlanBundle, transcript: [InteractionStep], model: String = model) -> InteractionRequest {
         InteractionRequest(
             model: model,
-            systemInstruction: system(facts: bundle.facts, held: bundle.factsHeld, context: bundle.context, persona: bundle.persona),
+            systemInstruction: system(facts: bundle.facts, held: bundle.factsHeld, context: bundle.context, persona: bundle.persona, lines: bundle.lines),
             input: "",
             maxOutputTokens: maxOutputTokens,
             thinkingLevel: thinkingLevel,
@@ -486,8 +499,10 @@ public struct PlanBundle: Sendable {
     public var persona: Persona
     /// What is on screen as the request is made, when it could be read.
     public var screen: Screen?
+    /// The lines of his book nearest the request in meaning, for the manner.
+    public var lines: [Line]
 
-    public init(query: String, exchanges: [Exchange], facts: [String], factsHeld: Int? = nil, tools: [ToolDeclaration], context: AnswerContext, persona: Persona = Persona(), screen: Screen? = nil) {
+    public init(query: String, exchanges: [Exchange], facts: [String], factsHeld: Int? = nil, tools: [ToolDeclaration], context: AnswerContext, persona: Persona = Persona(), screen: Screen? = nil, lines: [Line] = []) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
@@ -496,6 +511,7 @@ public struct PlanBundle: Sendable {
         self.context = context
         self.persona = persona
         self.screen = screen
+        self.lines = lines
     }
 }
 

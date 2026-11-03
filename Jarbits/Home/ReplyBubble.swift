@@ -366,8 +366,8 @@ private struct ReplyPiece: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(AttributedString(spans: spans, ink: Palette.ink))
                 .font(.title3.weight(.semibold))
-                .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contextMenu { markMenu }
             foot(readOn: false)
         }
     }
@@ -375,8 +375,20 @@ private struct ReplyPiece: View {
     /// Prose up to the cap; cut at the foot when longer, with "Read on".
     private func card(_ spans: [StyledSpan], stoppedEarly: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            capped(Text(AttributedString(spans: spans, ink: Palette.ink)).font(.body).textSelection(.enabled))
+            capped(Text(AttributedString(spans: spans, ink: Palette.ink)).font(.body).contextMenu { markMenu })
             foot(stoppedEarly ? Text("Stopped early.") : nil, readOn: true)
+        }
+    }
+
+    /// A long press on what he said: a reply Lorcan loves joins his book,
+    /// one that is not him is kept for review; and the words copied.
+    private var markMenu: some View {
+        Group {
+            Button { session.mark(layer, loved: true) } label: { Label("Love it", systemImage: "heart") }
+            Button { session.mark(layer, loved: false) } label: { Label("Not him", systemImage: "hand.thumbsdown") }
+            Button {
+                UIPasteboard.general.string = AnswerMarkup.plain(layer.spoken ?? layer.answer?.displayText ?? "")
+            } label: { Label("Copy", systemImage: "doc.on.doc") }
         }
     }
 

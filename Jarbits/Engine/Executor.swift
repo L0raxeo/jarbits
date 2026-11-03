@@ -52,6 +52,8 @@ final class Executor {
         // held in all: the planner's `facts` tool looks through the rest.
         let picked = await session.pickedFacts(token: token)
         let facts = picked.facts.map { $0.line() }
+        // The lines of his book nearest the request, for the manner of what he says.
+        let bookLines = await session.linesForQuery(token: token)
         let held = session.knownFacts.count
         /// How many times the plan looked further with `facts`.
         var lookups = 0
@@ -85,7 +87,7 @@ final class Executor {
             query: query, exchanges: exchanges, facts: facts, factsHeld: held,
             tools: Planner.tools(for: InstinctSpec.all),
             context: AnswerContext(locale: .current, timeZone: .current, now: now),
-            persona: session.persona, screen: screen
+            persona: session.persona, screen: screen, lines: bookLines
         )
         // The handles: the chain's exchanges, the open webpages and every note
         // of the notebook, tagged, so the plan points at a thing and the

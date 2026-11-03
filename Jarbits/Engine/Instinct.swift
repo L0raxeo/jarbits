@@ -1,3 +1,4 @@
+import Answers
 import Foundation
 import Engine
 
@@ -46,6 +47,8 @@ struct InstinctContext {
     var facts: [String]? = nil
     /// How they were chosen; for the log.
     var factPick: FactPickSummary? = nil
+    /// The lines of his book nearest the query in meaning, for an answer's manner; nil means none.
+    var lines: [Line]? = nil
     /// What was on screen as the query began: an answer about it reads it.
     var screen: Screen? = nil
     /// The page this step opens goes to Jarbits's own screen, not the
