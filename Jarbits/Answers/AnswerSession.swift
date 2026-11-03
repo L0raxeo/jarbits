@@ -36,6 +36,8 @@ final class AnswerSession {
     private var screen: Screen?
     /// The lines of his book nearest the query, for the manner.
     private var lines: [Line] = []
+    /// Exchanges from earlier conversations nearest the query, for a callback.
+    private var callbacks: [Callback] = []
     /// The second asking with every fact, after the first came back as
     /// `AnswerPrompt.notesMarker`; its instruction leaves the marker out.
     private(set) var retry = false
@@ -114,8 +116,9 @@ final class AnswerSession {
         phase == .streaming ? Shape.streaming(displayText) : Shape.of(displayText)
     }
 
-    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil, retry: Bool = false, lines: [Line] = []) {
+    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil, retry: Bool = false, lines: [Line] = [], callbacks: [Callback] = []) {
         task?.cancel()
+        self.callbacks = callbacks
         self.format = format
         self.query = query
         self.history = history
@@ -129,12 +132,12 @@ final class AnswerSession {
         text = ""
         summary = nil
         phase = .waiting
-        task = Task { await run(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry, lines: lines) }
+        task = Task { await run(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry, lines: lines, callbacks: callbacks) }
     }
 
     /// The same answer once more, with every fact, after `needsNotes`.
     func retryWithAllFacts(_ facts: [String]) {
-        start(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: true, lines: lines)
+        start(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: true, lines: lines, callbacks: callbacks)
     }
 
     func cancel() {
@@ -145,11 +148,11 @@ final class AnswerSession {
         }
     }
 
-    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String], done: [String], persona: Persona, screen: Screen?, retry: Bool, lines: [Line]) async {
+    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String], done: [String], persona: Persona, screen: Screen?, retry: Bool, lines: [Line], callbacks: [Callback]) async {
         let clock = ContinuousClock()
         let start = clock.now
         let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
-        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry, lines: lines)
+        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry, lines: lines, callbacks: callbacks)
 
         var usage: AnswerUsage?
         var firstTokenMs: Int?
@@ -214,7 +217,8 @@ final class AnswerSession {
             latencyMs: Self.elapsedMs(clock, since: start),
             outcome: outcome,
             retriedWithAll: retry ? true : nil,
-            shape: outcome == .completed ? Shape.of(text) : nil
+            shape: outcome == .completed ? Shape.of(text) : nil,
+            callbacks: callbacks.isEmpty ? nil : callbacks.count
         )
         self.summary = summary
         if outcome == .completed, !announced, !displayText.isEmpty {

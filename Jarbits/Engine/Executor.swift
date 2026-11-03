@@ -52,8 +52,10 @@ final class Executor {
         // held in all: the planner's `facts` tool looks through the rest.
         let picked = await session.pickedFacts(token: token)
         let facts = picked.facts.map { $0.line() }
-        // The lines of his book nearest the request, for the manner of what he says.
+        // The lines of his book nearest the request, for the manner of what he says,
+        // and the exchanges of earlier conversations nearest it, for a callback.
         let bookLines = await session.linesForQuery(token: token)
+        let callbacks = await session.callbacksForQuery(token: token)
         let held = session.knownFacts.count
         /// How many times the plan looked further with `facts`.
         var lookups = 0
@@ -63,7 +65,7 @@ final class Executor {
             session.planFactPick = pick
             return EngineSummary(
                 model: planner.client.model, rounds: rounds, steps: steps, usage: counted ? usage : nil,
-                latencyMs: Int((clock.now - start) / .milliseconds(1)), factsGiven: facts.count, factsHeld: held, webpagesGiven: webpages, outcome: outcome,
+                latencyMs: Int((clock.now - start) / .milliseconds(1)), factsGiven: facts.count, factsHeld: held, callbacksGiven: callbacks.isEmpty ? nil : callbacks.count, webpagesGiven: webpages, outcome: outcome,
                 screenChars: screen.map { $0.visible.count + $0.rest.count }, screenItems: screen?.items.count, pictureBytes: screen?.picture?.count,
                 lostConnection: lostConnection ? true : nil,
                 cutShort: cutShort ? true : nil
@@ -100,7 +102,7 @@ final class Executor {
         let notes = await session.notebook.all()
         guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
         var things = ThingTable(exchanges: exchanges, webpages: listedWebpages, notes: notes, items: screen?.items ?? [])
-        var transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: now, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, spoken: spoken, triggers: triggers, done: session.actions.newest(), doneEarlier: max(session.actions.count - ActionLog.listed, 0)), picture: screen?.picture)]
+        var transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: now, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, spoken: spoken, triggers: triggers, done: session.actions.newest(), doneEarlier: max(session.actions.count - ActionLog.listed, 0), callbacks: callbacks), picture: screen?.picture)]
         func noSuchThing(_ handle: String) -> String {
             "no such thing: \(handle); the things are \(things.handles.isEmpty ? "none" : things.handles.joined(separator: ", "))"
         }

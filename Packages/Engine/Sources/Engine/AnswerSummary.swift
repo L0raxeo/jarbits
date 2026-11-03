@@ -61,6 +61,8 @@ public struct AnswerSummary: Codable, Sendable, Equatable {
     /// The shape the text turned out to have, beside the pick that was the
     /// hint; nil in logs from before the model decided it.
     public var shape: Shape?
+    /// How many exchanges from earlier conversations the answer had in view; nil when none.
+    public var callbacks: Int?
 
     public enum Outcome: Codable, Sendable, Equatable {
         /// The answer streamed to the end.
@@ -85,7 +87,8 @@ public struct AnswerSummary: Codable, Sendable, Equatable {
         latencyMs: Int? = nil,
         outcome: Outcome,
         retriedWithAll: Bool? = nil,
-        shape: Shape? = nil
+        shape: Shape? = nil,
+        callbacks: Int? = nil
     ) {
         self.model = model
         self.format = format
@@ -95,5 +98,6 @@ public struct AnswerSummary: Codable, Sendable, Equatable {
         self.outcome = outcome
         self.retriedWithAll = retriedWithAll
         self.shape = shape
+        self.callbacks = callbacks
     }
 }

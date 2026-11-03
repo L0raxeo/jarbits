@@ -96,7 +96,9 @@ public enum AnswerPrompt {
     /// (`FactPicking`), or every fact when Jev could not choose, or on the
     /// retry after `notesMarker`.
     /// `done` is the newest of what he has done, oldest first (`ActionLog`).
-    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil) -> String {
+    /// `callbacks` are the exchanges of earlier conversations nearest the
+    /// query in meaning (`CallbackBook`), for a callback where one fits.
+    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil, callbacks: [Callback] = []) -> String {
         var lines = [
             "Query: \(query)",
             "",
@@ -132,7 +134,18 @@ public enum AnswerPrompt {
                 lines.append("- " + action)
             }
         }
+        if !callbacks.isEmpty {
+            lines.append("")
+            lines.append(CallbackBook.block(callbacks, calendar: calendar(context)))
+        }
         return lines.joined(separator: "\n")
+    }
+
+    static func calendar(_ context: AnswerContext) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = context.timeZone
+        calendar.locale = context.locale
+        return calendar
     }
 
     /// One exchange as a line of the input block.
@@ -159,12 +172,13 @@ public enum AnswerPrompt {
         persona: Persona = Persona(),
         screen: Screen? = nil,
         retry: Bool = false,
-        lines: [Line] = []
+        lines: [Line] = [],
+        callbacks: [Callback] = []
     ) -> InteractionRequest {
         InteractionRequest(
             model: model,
             systemInstruction: system(for: format, persona: persona, retry: retry, lines: lines),
-            input: input(query: query, context: context, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen),
+            input: input(query: query, context: context, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, callbacks: callbacks),
             history: history,
             maxOutputTokens: maxOutputTokens(for: format)
         )
@@ -202,6 +216,7 @@ public enum AnswerPrompt {
         - A block "\(factsHeading(persona))" may follow the context: facts \(persona.user) told you before, as you noted them. Let them shape the answer when they bear on it (a vegetarian gets a vegetarian recipe); ignore them otherwise; never list them back, repeat them or say you were told. When the query says one of them is not so ("I don't have a friend named John"), it is not so: take their word for it, own the mistake in a few words, and answer without it.
         - A question or a request about \(persona.users) own life, people, preferences or situation is answered from that block alone. \(whenTheBlockHoldsNothing(persona, retry: retry, line: "say in a line")) never guess, never answer from the world, never reply \(liveDataMarker) to it, and never tell a story or give a detail about \(persona.users) life that the block does not hold.
         - \(doneRule(doneHeading))
+        - \(CallbackBook.rule)
         - If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
         - Write in the language of the query; in English, British English. Plain prose; no headings, bullet points, numbered lists, tables, emoji, or Markdown other than the emphasis markers below, which are the only marks the screen can draw.
 

@@ -39,6 +39,8 @@ import Sites
 //   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report lines "you're useless" [--book lines.jsonl]
 //     (the lines of his book nearest a request in meaning, as a reply gets them; the seed from the
 //     package, plus the loved lines of a file exported from the phone; embeddings cached under .evalcache)
+//   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report callbacks "what about crabs" actions.jsonl
+//     (the exchanges of an exported record nearest a request in meaning, as a reply gets them for a callback)
 //   swift run --package-path Packages/Engine report book [lines.jsonl]
 //     (the seed by situation, and what was marked on the phone: loved lines, which the models see, and
 //     not-him lines, kept for review)
@@ -468,7 +470,7 @@ case "plan":
         print("round 1 could not reach the model (\(latencyMs) ms): \(reason)")
     }
 case "answer":
-    let usage = "usage: report answer <query> [--one-line] [--fact <text>]... [--facts-file <path>] [--pick] [--after <earlier query> <earlier answer>]... [--dry-run]"
+    let usage = "usage: report answer <query> [--one-line] [--fact <text>]... [--facts-file <path>] [--pick] [--lines] [--actions <actions.jsonl>] [--after <earlier query> <earlier answer>]... [--dry-run]"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
@@ -476,6 +478,7 @@ case "answer":
     var facts: [String] = []
     var pick = false
     var withLines = false
+    var actionsFile: URL?
     var history: [AnswerTurn] = []
     var dryRun = false
     while let flag = rest.first {
@@ -486,6 +489,10 @@ case "answer":
         case "--lines":
             withLines = true
             rest.removeFirst()
+        case "--actions":
+            guard rest.count >= 2 else { fail(usage) }
+            actionsFile = URL(fileURLWithPath: rest[1])
+            rest.removeFirst(2)
         case "--fact":
             guard rest.count >= 2 else { fail(usage) }
             facts.append(rest[1])
@@ -516,8 +523,19 @@ case "answer":
         let embedder = CachedEmbedder(inner: ProcessInfo.processInfo.environment["GEMINI_API_KEY"].flatMap { $0.isEmpty ? nil : GeminiEmbedder(apiKey: $0) }, directory: root.appending(path: ".evalcache/embeddings"))
         lines = await pickLines(query, picker: picker, embedder: embedder)
     }
+    var callbacks: [Callback] = []
+    if let actionsFile {
+        // The record's exchanges nearest the query, as the app gives them for a callback.
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let embedder = CachedEmbedder(inner: ProcessInfo.processInfo.environment["GEMINI_API_KEY"].flatMap { $0.isEmpty ? nil : GeminiEmbedder(apiKey: $0) }, directory: root.appending(path: ".evalcache/embeddings"))
+        let memory = Callbacks(fileURL: root.appending(path: ".evalcache/callbacks.index"), embedder: embedder)
+        await memory.catchUp(ActionLog(fileURL: actionsFile).newest(CallbackBook.cap))
+        if let vector = await embedder.vector(for: query, as: .request) { callbacks = await memory.nearest(to: vector, before: .distantFuture) }
+        await memory.flush()
+        print(callbacks.isEmpty ? "callbacks: none near it" : "callbacks:\n" + callbacks.map { "  \"\($0.asked ?? "")\" → \"\($0.said)\"" }.joined(separator: "\n"))
+    }
     let context = AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now)
-    let request = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: facts, persona: .example, lines: lines)
+    let request = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: facts, persona: .example, lines: lines, callbacks: callbacks)
     guard !dryRun, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
         print("request body (\(GeminiClient.defaultModel)):")
         print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
@@ -530,7 +548,7 @@ case "answer":
         if text.contains(AnswerPrompt.notesMarker) {
             // As the app does: once more with every fact, whose instruction says to say he doesn't know instead.
             print("\(AnswerPrompt.notesMarker): asking again with every fact (\(every.count))")
-            let again = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: every, persona: .example, retry: true, lines: lines)
+            let again = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: every, persona: .example, retry: true, lines: lines, callbacks: callbacks)
             print(try await client.interact(again).text)
         } else {
             print(text)
@@ -695,6 +713,24 @@ case "picks":
         FileHandle.standardError.write(Data("wrote \(out.path(percentEncoded: false))\n".utf8))
     }
     exit(regressed || results.contains { $0.status == .fail } ? 1 : 0)
+case "callbacks":
+    // The exchanges of a record nearest a request, as a reply would get them for a callback.
+    let usage = "usage: report callbacks <query> <actions.jsonl>"
+    let rest = Array(arguments.dropFirst())
+    guard rest.count == 2 else { fail(usage) }
+    let query = rest[0]
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let embedder = CachedEmbedder(inner: ProcessInfo.processInfo.environment["GEMINI_API_KEY"].flatMap { $0.isEmpty ? nil : GeminiEmbedder(apiKey: $0) }, directory: root.appending(path: ".evalcache/embeddings"))
+    let log = ActionLog(fileURL: URL(fileURLWithPath: rest[1]))
+    let records = log.newest(CallbackBook.cap)
+    let exchanges = CallbackBook.callbacks(in: records)
+    print("\(records.count) records, \(exchanges.count) of them exchanges")
+    let memory = Callbacks(fileURL: root.appending(path: ".evalcache/callbacks.index"), embedder: embedder)
+    await memory.catchUp(records)
+    guard let vector = await embedder.vector(for: query, as: .request) else { fail("the request could not be embedded (no GEMINI_API_KEY, or not cached)") }
+    let found = await memory.nearest(to: vector, before: .distantFuture)
+    await memory.flush()
+    print(found.isEmpty ? "nothing near it" : CallbackBook.block(found))
 case "lines":
     // The lines of his book nearest a request, as a reply would get them.
     let usage = "usage: report lines <query> [--book <lines.jsonl>]"
@@ -1021,5 +1057,5 @@ case "sample":
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>] [--cache <dir>] | lines <query> [--book <lines.jsonl>] | book [lines.jsonl] | blind <old.json> <new.json> [--key <key.json>] | picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>] [--out <results.json>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>] [--cache <dir>] | lines <query> [--book <lines.jsonl>] | book [lines.jsonl] | callbacks <query> <actions.jsonl> | blind <old.json> <new.json> [--key <key.json>] | picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>] [--out <results.json>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }

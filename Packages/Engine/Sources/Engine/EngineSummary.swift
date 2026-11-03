@@ -48,6 +48,8 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     public var factsGiven: Int
     /// How many facts Jarbits held in all; nil in logs from before the choosing.
     public var factsHeld: Int?
+    /// How many exchanges from earlier conversations the plan had in view; nil when none.
+    public var callbacksGiven: Int?
     /// How many open webpages the listing held.
     public var webpagesGiven: Int
     public var outcome: Outcome
@@ -64,7 +66,7 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     /// replying, or the rounds or the time ran out. Nil otherwise.
     public var cutShort: Bool?
 
-    public init(model: String, rounds: Int, steps: [Step], usage: AnswerUsage? = nil, latencyMs: Int, factsGiven: Int, factsHeld: Int? = nil, webpagesGiven: Int, outcome: Outcome, screenChars: Int? = nil, screenItems: Int? = nil, pictureBytes: Int? = nil, lostConnection: Bool? = nil, cutShort: Bool? = nil) {
+    public init(model: String, rounds: Int, steps: [Step], usage: AnswerUsage? = nil, latencyMs: Int, factsGiven: Int, factsHeld: Int? = nil, callbacksGiven: Int? = nil, webpagesGiven: Int, outcome: Outcome, screenChars: Int? = nil, screenItems: Int? = nil, pictureBytes: Int? = nil, lostConnection: Bool? = nil, cutShort: Bool? = nil) {
         self.model = model
         self.rounds = rounds
         self.steps = steps
@@ -72,6 +74,7 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         self.latencyMs = latencyMs
         self.factsGiven = factsGiven
         self.factsHeld = factsHeld
+        self.callbacksGiven = callbacksGiven
         self.webpagesGiven = webpagesGiven
         self.outcome = outcome
         self.screenChars = screenChars
@@ -82,7 +85,7 @@ public struct EngineSummary: Codable, Sendable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case model, rounds, steps, usage, latencyMs, factsGiven, factsHeld, webpagesGiven, outcome, screenChars, screenItems, pictureBytes, lostConnection, cutShort
+        case model, rounds, steps, usage, latencyMs, factsGiven, factsHeld, callbacksGiven, webpagesGiven, outcome, screenChars, screenItems, pictureBytes, lostConnection, cutShort
         /// The field's name before 2026-11-01, read from older logs.
         case memoriesGiven
     }
@@ -96,6 +99,7 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         latencyMs = try c.decode(Int.self, forKey: .latencyMs)
         factsGiven = try c.decode(Int.self, forKey: .factsGiven)
         factsHeld = try c.decodeIfPresent(Int.self, forKey: .factsHeld)
+        callbacksGiven = try c.decodeIfPresent(Int.self, forKey: .callbacksGiven)
         webpagesGiven = try c.decodeIfPresent(Int.self, forKey: .webpagesGiven) ?? c.decodeIfPresent(Int.self, forKey: .memoriesGiven) ?? 0
         outcome = try c.decode(Outcome.self, forKey: .outcome)
         screenChars = try c.decodeIfPresent(Int.self, forKey: .screenChars)
@@ -114,6 +118,7 @@ public struct EngineSummary: Codable, Sendable, Equatable {
         try c.encode(latencyMs, forKey: .latencyMs)
         try c.encode(factsGiven, forKey: .factsGiven)
         try c.encodeIfPresent(factsHeld, forKey: .factsHeld)
+        try c.encodeIfPresent(callbacksGiven, forKey: .callbacksGiven)
         try c.encode(webpagesGiven, forKey: .webpagesGiven)
         try c.encode(outcome, forKey: .outcome)
         try c.encodeIfPresent(screenChars, forKey: .screenChars)

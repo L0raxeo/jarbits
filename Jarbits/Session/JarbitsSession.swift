@@ -325,6 +325,9 @@ final class JarbitsSession {
     let linePicker: LinePicker?
     /// Embeds a request once, beside its route, for the book; nil without a key.
     private let embedder: GeminiEmbedder?
+    /// The exchanges of earlier conversations, indexed by meaning for a
+    /// callback; nil without a Gemini key.
+    let callbacks: Callbacks?
     /// A mark shown at the foot of a reply that is up, for a moment, so the
     /// reply stays: "Remembered: …". Nil otherwise; see `note(_:)`.
     private(set) var replyFoot: FactMark?
@@ -363,6 +366,7 @@ final class JarbitsSession {
         let embedder = Secrets.geminiAPIKey.map { GeminiEmbedder(apiKey: $0) }
         self.embedder = embedder
         linePicker = embedder.map { LinePicker(fileURL: LineStore.shared.fileURL.deletingLastPathComponent().appending(path: "lines.index"), embedder: $0) }
+        callbacks = embedder.map { Callbacks(fileURL: LineStore.shared.fileURL.deletingLastPathComponent().appending(path: "callbacks.index"), embedder: $0) }
         if let linePicker {
             // The loved lines join the seed in the index; embedded on the first pick.
             Task { await linePicker.include(await LineStore.shared.loved()) }
@@ -620,6 +624,7 @@ final class JarbitsSession {
             guard token == requestToken else { releaseRun(token); return }   // a newer query won, or cancelled
             run?.factPick = result.factPick   // which facts the answer or plan sees, still being scored
             run?.factPickQuery = result.query
+            catchUpCallbacks()   // the record's newest exchanges into the index, for the next query
             lastQuery = result.query   // the words that ran: the label, the exchange, the layer and the record carry them
             askedQuery = result.query
             #if DEBUG
@@ -859,6 +864,27 @@ final class JarbitsSession {
         print("lines \(lines.count): " + lines.map { "\"\($0.user)\"" }.joined(separator: ", "))
         #endif
         return lines
+    }
+
+    /// Exchanges from earlier conversations nearest the query, for a callback
+    /// where one fits: from before this conversation began (what it holds
+    /// is in view already), by the meaning embedded beside the route. The
+    /// index catches up on the record afterwards, never on the query's path.
+    func callbacksForQuery(token: UUID) async -> [Callback] {
+        guard let callbacks, let run, run.token == token, let task = run.meaning else { return [] }
+        guard let vector = (try? await withTimeout(LineBook.wait) { await task.value }) ?? nil else { return [] }
+        let found = await callbacks.nearest(to: vector, before: conversation.started)
+        #if DEBUG
+        if !found.isEmpty { print("callbacks \(found.count): " + found.map { "\"\($0.said.prefix(40))\"" }.joined(separator: ", ")) }
+        #endif
+        return found
+    }
+
+    /// The record's newest exchanges into the callbacks index, off the query's path.
+    func catchUpCallbacks() {
+        guard let callbacks else { return }
+        let records = actions.newest(CallbackBook.cap)
+        Task { await callbacks.catchUp(records) }
     }
 
     /// A reply marked by a long press: loved joins his book and its index,
@@ -1586,7 +1612,7 @@ final class JarbitsSession {
         layer.runToken = requestToken
         layer.messageAtFinish = false
         holdRun(requestToken)
-        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: context.facts ?? factTexts, done: actions.newest().map { $0.line() }, persona: persona, screen: context.screen, lines: context.lines ?? [])
+        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: context.facts ?? factTexts, done: actions.newest().map { $0.line() }, persona: persona, screen: context.screen, lines: context.lines ?? [], callbacks: context.callbacks ?? [])
     }
 
     /// A site the book knew opens, in a new layer, as opened by name; on
@@ -1936,11 +1962,13 @@ final class JarbitsSession {
             if instinct.spec.instinct.isAnswered, context.canAnswer, !decision.recent {
                 async let picking = pickedFacts(token: token)
                 async let reading = linesForQuery(token: token)
-                let (picked, lines) = await (picking, reading)
+                async let recalling = callbacksForQuery(token: token)
+                let (picked, lines, callbacks) = await (picking, reading, recalling)
                 guard token == requestToken else { releaseRun(token); return }
                 context.facts = picked.facts.map(\.text)
                 context.factPick = picked.summary
                 context.lines = lines
+                context.callbacks = callbacks
             }
             let recordedBefore = actions.count
             let outcome = await instinct.run(context, in: self, token: token)

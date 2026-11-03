@@ -279,6 +279,7 @@ public struct Planner: Sendable {
             "- Anything to be done later goes through trigger, and only a trigger step that ran makes it so: never say \"I'll remind you\" or promise anything later without one. Its task and line must stand on their own weeks from now, when this conversation is gone: \"remind me about that\" is written out as what that is, never \"this\" or \"the page\"; task holds the job alone, never the condition. After a set, say in one short line what was set and when, with the time from the step's result (the device worked it out, so hearing it back lets \(persona.user) catch a mistake); for a task set for a time, say once that with the app closed it comes as a notification to tap; for a site, that I watch for it here in Jarbits, since I cannot see other apps; for \"wake me up\", that it is a notification, not an alarm. When no time is given, ask; only \"randomly\" or \"sometime\" lets me choose the moment. Monthly and yearly repeats I cannot do yet: say so. What is set is answered from the listing with say; cancel names the handle.",
             "- A request about \(persona.users) own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about \(persona.user). The facts below are only the ones chosen as bearing on this request; when the request turns to something about \(persona.user) they do not cover, and the block says more are held, call facts with what to look for before saying you don't know.",
             "- \(AnswerPrompt.doneRule(doneHeading)) When \(persona.user) asks to take something back, this is what says what there is to take back. past reads further back than the block goes, when the question reaches past it.",
+            "- \(CallbackBook.rule)",
             "- Call several tools in one turn only when none needs another's result; otherwise one at a time, and read the result before the next.",
             "- A step whose result says it ran is done: never call it again with the same arguments.",
             "- Before the first step, judge what the request needs. An effect in the world no tool of yours produces (a booking, a call, a payment, a message sent) is not something to try: say in one line what you cannot do and what would do it (\"I'm afraid I can't book tables yet, sir. Their website or a quick call will.\"), then done. Information is always worth trying: a search often holds it outright.",
@@ -334,7 +335,7 @@ public struct Planner: Sendable {
     /// `lead` is the one line before the request that says why the planner
     /// has it: what an instinct tried and could not do (`failureLead`), or
     /// that the classifier picked an instinct that is reasoned (`pickedLead`).
-    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil, bubble: Screen? = nil, bubbleNoteID: UUID? = nil, spoken: String? = nil, triggers: [Trigger] = [], done: [ActionRecord] = [], doneEarlier: Int = 0) -> String {
+    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil, bubble: Screen? = nil, bubbleNoteID: UUID? = nil, spoken: String? = nil, triggers: [Trigger] = [], done: [ActionRecord] = [], doneEarlier: Int = 0, callbacks: [Callback] = []) -> String {
         var lines = ["Request: \(query)"]
         // The words as the user said them, when the reading changed them: the
         // planner resolves "it" and "this" from these, never from a rewrite.
@@ -358,6 +359,11 @@ public struct Planner: Sendable {
             lines.append("")
             lines.append("\(doneHeading) (oldest first\(doneEarlier > 0 ? "; \(doneEarlier) earlier, which past reads" : "")):")
             lines += done.map { "- " + $0.line(calendar: calendar, noteHandles: things.noteHandles) }
+        }
+        // Exchanges from earlier conversations nearest the request, for a callback where one fits.
+        if !callbacks.isEmpty {
+            lines.append("")
+            lines.append(CallbackBook.block(callbacks, calendar: calendar))
         }
         let webpages = things.webpageEntries
         if !webpages.isEmpty {

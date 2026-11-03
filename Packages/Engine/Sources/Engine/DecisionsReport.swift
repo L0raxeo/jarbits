@@ -308,6 +308,8 @@ public enum DecisionsReport {
             out.append("\(picks.count) queries had their facts chosen (\(chosen.first?.model ?? FactPicking.model), bar \(FactPicking.threshold.formatted()), at most \(FactPicking.maxSent)): mean \(mean(picks.map(\.held))) held, \(mean(chosen.map(\.sent))) sent where Jev chose (most \(chosen.map(\.sent).max() ?? 0)); median latency \(median), worst \(worst). \(all.count) sent every fact instead" + (all.isEmpty ? "." : ": " + Dictionary(grouping: all, by: { $0.reason ?? "no reason" }).sorted { $0.value.count > $1.value.count }.map { "\($0.key) \($0.value.count)" }.joined(separator: ", ") + "."))
             let lookups = picks.compactMap(\.lookups).reduce(0, +)
             if lookups > 0 { out.append("Plans looked further \(lookups) \(lookups == 1 ? "time" : "times") with facts.") }
+            let withCallbacks = records.filter { ($0.answer?.callbacks ?? 0) > 0 || ($0.engine?.callbacksGiven ?? 0) > 0 }.count
+            if withCallbacks > 0 { out.append("\(withCallbacks) \(withCallbacks == 1 ? "reply" : "replies") had exchanges from earlier conversations in view.") }
             let retried = records.filter { $0.answer?.retriedWithAll == true }.count
             if retried > 0 { out.append("\(retried) \(retried == 1 ? "answer was" : "answers were") asked again with every fact after \(AnswerSummary.notesMarkerName).") }
             out.append("")

@@ -997,7 +997,28 @@ as a transcript; a `say` that is one line is a line too. All four
 emphasis markers parse for both picks; the instruction keeps a bare
 value to a highlight. The answer's summary on the log line carries its
 `shape` beside the pick, and `report decisions` counts the lines per
-pick, so a pick that keeps coming back the other shape shows. `Evals/voice.jsonl` holds 31 of Lorcan's
+pick, so a pick that keeps coming back the other shape shows.
+
+**A memory of our conversations** (2026-11-02, the fifth step), for a
+callback or a running joke: real records only. The record of what he has
+done already keeps every answer and every line he said, for good (see
+"What Jarbits has done"); `CallbackBook` in the Engine library reads the
+exchanges out of it (an "Answered" or a "Said" line, with the words it
+was for), the newest 2,000 of them, and `Callbacks` indexes them by
+meaning (`callbacks.index` beside the facts), caught up from the record
+after each query, never on its path. A reply gets the three nearest the
+request in meaning from before the conversation still going (which is
+in view already), by the same embedding of the request the book of lines
+uses, in a block "From earlier conversations" with each one's day, after
+the record in an answer's input and in the planner's first turn. One rule
+under Truth: a callback or a running joke drawn from one is allowed where
+it plainly fits, in a few words; never as if it were now, never invented
+or embroidered, never forced in, and a question about what was said is
+answered from the record, not from these. A fixed three per reply, so
+what a model sees never grows with the record. The answer's summary and
+the plan's carry how many were in view; `report callbacks "<request>"
+actions.jsonl` prints what an exported record would give, and `report
+answer --actions actions.jsonl` runs an answer with them. `Evals/voice.jsonl` holds 31 of Lorcan's
 real requests, each set one round before the planner speaks, to hear the
 voice with `report plans`; `report answer` hears one answer. Where he
 writes facts (the fact reader, the remember distill): "You are Jarbits,
