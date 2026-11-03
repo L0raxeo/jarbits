@@ -32,7 +32,31 @@ import Testing
             #expect(speakerEnd <= backgroundStart && backgroundStart < guideStart, "\(name): after who he speaks to, before how he speaks")
         }
         #expect(!AnswerPrompt.system(for: .oneLine, persona: .example).contains(background), "a one-line answer is the bare answer")
+        for (name, system) in speaking {
+            // The narrative has a Character block; the planner and the closing line have the voice alone.
+            let divider = name == "narrative" ? Voice.divider : Voice.dividerVoiceOnly
+            #expect(system.components(separatedBy: divider).count == 2, "\(name): the line between truth and character, once")
+            #expect(!system.contains(name == "narrative" ? Voice.dividerVoiceOnly : Voice.divider), "\(name): the other line is not there")
+            #expect(system.range(of: divider)!.lowerBound > system.range(of: Voice.guide(.example))!.lowerBound, "\(name): after the voice")
+        }
+        #expect(!AnswerPrompt.system(for: .oneLine, persona: .example).contains(Voice.divider) && !AnswerPrompt.system(for: .oneLine, persona: .example).contains(Voice.dividerVoiceOnly))
         #expect(!FactReader.system(.example).contains(background), "where he writes facts")
         #expect(!QueryReader.system(.example).contains(background) && !ValueExtractor.system(.example).contains(background), "where he only reads")
+    }
+
+    @Test func theNarrativeKeepsTruthAboveCharacter() throws {
+        let narrative = AnswerPrompt.system(for: .narrative, persona: .example)
+        let truth = try #require(narrative.range(of: "Truth (never bent):"))
+        let character = try #require(narrative.range(of: "Character (yours, bendable inside the voice above, never outside it):"))
+        #expect(truth.lowerBound < character.lowerBound)
+        let truthBlock = narrative[truth.upperBound..<character.lowerBound]
+        #expect(truthBlock.contains("Your knowledge ends around") && truthBlock.contains("is answered from that block alone") && truthBlock.contains("The block \"What you have done\"") && truthBlock.contains("false premise"), "what he knows, what he did, how things work")
+        let characterBlock = narrative[character.upperBound...]
+        #expect(characterBlock.contains("Open with the most immediate, simple answer") && characterBlock.contains("There is no target length") && characterBlock.contains("No preamble and no closing line"), "style is character")
+        #expect(!truthBlock.contains("Open with the most immediate"))
+        #expect(!narrative.contains("The rules below come first"))
+        #expect(Voice.guide(.example).contains("A pronoun for what was just named, never the name again"), "what the ear preferred is in the voice")
+        #expect(Planner.system(facts: [], context: .example, persona: .example).contains("Truth, and how things work (never bent):"))
+        #expect(Closing.system(.example).contains("Truth (never bent): Lorcan asked you for something"))
     }
 }

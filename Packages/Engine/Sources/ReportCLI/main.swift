@@ -683,7 +683,7 @@ case "blind":
     print(Blind.sheet(pairs), terminator: "")
     FileHandle.standardError.write(Data("key: \(keyFile.path(percentEncoded: false)); score with: report blind --score <key> A B - ...\n".utf8))
 case "plans":
-    let usage = "usage: report plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>]"
+    let usage = "usage: report plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>] [--cache <dir>]"
     let packageRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()   // main.swift → ReportCLI/
         .deletingLastPathComponent()   // → Sources/
@@ -694,6 +694,10 @@ case "plans":
     // Another model, to measure against the planner's (the request carries
     // the model, so the cache keeps the two apart).
     var model = Planner.model
+    // Another cache, to ask the same prompts again: the only way to tell a
+    // change's flips from the run-to-run noise (about one case in five on
+    // identical prompts, measured 2026-10-29).
+    var cache = packageRoot.appending(path: ".evalcache/plans")
     var rest = Array(arguments.dropFirst())
     while let argument = rest.first {
         rest.removeFirst()
@@ -702,6 +706,10 @@ case "plans":
             guard let next = rest.first else { fail(usage) }
             rest.removeFirst()
             out = URL(fileURLWithPath: next)
+        case "--cache":
+            guard let next = rest.first else { fail(usage) }
+            rest.removeFirst()
+            cache = URL(fileURLWithPath: next)
         case "--model":
             guard let next = rest.first else { fail(usage) }
             rest.removeFirst()
@@ -722,7 +730,7 @@ case "plans":
     if network, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty {
         client = GeminiClient(apiKey: key, model: model, totalTimeout: ReasoningPolicy.roundTimeout)
     }
-    let runner = PlanRunner(client: client, cache: PlanCache(directory: packageRoot.appending(path: ".evalcache/plans")))
+    let runner = PlanRunner(client: client, cache: PlanCache(directory: cache))
     let results = await runner.run(cases)
     if let data = try? JSONEncoder().encode(results) {
         try? FileManager.default.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -914,5 +922,5 @@ case "sample":
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] | blind <old.json> <new.json> [--key <key.json>] | picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>] [--out <results.json>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>] [--cache <dir>] | blind <old.json> <new.json> [--key <key.json>] | picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>] [--out <results.json>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }
