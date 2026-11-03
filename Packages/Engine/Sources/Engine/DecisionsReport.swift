@@ -24,8 +24,12 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
     public var away: Bool?
     /// How a trigger was set, cancelled or went off, when the query touched one.
     public var trigger: TriggerSummary?
+    /// Which facts the answer or plan was given: how many were held, how
+    /// many went, and whether every fact went instead. Absent before
+    /// 2026-11-02, when every fact went.
+    public var factPick: FactPickSummary?
 
-    public init(timestamp: Date = .now, query: String, decision: Pick, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil, away: Bool? = nil, trigger: TriggerSummary? = nil) {
+    public init(timestamp: Date = .now, query: String, decision: Pick, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil, away: Bool? = nil, trigger: TriggerSummary? = nil, factPick: FactPickSummary? = nil) {
         self.timestamp = timestamp
         self.query = query
         self.decision = decision
@@ -38,6 +42,7 @@ public struct DecisionRecord: Codable, Sendable, Equatable {
         self.reading = reading
         self.away = away
         self.trigger = trigger
+        self.factPick = factPick
     }
 
     public static let encoder: JSONEncoder = {
@@ -194,7 +199,7 @@ public enum DecisionsReport {
             let failed = answered.filter {
                 switch $0.1.outcome {
                 case .partial, .fellBackToWeb: true
-                case .completed, .needsLiveData: false
+                case .completed, .needsLiveData, .needsNotes: false
                 }
             }
             if !failed.isEmpty {
@@ -204,7 +209,7 @@ public enum DecisionsReport {
                     switch answer.outcome {
                     case let .partial(reason): out.append("- \"\(record.query)\": partial, \(reason)")
                     case let .fellBackToWeb(reason): out.append("- \"\(record.query)\": fell back to web, \(reason)")
-                    case .completed, .needsLiveData: break
+                    case .completed, .needsLiveData, .needsNotes: break
                     }
                 }
                 out.append("")
@@ -284,6 +289,26 @@ public enum DecisionsReport {
                     if case let .failed(reason) = summary.outcome { "\"\(record.query)\": \(reason)" } else { "\"\(record.query)\"" }
                 }.joined(separator: ", "))
             }
+            out.append("")
+        }
+
+        let picks = records.compactMap(\.factPick)
+        if !picks.isEmpty {
+            out.append("## Which facts went")
+            out.append("")
+            let chosen = picks.filter { $0.outcome == .picked }
+            let all = picks.filter { $0.outcome == .all }
+            func mean(_ values: [Int]) -> String {
+                values.isEmpty ? "–" : (Double(values.reduce(0, +)) / Double(values.count)).formatted(.number.precision(.fractionLength(1)))
+            }
+            let latencies = chosen.compactMap(\.latencyMs).sorted()
+            let median = latencies.isEmpty ? "–" : "\(latencies[latencies.count / 2]) ms"
+            let worst = latencies.last.map { "\($0) ms" } ?? "–"
+            out.append("\(picks.count) queries had their facts chosen (\(chosen.first?.model ?? FactPicking.model), bar \(FactPicking.threshold.formatted()), at most \(FactPicking.maxSent)): mean \(mean(picks.map(\.held))) held, \(mean(chosen.map(\.sent))) sent where Jev chose (most \(chosen.map(\.sent).max() ?? 0)); median latency \(median), worst \(worst). \(all.count) sent every fact instead" + (all.isEmpty ? "." : ": " + Dictionary(grouping: all, by: { $0.reason ?? "no reason" }).sorted { $0.value.count > $1.value.count }.map { "\($0.key) \($0.value.count)" }.joined(separator: ", ") + "."))
+            let lookups = picks.compactMap(\.lookups).reduce(0, +)
+            if lookups > 0 { out.append("Plans looked further \(lookups) \(lookups == 1 ? "time" : "times") with facts.") }
+            let retried = records.filter { $0.answer?.retriedWithAll == true }.count
+            if retried > 0 { out.append("\(retried) \(retried == 1 ? "answer was" : "answers were") asked again with every fact after \(AnswerSummary.notesMarkerName).") }
             out.append("")
         }
 

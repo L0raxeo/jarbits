@@ -34,6 +34,13 @@ public enum AnswerPrompt {
     /// The whole reply when a one-line question cannot be answered without live data.
     public static let liveDataMarker = "NEEDS_LIVE_DATA"
 
+    /// The whole reply when a question about the user's life finds nothing
+    /// in the facts given: the block holds only the facts chosen for the
+    /// query (`FactPicking`), so the app asks the same answer once more
+    /// with every fact, and only then does he say he doesn't know. Never
+    /// shown, never spoken; the retry's instruction leaves the rule out.
+    public static let notesMarker = "NEEDS_MY_NOTES"
+
     /// When the model's training data ends. Google's model page gives no
     /// date; every third-party model card for gemini-3.1-flash-lite says
     /// January 2025 (checked 2026-10-21). Told to the model with the gap to
@@ -41,10 +48,13 @@ public enum AnswerPrompt {
     public static let knowledgeCutoff = DateComponents(year: 2025, month: 1)
     public static let knowledgeCutoffText = "January 2025"
 
-    public static func system(for format: Instinct, persona: Persona = Persona()) -> String {
+    /// `retry` is the second asking with every fact, after `notesMarker`: the
+    /// rule that produces the marker is left out, so it ends in an answer
+    /// or in a line that he doesn't know that yet.
+    public static func system(for format: Instinct, persona: Persona = Persona(), retry: Bool = false) -> String {
         switch format {
-        case .narrative: narrative(persona)
-        case .oneLine: oneLine(persona)
+        case .narrative: narrative(persona, retry: retry)
+        case .oneLine: oneLine(persona, retry: retry)
         case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time, .notebook, .weather, .trigger:
             preconditionFailure("\(format) is not answered by a model")
         }
@@ -77,8 +87,10 @@ public enum AnswerPrompt {
     /// `earlier` is the exchanges of this session the query depends on, from
     /// other layers than the answer's own thread (a search, a page read, a
     /// picture looked at), oldest first; empty for a query that stands alone.
-    /// `facts` is everything Jarbits knows about the user, as he noted it,
-    /// oldest first; every one goes, there are few.
+    /// `facts` is what Jarbits knows about the user that could bear on the
+    /// query, as he noted it, oldest first: the facts Jev chose for it
+    /// (`FactPicking`), or every fact when Jev could not choose, or on the
+    /// retry after `notesMarker`.
     /// `done` is the newest of what he has done, oldest first (`ActionLog`).
     public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil) -> String {
         var lines = [
@@ -141,18 +153,30 @@ public enum AnswerPrompt {
         facts: [String] = [],
         done: [String] = [],
         persona: Persona = Persona(),
-        screen: Screen? = nil
+        screen: Screen? = nil,
+        retry: Bool = false
     ) -> InteractionRequest {
         InteractionRequest(
             model: model,
-            systemInstruction: system(for: format, persona: persona),
+            systemInstruction: system(for: format, persona: persona, retry: retry),
             input: input(query: query, context: context, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen),
             history: history,
             maxOutputTokens: maxOutputTokens(for: format)
         )
     }
 
-    static func narrative(_ persona: Persona) -> String {
+    /// What the facts block's silence means: on the first asking, the marker
+    /// (the block may not hold every fact); on the retry, that he doesn't
+    /// know. A fact that bears on the question is answered from, worked out
+    /// where it must be (a junior graduates in two years): the marker is for
+    /// a block with nothing on the subject, not for an answer that takes a step.
+    static func whenTheBlockHoldsNothing(_ persona: Persona, retry: Bool, line: String) -> String {
+        retry
+            ? "When it holds nothing on it, \(line) that you don't know that yet;"
+            : "When it holds something that bears on it, answer from that, working out what follows where you must (a junior graduates in two years). Only when nothing in it bears on the subject at all, reply with exactly \(notesMarker) and nothing else: the block holds only the facts chosen for this query, and the device will look through everything it knows and ask you again;"
+    }
+
+    static func narrative(_ persona: Persona, retry: Bool = false) -> String {
         persona.speakerLine + "\n" + """
         You answer the queries \(persona.user) puts to you. \(persona.user.capitalizedFirst) typed a query and expects a short written answer.
         Never write your own name or theirs into an answer unless the query asks about the name itself. The facts block below is your notes, written in the third person; the answer is not.
@@ -169,7 +193,7 @@ public enum AnswerPrompt {
         - Your knowledge ends around \(knowledgeCutoffText) and you have no access to the web; the context says how long ago that was. Answer with what you knew then, stated as plain fact. Never say when your knowledge ends, that the answer may be out of date, or that you cannot check: a web link sits under every answer. Do not invent developments after that date.
         - Use the context block for "today" and "now". Do not mention the context unless the query is about it.
         - A block "\(factsHeading(persona))" may follow the context: facts \(persona.user) told you before, as you noted them. Let them shape the answer when they bear on it (a vegetarian gets a vegetarian recipe); ignore them otherwise; never list them back, repeat them or say you were told. When the query says one of them is not so ("I don't have a friend named John"), it is not so: take their word for it, own the mistake in a few words, and answer without it.
-        - A question or a request about \(persona.users) own life, people, preferences or situation is answered from that block alone. When it holds nothing on it, say in a line that you don't know that yet; never guess, never answer from the world, never ask for live data, and never tell a story or give a detail about \(persona.users) life that the block does not hold.
+        - A question or a request about \(persona.users) own life, people, preferences or situation is answered from that block alone. \(whenTheBlockHoldsNothing(persona, retry: retry, line: "say in a line")) never guess, never answer from the world, never ask for live data, and never tell a story or give a detail about \(persona.users) life that the block does not hold.
         - \(doneRule(doneHeading))
         - If the question rests on a false premise, say so in one sentence, then answer the nearest true question.
         - Write in the language of the query; in English, British English.
@@ -183,7 +207,7 @@ public enum AnswerPrompt {
         """
     }
 
-    static func oneLine(_ persona: Persona) -> String {
+    static func oneLine(_ persona: Persona, retry: Bool = false) -> String {
         persona.speakerLine + "\n" + """
         You answer the queries \(persona.user) puts to you with a single line.
         Never write your own name or theirs into the line unless the query asks about the name itself, and never "sir": the line is the bare answer, in British spelling.
@@ -196,7 +220,7 @@ public enum AnswerPrompt {
         - Your knowledge ends around \(knowledgeCutoffText) and you have no access to the web. If the question needs live data, such as a current price or exchange rate, a live score, or the latest news, or if the answer may have changed since \(knowledgeCutoffText), such as whether a person is alive or who currently holds a role, reply with exactly: \(liveDataMarker)
         - You do know the current date and time from the context block. Compute dates, countdowns and the time in other places from it.
         - A block "\(factsHeading(persona))" may follow the context: facts \(persona.user) told you before, as you noted them. Let them shape the line when they bear on it; ignore them otherwise; never repeat them or say you were told.
-        - A question or a request about \(persona.users) own life, people, preferences or situation is answered from that block alone. When it holds nothing on it, reply in a line that you don't know that yet; never guess, never answer from the world, never reply \(liveDataMarker) to it, and never give a detail about \(persona.users) life that the block does not hold.
+        - A question or a request about \(persona.users) own life, people, preferences or situation is answered from that block alone. \(whenTheBlockHoldsNothing(persona, retry: retry, line: "reply in a line")) never guess, never answer from the world, never reply \(liveDataMarker) to it, and never give a detail about \(persona.users) life that the block does not hold.
         - \(doneRule(doneHeading))
         - If the honest answer is a range or depends on something, give the typical value in the line, such as "Usually 7 to 10 days".
         - If the question cannot be answered in one line, answer its most direct version in one line anyway.

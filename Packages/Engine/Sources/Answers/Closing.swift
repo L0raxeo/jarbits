@@ -129,6 +129,7 @@ public struct Closing: Sendable {
         case "done": return nil
         case "notebook": what = "went to the notebook"
         case "recall": what = "looked through what I have open"
+        case "facts": what = "looked through what I know about \(persona.user)"
         default: what = query.isEmpty ? "tried \(step.name.replacingOccurrences(of: "_", with: " "))" : "tried \"\(query)\""
         }
         let outcome: String

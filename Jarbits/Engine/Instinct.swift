@@ -41,6 +41,11 @@ struct InstinctContext {
     var reading: ReadingSummary? = nil
     /// A lasting fact the words stated on the way, kept beside the pick; for the log.
     var fact: FactSummary? = nil
+    /// The facts chosen for the query, for an answer (`FactPicking`); nil
+    /// means every fact, as before the choosing.
+    var facts: [String]? = nil
+    /// How they were chosen; for the log.
+    var factPick: FactPickSummary? = nil
     /// What was on screen as the query began: an answer about it reads it.
     var screen: Screen? = nil
     /// The page this step opens goes to Jarbits's own screen, not the

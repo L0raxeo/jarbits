@@ -26,13 +26,20 @@ import Sites
 //      boolean, choice=a|b; a closed-set kind is Jev's question, not the model's. --timeout widens the
 //      app's one-second budget, to see how long the reply really takes)
 //   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report plan "remember I'm vegetarian, then suggest dinner" \
-//       [--after <q> <a>]... [--fact "I hate cilantro"]... [--timeout 30] [--dry-run]
+//       [--after <q> <a>]... [--fact "I hate cilantro"]... [--facts-file <path>] [--pick] [--timeout 30] [--dry-run]
 //     (advanced reasoning's first request, with every instinct as a tool; with the key and no --dry-run,
 //      one metered round on the planner's model, printing the calls the model asks for, the tokens and the cost;
-//      --timeout lifts the app's round budget of ReasoningPolicy.roundTimeout to measure a slow round)
-//   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report answer "what is a void egg for" [--one-line] [--fact "…"]... [--after <q> <a>]... [--dry-run]
+//      --timeout lifts the app's round budget of ReasoningPolicy.roundTimeout to measure a slow round;
+//      --facts-file reads facts one per line, and --pick, with TYPESAFE_API_KEY, has Jev choose which of them
+//      go, as the app does, printing the chosen ones with their scores and the time)
+//   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report answer "what is a void egg for" [--one-line] [--fact "…"]... [--facts-file <path>] [--pick] [--after <q> <a>]... [--dry-run]
 //     (one answer as the app asks it, narrative unless --one-line; with the key, one small metered call,
-//      printing the answer as written, for hearing the voice)
+//      printing the answer as written, for hearing the voice; --facts-file and --pick as for plan, and an
+//      answer that asks for every fact is asked once more with them, as the app does)
+//   [TYPESAFE_API_KEY=…] swift run --package-path Packages/Engine report picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>]
+//     (every case of Evals/picks.jsonl scored over Evals/picks-pool.txt, as the app chooses which facts an
+//     answer sees: the needed facts reached and the facts sent at each pool size, the lowest needed scores,
+//     the slowest request; answers cached under .evalcache/jev by the request body, so a bar or cap sweep is free)
 //   [GEMINI_API_KEY=…] swift run --package-path Packages/Engine report read"Which oh can you pull up youtube?" [--after <q> <a>]... [--dry-run]
 //     (the reading the engine makes beside Jev: the request with its substance isolated and what it is
 //      about; with the key and no --dry-run, one small metered call, printing both, the latency, the
@@ -57,6 +64,30 @@ import Sites
 //     the draw is fixed by the day, or by --seed, so a repeat the same day runs from the cache)
 
 let arguments = Array(CommandLine.arguments.dropFirst())
+
+/// Jev choosing which of `facts` go with `query`, as the app does
+/// (`FactPicking`), printing the chosen ones with their scores and the
+/// time; every fact, as the app would send, when there is no key or the
+/// pick fails.
+func pickFacts(_ query: String, from facts: [String], exchanges: [Exchange]) async -> [String] {
+    guard let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty else {
+        print("no TYPESAFE_API_KEY: every fact goes (\(facts.count))")
+        return facts
+    }
+    let held = facts.map { Fact(text: $0, source: .inferred, madeBy: "", date: PickPool.factDate) }
+    let picker = FactPicker(client: FactPicker.client(apiKey: key), locale: Locale(identifier: "en_US"))
+    switch await picker.pick(query, facts: held, exchanges: exchanges) {
+    case let .scored(scores, latencyMs, requests):
+        let chosen = FactPicking.select(scores)
+        let byKey = Dictionary(scores.map { (Fact.key($0.fact.text), $0.score) }, uniquingKeysWith: { first, _ in first })
+        print("picked \(chosen.count) of \(held.count) (\(latencyMs) ms, \(requests) \(requests == 1 ? "request" : "requests"), \(FactPicking.model), bar \(FactPicking.threshold.formatted()), at most \(FactPicking.maxSent)):")
+        for fact in chosen { print("  \((byKey[Fact.key(fact.text)] ?? 0).formatted(.number.precision(.fractionLength(2))))  \(fact.text)") }
+        return chosen.map(\.text)
+    case let .failed(reason):
+        print("the pick failed (\(reason)): every fact goes (\(facts.count))")
+        return facts
+    }
+}
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
@@ -296,12 +327,13 @@ case "extract":
         print("failed (\(summary.latencyMs) ms against a \(budget.formatted()) s budget): \(summary.outcome)")
     }
 case "plan":
-    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--page <earlier query> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--screen <title> <url> <visible text>] [--link <text> <url>]... [--screen-data <lines>] [--picture <jpeg path>] [--timeout <seconds>] [--dry-run]"
+    let usage = "usage: report plan <query> [--after <earlier query> <earlier answer>]... [--page <earlier query> <title> <url>]... [--fact <text>]... [--facts-file <path>] [--pick] [--webpage <title> <url>]... [--screen <title> <url> <visible text>] [--link <text> <url>]... [--screen-data <lines>] [--picture <jpeg path>] [--timeout <seconds>] [--dry-run]"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
     var exchanges: [Exchange] = []
     var facts: [String] = []
+    var pick = false
     var webpages: [Webpage] = []
     var dryRun = false
     var roundTimeout = ReasoningPolicy.roundTimeout
@@ -339,6 +371,13 @@ case "plan":
             guard rest.count >= 2 else { fail(usage) }
             facts.append(rest[1])
             rest.removeFirst(2)
+        case "--facts-file":
+            guard rest.count >= 2, let data = try? Data(contentsOf: URL(fileURLWithPath: rest[1])) else { fail(usage) }
+            facts += PickPool.parse(data)
+            rest.removeFirst(2)
+        case "--pick":
+            pick = true
+            rest.removeFirst()
         case "--page":
             guard rest.count >= 4, let url = URL(string: rest[3]) else { fail(usage) }
             exchanges.append(.page(query: rest[1], title: rest[2], address: url))
@@ -359,7 +398,9 @@ case "plan":
         }
     }
     let screen: Screen? = screenTitle.map { Screen(kind: .page, title: $0, address: screenURL, visible: screenVisible, items: links, data: screenData, picture: picture) }
-    let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), persona: .example, screen: screen)
+    let held = facts.count
+    if pick { facts = await pickFacts(query, from: facts, exchanges: exchanges) }
+    let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, factsHeld: held, tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), persona: .example, screen: screen)
     let things = ThingTable(exchanges: exchanges, webpages: webpages, items: links)
     let transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: .now, screen: screen), picture: picture)]
     let request = Planner.request(bundle: bundle, transcript: transcript)
@@ -387,12 +428,13 @@ case "plan":
         print("round 1 could not reach the model (\(latencyMs) ms): \(reason)")
     }
 case "answer":
-    let usage = "usage: report answer <query> [--one-line] [--fact <text>]... [--after <earlier query> <earlier answer>]... [--dry-run]"
+    let usage = "usage: report answer <query> [--one-line] [--fact <text>]... [--facts-file <path>] [--pick] [--after <earlier query> <earlier answer>]... [--dry-run]"
     var rest = Array(arguments.dropFirst())
     guard let query = rest.first else { fail(usage) }
     rest.removeFirst()
     var format: Instinct = .narrative
     var facts: [String] = []
+    var pick = false
     var history: [AnswerTurn] = []
     var dryRun = false
     while let flag = rest.first {
@@ -404,6 +446,13 @@ case "answer":
             guard rest.count >= 2 else { fail(usage) }
             facts.append(rest[1])
             rest.removeFirst(2)
+        case "--facts-file":
+            guard rest.count >= 2, let data = try? Data(contentsOf: URL(fileURLWithPath: rest[1])) else { fail(usage) }
+            facts += PickPool.parse(data)
+            rest.removeFirst(2)
+        case "--pick":
+            pick = true
+            rest.removeFirst()
         case "--after":
             guard rest.count >= 3 else { fail(usage) }
             history.append(AnswerTurn(query: rest[1], answer: rest[2], format: format))
@@ -414,7 +463,10 @@ case "answer":
         default: fail(usage)
         }
     }
-    let request = AnswerPrompt.request(format: format, query: query, context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), history: history, facts: facts, persona: .example)
+    let every = facts
+    if pick { facts = await pickFacts(query, from: facts, exchanges: Exchange.fromTurns(history)) }
+    let context = AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now)
+    let request = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: facts, persona: .example)
     guard !dryRun, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
         print("request body (\(GeminiClient.defaultModel)):")
         print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
@@ -422,7 +474,16 @@ case "answer":
         exit(0)
     }
     do {
-        print(try await GeminiClient(apiKey: key).interact(request).text)
+        let client = GeminiClient(apiKey: key)
+        let text = try await client.interact(request).text
+        if text.contains(AnswerPrompt.notesMarker) {
+            // As the app does: once more with every fact, whose instruction says to say he doesn't know instead.
+            print("\(AnswerPrompt.notesMarker): asking again with every fact (\(every.count))")
+            let again = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: every, persona: .example, retry: true)
+            print(try await client.interact(again).text)
+        } else {
+            print(text)
+        }
     } catch {
         fail("the answer failed: \(error)")
     }
@@ -504,6 +565,85 @@ case "sites":
     } catch {
         print("brave failed: \(error)")
     }
+case "picks":
+    let usage = "usage: report picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>] [--out <results.json>] [--no-network]"
+    let packageRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()   // main.swift → ReportCLI/
+        .deletingLastPathComponent()   // → Sources/
+        .deletingLastPathComponent()   // → Engine/
+    var file = packageRoot.appending(path: "Evals/picks.jsonl")
+    var poolFile = packageRoot.appending(path: "Evals/picks-pool.txt")
+    var out = packageRoot.appending(path: ".evalcache/picks.json")
+    var baseline: URL?
+    var sizes = PickRunner.defaultSizes
+    var bar = FactPicking.threshold
+    var cap = FactPicking.maxSent
+    var network = true
+    var rest = Array(arguments.dropFirst())
+    while let argument = rest.first {
+        rest.removeFirst()
+        func value() -> String {
+            guard let next = rest.first else { fail(usage) }
+            rest.removeFirst()
+            return next
+        }
+        switch argument {
+        case "--pool": poolFile = URL(fileURLWithPath: value())
+        case "--out": out = URL(fileURLWithPath: value())
+        case "--baseline": baseline = URL(fileURLWithPath: value())
+        case "--sizes":
+            let parsed = value().split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+            guard !parsed.isEmpty else { fail(usage) }
+            sizes = parsed
+        case "--bar":
+            guard let number = Double(value()) else { fail(usage) }
+            bar = number
+        case "--cap":
+            guard let number = Int(value()) else { fail(usage) }
+            cap = number
+        case "--no-network": network = false
+        default:
+            guard !argument.hasPrefix("--") else { fail(usage) }
+            file = URL(fileURLWithPath: argument)
+        }
+    }
+    var cases: [PickCase] = []
+    do {
+        cases = try PickSet.parse(try Data(contentsOf: file))
+    } catch {
+        fail("could not read \(file.path(percentEncoded: false)): \(error)")
+    }
+    guard let poolData = try? Data(contentsOf: poolFile) else { fail("could not read \(poolFile.path(percentEncoded: false))") }
+    let pool = PickPool.parse(poolData)
+    var client: JevClient?
+    if network {
+        if let key = ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"], !key.isEmpty {
+            client = FactPicker.client(apiKey: key)
+        } else {
+            FileHandle.standardError.write(Data("no TYPESAFE_API_KEY: running from the cache only\n".utf8))
+        }
+    }
+    let runner = PickRunner(client: client, cache: JevCache(directory: packageRoot.appending(path: ".evalcache/jev")), threshold: bar, limit: cap, sizes: sizes)
+    let results = await runner.run(cases, pool: pool)
+    print(PickReport.text(results: results, file: file.lastPathComponent, pool: poolFile.lastPathComponent, poolSize: pool.count, model: runner.model, threshold: bar, limit: cap), terminator: "")
+    var regressed = false
+    if let baseline {
+        do {
+            let earlier = try JSONDecoder().decode([PickResult].self, from: try Data(contentsOf: baseline))
+            let diff = PickDiff.compare(baseline: earlier, current: results)
+            regressed = !diff.regressions.isEmpty
+            print("")
+            print(PickReport.text(diff: diff, baseline: baseline.lastPathComponent), terminator: "")
+        } catch {
+            fail("could not read \(baseline.path(percentEncoded: false)): \(error)")
+        }
+    }
+    if let data = try? JSONEncoder().encode(results) {
+        try? FileManager.default.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: out, options: .atomic)
+        FileHandle.standardError.write(Data("wrote \(out.path(percentEncoded: false))\n".utf8))
+    }
+    exit(regressed || results.contains { $0.status == .fail } ? 1 : 0)
 case "plans":
     let usage = "usage: report plans [cases.jsonl] [--out <results.jsonl>] [--no-network] [--model <id>]"
     let packageRoot = URL(fileURLWithPath: #filePath)
@@ -736,5 +876,5 @@ case "sample":
     let rows = await EvalSample.run(EvalSample.sample(queries, count: count, seed: seed), runner: runner)
     print(EvalSample.text(rows: rows, poolSize: queries.count, source: source.lastPathComponent, seed: seed, floor: floor, recencyThreshold: recency, model: runner.model), terminator: "")
 default:
-    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
+    fail("usage: report engine | decisions <decisions.jsonl> | recall <webpages.jsonl> <query> [--topic <text>] | route <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--search <q> <term>]... [--opened <name> <host>] | extract <query> --field <name>:<kind>[:optional]... | read <query> [--after <q> <a>]... [--dry-run] | plan <query> [--after <q> <a>]... [--page <q> <title> <url>]... [--fact <text>]... [--webpage <title> <url>]... [--timeout <seconds>] [--dry-run] | plans [cases.jsonl] [--out <results.jsonl>] [--no-network] | picks [cases.jsonl] [--pool <facts.txt>] [--sizes 15,200,1000] [--bar x] [--cap n] [--baseline <results.json>] [--out <results.json>] [--no-network] | sites <name> | eval [cases.jsonl] [--only <instinct>] [--baseline <results.jsonl>] [--out <results.jsonl>] [--floor x] [--recency x] [--no-network] | sample [n] [--pool <queries.txt>] [--from-log <decisions.jsonl>] [--seed <n>] [--floor x] [--recency x] [--no-network]")
 }

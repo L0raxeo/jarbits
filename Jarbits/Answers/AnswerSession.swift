@@ -24,8 +24,15 @@ final class AnswerSession {
     private(set) var history: [AnswerTurn] = []
     /// What else in this session the query depends on, for the context block.
     private(set) var earlier: [Exchange] = []
-    /// What the app knows about the user, each in their own words.
+    /// What the app knows about the user that could bear on the query, each
+    /// as Jarbits noted it: the facts chosen for it, or every fact on the retry.
     private(set) var facts: [String] = []
+    private var done: [String] = []
+    private var persona = Persona()
+    private var screen: Screen?
+    /// The second asking with every fact, after the first came back as
+    /// `AnswerPrompt.notesMarker`; its instruction leaves the marker out.
+    private(set) var retry = false
     private(set) var text = ""
     private(set) var phase: Phase = .idle
     private(set) var summary: AnswerSummary?
@@ -47,15 +54,19 @@ final class AnswerSession {
         self.client = client
     }
 
-    /// What the card renders. A one-line answer is held back while it could
-    /// still turn out to be the live-data marker, so the marker never flashes.
+    /// The replies that are instructions to the app, never text: web results
+    /// are wanted, or every fact is.
+    private static let markers = [AnswerPrompt.liveDataMarker, AnswerPrompt.notesMarker]
+
+    /// What the card renders. An answer is held back while it could still
+    /// turn out to be a marker, so a marker never flashes.
     var displayText: String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if format == .oneLine, phase == .streaming, AnswerPrompt.liveDataMarker.hasPrefix(trimmed) {
+        if phase == .streaming, Self.markers.contains(where: { $0.hasPrefix(trimmed) }) {
             return ""
         }
         // The marker itself is never text to show; a turn of a conversation says so instead.
-        if needsLiveData { return "" }
+        if needsLiveData || needsNotes { return "" }
         // A marker still streaming in must not flash as a stray character.
         return phase == .streaming ? AnswerMarkup.trimmingPartialMarker(trimmed) : trimmed
     }
@@ -78,22 +89,39 @@ final class AnswerSession {
         summary?.outcome == .needsLiveData
     }
 
+    /// The answer came back asking for every fact: the owner asks again.
+    var needsNotes: Bool {
+        summary?.outcome == .needsNotes
+    }
+
+    /// What he says when every fact was given and still nothing bears on it.
+    static let dontKnowLine = "I don't know that yet, I'm afraid."
+
     /// `displayText` with the format's emphasis markers applied.
     var styledSpans: [StyledSpan] {
         AnswerMarkup.styled(displayText, for: format)
     }
 
-    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil) {
+    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil, retry: Bool = false) {
         task?.cancel()
         self.format = format
         self.query = query
         self.history = history
         self.earlier = earlier
         self.facts = facts
+        self.done = done
+        self.persona = persona
+        self.screen = screen
+        self.retry = retry
         text = ""
         summary = nil
         phase = .waiting
-        task = Task { await run(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen) }
+        task = Task { await run(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry) }
+    }
+
+    /// The same answer once more, with every fact, after `needsNotes`.
+    func retryWithAllFacts(_ facts: [String]) {
+        start(format: format, query: query, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: true)
     }
 
     func cancel() {
@@ -104,11 +132,11 @@ final class AnswerSession {
         }
     }
 
-    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String], done: [String], persona: Persona, screen: Screen?) async {
+    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String], done: [String], persona: Persona, screen: Screen?, retry: Bool) async {
         let clock = ContinuousClock()
         let start = clock.now
         let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
-        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen)
+        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry)
 
         var usage: AnswerUsage?
         var firstTokenMs: Int?
@@ -150,12 +178,19 @@ final class AnswerSession {
             outcome = .fellBackToWeb("empty answer")
         } else if format == .oneLine, trimmed.contains(AnswerPrompt.liveDataMarker) {
             outcome = .needsLiveData
+        } else if trimmed.contains(AnswerPrompt.notesMarker) {
+            if retry {
+                // Every fact was given and still the marker: the honest line, said as his.
+                text = Self.dontKnowLine
+                outcome = .completed
+            } else {
+                outcome = .needsNotes
+            }
         } else {
             outcome = .completed
         }
         switch outcome {
-        case .completed: phase = .done
-        case .needsLiveData: phase = .done
+        case .completed, .needsLiveData, .needsNotes: phase = .done
         case let .partial(reason), let .fellBackToWeb(reason): phase = .failed(reason)
         }
         let summary = AnswerSummary(
@@ -164,9 +199,16 @@ final class AnswerSession {
             usage: usage,
             firstTokenMs: firstTokenMs,
             latencyMs: Self.elapsedMs(clock, since: start),
-            outcome: outcome
+            outcome: outcome,
+            retriedWithAll: retry ? true : nil
         )
         self.summary = summary
+        if outcome == .completed, !announced, !displayText.isEmpty {
+            // The fixed line above: shown and read like any first text.
+            announced = true
+            onFirstText?()
+            onText?(displayText)
+        }
         onFinish?(summary)
     }
 

@@ -178,6 +178,21 @@ public struct Planner: Sendable {
         ]
     )
 
+    /// The facts the system instruction lists are the ones Jev chose for
+    /// the request; this looks through the rest, by what to look for, with
+    /// the same judge. A sibling of `past`: answered by the executor, no
+    /// screen of its own.
+    public static let factsTool = ToolDeclaration(
+        name: "facts",
+        description: "Look through everything I know about the user for facts bearing on something, when the facts listed in my instruction may not be all of them (the list says how many more I hold). Shows nothing; the result lists the facts found and how many more I hold. For a question about the user's own life, people or situation that the listed facts do not cover, call this with what to look for before saying I don't know; what it finds is answered with say, or shapes a step. The same words twice find the same facts: look again only with different words.",
+        parameters: [
+            "type": "object",
+            "properties": ["about": ["type": "string", "description": "what to look for, in plain words: a topic, a person, or the question itself (\"where the user studies\", \"the user's allergies\", \"the sister\")"]],
+            "required": ["about"],
+            "additionalProperties": false,
+        ]
+    )
+
     public static let doneTool = ToolDeclaration(
         name: "done",
         description: "Call once the request has been handled, or once nothing you can do would help. A step that showed something has handled it; a line saying so adds nothing.",
@@ -190,12 +205,12 @@ public struct Planner: Sendable {
         self.client = client
     }
 
-    /// Every instinct as a tool, in registry order, then `ask`, `say`, `open`, `look`, `close`, `past` and `done`.
+    /// Every instinct as a tool, in registry order, then `ask`, `say`, `open`, `look`, `close`, `past`, `facts` and `done`.
     public static func tools(for registry: [InstinctSpec]) -> [ToolDeclaration] {
         registry.map { spec in
             let schema = ArgumentSchema(fields: fields(for: spec))
             return ToolDeclaration(name: spec.id, description: describe(spec), parameters: schema.jsonSchema())
-        } + [askTool, sayTool, openTool, lookTool, closeTool, pastTool, doneTool]
+        } + [askTool, sayTool, openTool, lookTool, closeTool, pastTool, factsTool, doneTool]
     }
 
     /// A tool's fields: the query, the screen and fresh for a page-opening
@@ -229,7 +244,11 @@ public struct Planner: Sendable {
         return text
     }
 
-    public static func system(facts: [String], context: AnswerContext, persona: Persona = Persona()) -> String {
+    /// `facts` are the ones chosen for the request (`FactPicking`), `held`
+    /// how many Jarbits holds in all; when more are held than shown, the
+    /// block says so and the `facts` tool is the way to the rest.
+    public static func system(facts: [String], held: Int? = nil, context: AnswerContext, persona: Persona = Persona()) -> String {
+        let held = max(held ?? facts.count, facts.count)
         var lines = [
             persona.speakerLine,
             "You plan what you do for a request \(persona.user) made. The device's classifier was not sure which single tool fits it, or saw several steps in it, which is why you are reading it: understand the request, then act. It may need one tool or several. Nothing you write outside a tool call is shown to anyone. You act only by calling the tools below, and the device runs them.",
@@ -249,7 +268,7 @@ public struct Planner: Sendable {
             "- When \(persona.user) says something you hold about them is not so (\"I don't have a friend named John\", \"you misheard me\", \"that's not true\" straight after a fact marked just noted), it is not so, whatever the facts below say: take their word for it, as a person would. The device drops it as the words arrive, with whatever rested on it, so never call forget or remember for it, never ask whether to, and never argue. Own the mistake in one short line of your own through say (\"My apologies, sir. I must have misheard.\"), and if the request asks for anything else, serve that too, without the thing you got wrong. When you held no such thing, acknowledge it just as briefly and claim nothing forgotten. Never bring it up again.",
             "- remember and forget show \(persona.user) a mark saying what was kept or dropped: never also say it.",
             "- Anything to be done later goes through trigger, and only a trigger step that ran makes it so: never say \"I'll remind you\" or promise anything later without one. Its task and line must stand on their own weeks from now, when this conversation is gone: \"remind me about that\" is written out as what that is, never \"this\" or \"the page\"; task holds the job alone, never the condition. After a set, say in one short line what was set and when, with the time from the step's result (the device worked it out, so hearing it back lets \(persona.user) catch a mistake); for a task set for a time, say once that with the app closed it comes as a notification to tap; for a site, that I watch for it here in Jarbits, since I cannot see other apps; for \"wake me up\", that it is a notification, not an alarm. When no time is given, ask; only \"randomly\" or \"sometime\" lets me choose the moment. Monthly and yearly repeats I cannot do yet: say so. What is set is answered from the listing with say; cancel names the handle.",
-            "- A request about \(persona.users) own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about \(persona.user).",
+            "- A request about \(persona.users) own life is served from what you know of them below: remember what they tell you, recall what they ask for, answer from the facts, and say you don't know when they hold nothing. Never make anything up about \(persona.user). The facts below are only the ones chosen as bearing on this request; when the request turns to something about \(persona.user) they do not cover, and the block says more are held, call facts with what to look for before saying you don't know.",
             "- \(AnswerPrompt.doneRule(doneHeading)) When \(persona.user) asks to take something back, this is what says what there is to take back. past reads further back than the block goes, when the question reaches past it.",
             "- Call several tools in one turn only when none needs another's result; otherwise one at a time, and read the result before the next.",
             "- A step whose result says it ran is done: never call it again with the same arguments.",
@@ -258,9 +277,22 @@ public struct Planner: Sendable {
             "- Call done when the request has been handled, or, after saying what you could not do, when you have checked what was worth checking.",
             "- Date and time: \(AnswerPrompt.dateText(context)). Locale: \(context.locale.identifier).",
             "",
-            "\(AnswerPrompt.factsHeading(persona)) (told earlier; let it shape what you do, never repeat it):",
+            "\(AnswerPrompt.factsHeading(persona)) (told earlier; let it shape what you do, never repeat it\(held > facts.count ? "; the \(facts.count) of \(held) chosen as bearing on this request, facts finds others" : "")):",
         ]
-        lines += facts.isEmpty ? ["- nothing yet"] : facts.map { "- " + $0 }
+        if facts.isEmpty {
+            lines.append(held > 0 ? "- none of the \(held) I hold were chosen as bearing on this request; facts looks through them" : "- nothing yet; there is nothing for facts to find")
+        } else {
+            lines += facts.map { "- " + $0 }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// What `facts` found, as a step's result.
+    public static func factsResult(_ found: [String], held: Int, about: String) -> String {
+        guard !found.isEmpty else { return "nothing I hold bears on \"\(about)\" (\(held) held)" }
+        var lines = ["found \(found.count) bearing on \"\(about)\":"] + found.map { "- " + $0 }
+        let rest = held - found.count
+        if rest > 0 { lines.append("\(rest) more held, not shown") }
         return lines.joined(separator: "\n")
     }
 
@@ -401,7 +433,7 @@ public struct Planner: Sendable {
     public static func request(bundle: PlanBundle, transcript: [InteractionStep], model: String = model) -> InteractionRequest {
         InteractionRequest(
             model: model,
-            systemInstruction: system(facts: bundle.facts, context: bundle.context, persona: bundle.persona),
+            systemInstruction: system(facts: bundle.facts, held: bundle.factsHeld, context: bundle.context, persona: bundle.persona),
             input: "",
             maxOutputTokens: maxOutputTokens,
             thinkingLevel: thinkingLevel,
@@ -445,16 +477,19 @@ public struct PlanBundle: Sendable {
     public var query: String
     public var exchanges: [Exchange]
     public var facts: [String]
+    /// How many facts Jarbits holds in all, when `facts` is a selection; nil means every one is in `facts`.
+    public var factsHeld: Int?
     public var tools: [ToolDeclaration]
     public var context: AnswerContext
     public var persona: Persona
     /// What is on screen as the request is made, when it could be read.
     public var screen: Screen?
 
-    public init(query: String, exchanges: [Exchange], facts: [String], tools: [ToolDeclaration], context: AnswerContext, persona: Persona = Persona(), screen: Screen? = nil) {
+    public init(query: String, exchanges: [Exchange], facts: [String], factsHeld: Int? = nil, tools: [ToolDeclaration], context: AnswerContext, persona: Persona = Persona(), screen: Screen? = nil) {
         self.query = query
         self.exchanges = exchanges
         self.facts = facts
+        self.factsHeld = factsHeld
         self.tools = tools
         self.context = context
         self.persona = persona

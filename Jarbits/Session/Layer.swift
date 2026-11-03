@@ -33,6 +33,8 @@ final class Layer: Identifiable {
     /// A fact the query stated on the way to this layer, kept beside it;
     /// logged with the record once the layer's result is in.
     var fact: FactSummary?
+    /// Which facts an answer in this layer was given; logged with the record.
+    var factPick: FactPickSummary?
     /// How the reading beside Jev fared for this layer's query; logged with
     /// the record once the layer's result is in.
     var reading: ReadingSummary?

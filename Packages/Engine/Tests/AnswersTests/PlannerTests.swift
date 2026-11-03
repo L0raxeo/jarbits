@@ -10,7 +10,7 @@ import Testing
 @Suite struct PlannerTests {
     @Test func everyInstinctIsAToolWithAQueryFieldThenAskSayOpenLookAndDone() throws {
         let tools = Planner.tools(for: InstinctSpec.all)
-        #expect(tools.map(\.name) == InstinctSpec.all.map(\.id) + ["ask", "say", "open", "look", "close", "past", "done"])
+        #expect(tools.map(\.name) == InstinctSpec.all.map(\.id) + ["ask", "say", "open", "look", "close", "past", "facts", "done"])
         let recall = try #require(tools.first { $0.name == "recall" })
         #expect(recall.description.contains("In a plan it shows nothing: its result names what it found, by handle"))
         let open = try #require(tools.first { $0.name == "open" })
@@ -22,7 +22,7 @@ import Testing
         #expect(Planner.sayTool.description.contains("Never to retell something the listing holds as a thing"))
         #expect(Planner.openTool.description.contains("every open webpage's handle, which is the grid"))
         #expect(Planner.sayTool.description.contains("say is for a fact with no thing to show"))
-        for tool in tools.dropLast(7) {
+        for tool in tools.dropLast(8) {
             let requiredNames = tool.parameters["required"]?.arrayValue?.compactMap { $0.stringValue }
             let required = try #require(requiredNames)
             #expect(required.contains("query"), "\(tool.name) takes a query")
@@ -102,7 +102,7 @@ import Testing
         #expect(system.contains("Call done when the request has been handled"))
         #expect(system.contains("- Lorcan is vegetarian\n- Lorcan lives in Austin"))
         #expect(system.contains("Locale: en_US"))
-        #expect(Planner.system(facts: [], context: .example).contains("- nothing yet"))
+        #expect(Planner.system(facts: [], context: .example).contains("- nothing yet; there is nothing for facts to find"))
     }
 
     @Test func whatHeHasDoneIsInTheListingUnderItsOwnRule() {
@@ -257,8 +257,8 @@ import Testing
         #expect(request.model == Planner.model)
         #expect(request.stream == false)
         #expect(request.toolChoice == .any)
-        #expect(request.tools.count == InstinctSpec.all.count + 7)
-        #expect(request.tools.suffix(7).map(\.name) == ["ask", "say", "open", "look", "close", "past", "done"])
+        #expect(request.tools.count == InstinctSpec.all.count + 8)
+        #expect(request.tools.suffix(8).map(\.name) == ["ask", "say", "open", "look", "close", "past", "facts", "done"])
         #expect(Planner.sayTool.parameters["required"]?.arrayValue?.first?.stringValue == "text")
         #expect(request.maxOutputTokens == Planner.maxOutputTokens)
         #expect(request.thinkingLevel == Planner.thinkingLevel)
@@ -266,7 +266,7 @@ import Testing
         #expect(json["model"] as? String == "gemini-3.1-flash-lite")
         #expect(json["stream"] as? Bool == false)
         #expect(json["store"] as? Bool == false)
-        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 7)
+        #expect((json["tools"] as? [[String: Any]])?.count == InstinctSpec.all.count + 8)
         let config = try #require(json["generation_config"] as? [String: Any])
         #expect(config["tool_choice"] as? String == "any")
         #expect(config["thinking_level"] as? String == "high", "accuracy over speed: the planner thinks")

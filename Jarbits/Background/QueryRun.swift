@@ -1,4 +1,5 @@
 import Foundation
+import Engine
 
 /// One query from the moment it is sent to the moment nothing of it is
 /// still running: the route and what it opens, every answer still
@@ -17,6 +18,11 @@ final class QueryRun {
     var away = false
     /// Something of it landed: a reply in the bubble, a layer opened.
     var landed = false
+    /// Jev scoring which facts the answer or plan sees, started beside the
+    /// route; nil without a key or facts. `factPickQuery` is the words it
+    /// scored, the read words after a rewrite.
+    var factPick: Task<FactPickVerdict, Never>?
+    var factPickQuery = ""
     private(set) var over = false
     var onOver: ((QueryRun) -> Void)?
 

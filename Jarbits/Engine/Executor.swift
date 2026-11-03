@@ -48,11 +48,20 @@ final class Executor {
             budgetStart = clock.now
             return okay
         }
-        let facts = session.knownFacts.map { $0.line() }
+        // The facts chosen for the request (`FactPicking`), and how many are
+        // held in all: the planner's `facts` tool looks through the rest.
+        let picked = await session.pickedFacts(token: token)
+        let facts = picked.facts.map { $0.line() }
+        let held = session.knownFacts.count
+        /// How many times the plan looked further with `facts`.
+        var lookups = 0
         func finish(_ outcome: EngineSummary.Outcome, webpages: Int) -> EngineSummary {
-            EngineSummary(
+            var pick = picked.summary
+            pick?.lookups = lookups > 0 ? lookups : nil
+            session.planFactPick = pick
+            return EngineSummary(
                 model: planner.client.model, rounds: rounds, steps: steps, usage: counted ? usage : nil,
-                latencyMs: Int((clock.now - start) / .milliseconds(1)), factsGiven: facts.count, webpagesGiven: webpages, outcome: outcome,
+                latencyMs: Int((clock.now - start) / .milliseconds(1)), factsGiven: facts.count, factsHeld: held, webpagesGiven: webpages, outcome: outcome,
                 screenChars: screen.map { $0.visible.count + $0.rest.count }, screenItems: screen?.items.count, pictureBytes: screen?.picture?.count,
                 lostConnection: lostConnection ? true : nil,
                 cutShort: cutShort ? true : nil
@@ -64,6 +73,7 @@ final class Executor {
             usage = AnswerUsage(inputTokens: usage.inputTokens + found.inputTokens, outputTokens: usage.outputTokens + found.outputTokens, thoughtTokens: usage.thoughtTokens + found.thoughtTokens)
         }
 
+        guard session.isCurrent(token) else { return finish(.stale, webpages: 0) }
         // The open webpages, newest first (the nearest in meaning when the
         // row is long): the planner reads them itself, and recall is its
         // tool for finding one by what it is about.
@@ -72,7 +82,7 @@ final class Executor {
 
         let now = Date.now
         let bundle = PlanBundle(
-            query: query, exchanges: exchanges, facts: facts,
+            query: query, exchanges: exchanges, facts: facts, factsHeld: held,
             tools: Planner.tools(for: InstinctSpec.all),
             context: AnswerContext(locale: .current, timeZone: .current, now: now),
             persona: session.persona, screen: screen
@@ -281,6 +291,30 @@ final class Executor {
                         result = ids.count == 1 ? "closed it" : "closed \(ids.count) webpages"
                         outcome = "ran"
                         shown = true   // the user saw it go; nothing more to show
+                    }
+                    answered = false
+                } else if call.name == Planner.factsTool.name {
+                    // The rest of what he knows, by what to look for: the same
+                    // judge that chose the block's facts, on the planner's words.
+                    let about = call.arguments["about"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    let key = ReasoningPolicy.stepKey(name: call.name, arguments: call.arguments)
+                    if about.isEmpty {
+                        result = "nothing to look for: give about"
+                        outcome = "failed: empty"
+                        failures += 1
+                    } else if ran.contains(key) {
+                        result = "already looked for that: the same words find the same facts"
+                        outcome = "already ran"
+                    } else {
+                        let (found, heldNow) = await session.lookUpFacts(about: about)
+                        guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
+                        lookups += 1
+                        ran.insert(key)
+                        result = Planner.factsResult(found.map { $0.line() }, held: heldNow, about: about)
+                        outcome = found.isEmpty ? "found nothing" : "read"
+                        #if DEBUG
+                        print("facts lookup \"\(about)\": \(found.count) of \(heldNow)")
+                        #endif
                     }
                     answered = false
                 } else if call.name == Planner.pastTool.name {

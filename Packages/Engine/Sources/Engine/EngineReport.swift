@@ -114,12 +114,34 @@ public enum EngineReport {
         out.append("")
         out += recallSection()
         out += videoSection()
+        out += factPickSection()
         out.append("## Question types not used yet")
         out.append("")
         out.append("- **box**: where something is in an image. No use in sight.")
         out.append("")
         out.append("Adding a question is one entry in `EngineRequest.request`, or one line in an instinct's `questions` in `InstinctSpec`; this file and `EngineTests` pick it up.")
         return out.joined(separator: "\n") + "\n"
+    }
+
+    /// The request beside the main pick that chooses which facts an answer
+    /// or a plan sees.
+    private static func factPickSection() -> [String] {
+        var out: [String] = []
+        out.append("## Which facts he sees")
+        out.append("")
+        out.append("Every fact used to go into every answer and every plan. Since 2026-11-02 a second request, started beside the main pick and never waited for by it, scores each fact against the query, and only the facts that could matter go (`FactPicking` in the package; `FactPicker` sends it). Model `\(FactPicking.model)` for this request alone; the main pick stays on `\(JevClient.defaultModel)`. The state is the query, the locale and the newest \(FactPicking.exchangesGiven) exchanges, each text cut to \(FactPicking.exchangeChars) characters. One question per fact, `f0`, `f1`, …:")
+        out.append("")
+        out.append("### `f<n>` — type `score`")
+        out.append("")
+        out.append("> \(FactPicking.question) \"<the fact>\"")
+        out.append("")
+        out.append("| Level | Description |")
+        out.append("|---|---|")
+        for (index, level) in FactPicking.levels.enumerated() { out.append("| \(index) | \(level) |") }
+        out.append("")
+        out.append("The score used is one minus the probability of level 0. A fact goes when it is at least \(FactPicking.threshold.formatted()); the highest \(FactPicking.maxSent) go at most, in the store's order; a fact noted within the conversation still going (\(Int(FactPicking.alwaysWithin / 60)) minutes) always goes. At most \(FactPicking.chunk) facts a request (600 went over the 64k-token limit), the requests sent at once; any one failing sends every fact, as before, so nothing is dropped in silence. The session waits \(FactPicking.wait.components.seconds).\(FactPicking.wait.components.attoseconds / 100_000_000_000_000_000) s past the route and then sends every fact. The planner's `facts` tool runs the same judge on words of its own (\(FactPicking.lookupWait.components.seconds) s). The fact reader still sees every fact. Logged as `factPick` on the query's line: held, sent, latency, and whether every fact went and why. `swift run --package-path Packages/Engine report picks` runs `Evals/picks.jsonl` over `Evals/picks-pool.txt`.")
+        out.append("")
+        return out
     }
 
     /// What a `video` pick loads, and the grammar that takes the asking off.

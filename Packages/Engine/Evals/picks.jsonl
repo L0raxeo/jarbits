@@ -1,0 +1,56 @@
+{"query": "what month do I graduate?", "needed": ["Lorcan is a junior at Lehigh University."], "helpful": ["Lorcan is studying computer science."], "note": "the answer is in one fact"}
+{"query": "when's my commencement?", "needed": ["Lorcan is a junior at Lehigh University."]}
+{"query": "how many semesters do I have left?", "needed": ["Lorcan is a junior at Lehigh University."], "helpful": ["Lorcan is studying computer science."]}
+{"query": "what am I allergic to", "needed": ["Lorcan is allergic to peanuts."], "helpful": ["Lorcan is lactose intolerant."]}
+{"query": "how old is my mom", "needed": ["Lorcan's mom Jasmine is 50."], "helpful": ["Lorcan's mom's birthday is on 12 March."]}
+{"query": "when's my mom's birthday", "needed": ["Lorcan's mom's birthday is on 12 March."], "helpful": ["Lorcan's mom Jasmine is 50."]}
+{"query": "what's my dog's name", "needed": ["Lorcan has a beagle called Biscuit."], "helpful": ["Biscuit is scared of fireworks."]}
+{"query": "what do I drive", "needed": ["Lorcan drives a 2018 Honda Civic."], "helpful": ["Lorcan's car insurance renews in June."]}
+{"query": "when does my passport expire", "needed": ["Lorcan's passport expires in January 2027."], "helpful": ["Lorcan is going to Japan in March."]}
+{"query": "where does my sister live", "needed": ["Lorcan's sister Ana moved to Austin."], "helpful": ["Lorcan's sister Ana is a nurse."]}
+{"query": "what time do I get up on weekdays", "needed": ["Lorcan wakes up at 7am on weekdays."]}
+{"query": "what am I studying", "needed": ["Lorcan is studying computer science."], "helpful": ["Lorcan is a junior at Lehigh University.", "Lorcan takes Algorithms with Professor Reed on Tuesdays and Thursdays."]}
+{"query": "who's my roommate", "needed": ["Lorcan's roommate is Sam."]}
+{"query": "when's my algorithms class", "needed": ["Lorcan takes Algorithms with Professor Reed on Tuesdays and Thursdays."], "helpful": ["Lorcan is studying computer science."]}
+{"query": "will my passport still be good for my trip", "needed": ["Lorcan's passport expires in January 2027.", "Lorcan is going to Japan in March."], "note": "worked out from a fact"}
+{"query": "what time is it where my sister lives", "needed": ["Lorcan's sister Ana moved to Austin."]}
+{"query": "how far is my sister from me", "needed": ["Lorcan's sister Ana moved to Austin.", "Lorcan lives in Bethlehem, Pennsylvania."]}
+{"query": "is rent due soon", "needed": ["Lorcan's rent is due on the 1st."], "helpful": ["Lorcan lives in Bethlehem, Pennsylvania."]}
+{"query": "does anything of mine need renewing soon", "needed": ["Lorcan's car insurance renews in June.", "Lorcan's passport expires in January 2027."], "helpful": ["Lorcan's rent is due on the 1st."]}
+{"query": "can I work this Saturday", "needed": ["Lorcan's bookstore shifts are on Saturdays."], "helpful": ["Lorcan works part-time at the campus bookstore."]}
+{"query": "what should I cook tonight", "needed": ["Lorcan is allergic to peanuts.", "Lorcan is lactose intolerant.", "Lorcan doesn't eat pork."], "helpful": ["Lorcan hates cilantro.", "Lorcan likes spicy food."], "note": "a fact should change the answer, though the words don't mention it"}
+{"query": "can I eat pad thai", "needed": ["Lorcan is allergic to peanuts."], "helpful": ["Lorcan likes spicy food.", "Lorcan hates cilantro."]}
+{"query": "is this ice cream ok for me", "needed": ["Lorcan is lactose intolerant."], "helpful": ["Lorcan is allergic to peanuts."]}
+{"query": "gift ideas for my mom", "needed": ["Lorcan's mom Jasmine loves gardening."], "helpful": ["Lorcan's mom Jasmine is 50.", "Lorcan's mom's birthday is on 12 March."]}
+{"query": "plan a dinner with Noah", "needed": ["Lorcan's friend Noah is vegan."], "helpful": ["Lorcan is allergic to peanuts.", "Lorcan is lactose intolerant.", "Lorcan doesn't eat pork.", "Lorcan's friend Noah lives in Brooklyn.", "Lorcan hates cilantro.", "Lorcan likes spicy food."]}
+{"query": "what should I get my sister for her birthday", "needed": ["Lorcan's sister Ana is a nurse."], "helpful": ["Lorcan's sister Ana moved to Austin."]}
+{"query": "which seat should I pick on my flight", "needed": ["Lorcan prefers window seats."], "helpful": ["Lorcan is going to Japan in March."]}
+{"query": "recommend a movie", "needed": ["Lorcan likes sci-fi films."]}
+{"query": "what can I do about this headache", "needed": ["Lorcan gets migraines."]}
+{"query": "is it ok to leave my dog alone on the 4th of July", "needed": ["Biscuit is scared of fireworks.", "Lorcan has a beagle called Biscuit."]}
+{"query": "which match should I watch this weekend", "needed": ["Lorcan supports Arsenal."]}
+{"query": "should I buy this couch, it's huge", "needed": ["Lorcan's apartment is on the third floor and has no lift."], "helpful": ["Lorcan lives in Bethlehem, Pennsylvania."]}
+{"query": "what charger do I need for my laptop", "needed": ["Lorcan uses a MacBook Pro."]}
+{"query": "how should I train this weekend", "needed": ["Lorcan is training for a half marathon."]}
+{"query": "what should I listen to", "needed": ["Lorcan's favourite band is Muse."]}
+{"query": "my eyes are really dry today", "needed": ["Lorcan wears contact lenses."]}
+{"query": "and what's she into", "exchanges": [{"query": "how old is my mom", "kind": "answer", "text": "50."}], "needed": ["Lorcan's mom Jasmine loves gardening."], "helpful": ["Lorcan's mom Jasmine is 50.", "Lorcan's mom's birthday is on 12 March."], "note": "a follow-up: the words alone say little"}
+{"query": "what does she do", "exchanges": [{"query": "where does my sister live", "kind": "answer", "text": "Austin."}], "needed": ["Lorcan's sister Ana is a nurse."], "helpful": ["Lorcan's sister Ana moved to Austin."]}
+{"query": "could I eat it", "exchanges": [{"query": "tell me about pad thai", "kind": "answer", "text": "A stir-fried Thai noodle dish, usually with peanuts."}], "needed": ["Lorcan is allergic to peanuts."], "helpful": ["Lorcan is lactose intolerant.", "Lorcan doesn't eat pork."]}
+{"query": "would he eat there", "exchanges": [{"query": "best steakhouse in brooklyn", "kind": "answer", "text": "Peter Luger, in Williamsburg."}, {"query": "is my friend noah around there", "kind": "answer", "text": "He lives in Brooklyn."}], "needed": ["Lorcan's friend Noah is vegan."], "helpful": ["Lorcan's friend Noah lives in Brooklyn."]}
+{"query": "uh so when do i like actually graduate", "needed": ["Lorcan is a junior at Lehigh University."], "helpful": ["Lorcan is studying computer science."], "note": "spoken, with noise left in"}
+{"query": "um can you remind me what my dog's called", "needed": ["Lorcan has a beagle called Biscuit."]}
+{"query": "capital of peru?", "needed": [], "note": "nothing is needed; words that overlap a fact are traps"}
+{"query": "what's 15% of 80", "needed": []}
+{"query": "why is the sky blue", "needed": []}
+{"query": "open youtube", "needed": []}
+{"query": "who is noah in the bible", "needed": []}
+{"query": "when was lehigh university founded", "needed": [], "helpful": ["Lorcan is a junior at Lehigh University."]}
+{"query": "what's the population of austin", "needed": [], "helpful": ["Lorcan's sister Ana moved to Austin."]}
+{"query": "how does a monitor work", "needed": [], "helpful": ["Lorcan's monitor is broken."]}
+{"query": "are peanuts legumes", "needed": [], "helpful": ["Lorcan is allergic to peanuts."]}
+{"query": "who won the last arsenal match", "needed": [], "helpful": ["Lorcan supports Arsenal."]}
+{"query": "what's the weather tomorrow", "needed": [], "helpful": ["Lorcan lives in Bethlehem, Pennsylvania."]}
+{"query": "what time is it", "needed": [], "helpful": ["Lorcan lives in Bethlehem, Pennsylvania."]}
+{"query": "best laptops 2026", "needed": [], "helpful": ["Lorcan uses a MacBook Pro."]}
+{"query": "history of the marathon", "needed": [], "helpful": ["Lorcan is training for a half marathon."]}

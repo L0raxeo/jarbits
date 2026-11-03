@@ -320,6 +320,15 @@ what was called instead, and a count per first call. The first round is
 where the choice of tool and handle is made; what follows depends on
 what the device did and is the phone's to check.
 
+The pick of which facts an answer sees has a set too,
+`Packages/Engine/Evals/picks.jsonl` over the thousand made-up facts of
+`picks-pool.txt`: `swift run --package-path Packages/Engine report picks`
+scores every case's pool as the app does (Jev's answers cached under
+`.evalcache/jev/`), and prints the needed facts reached and the facts
+sent at 15, 200 and 1,000 facts, the lowest needed scores, the slowest
+request, and `--baseline` flips; `--bar` and `--cap` re-measure from the
+cache. See "Facts".
+
 The golden set only catches what it already knows. To stress Jev with
 queries nobody has labelled, by hand and whenever you like:
 
@@ -1154,14 +1163,55 @@ ranking of a few texts for a request, from the Mac.
 A fact is one thing Jarbits knows about the user, noted from his point of
 view: "Lorcan is allergic to peanuts", "Lorcan's friend Noah is vegan",
 "Lorcan's mom Jasmine is 50". Facts are the one store of things about the
-user, beside the open webpages and the notes: few, short, and never
-expiring on their own.
-Every fact goes into every answer (`AnswerPrompt`'s "What Jarbits knows
-about Lorcan" block, after the context and the earlier exchanges; the
-prompts say to let them shape the answer when they bear on it and never to
-repeat them), and into every plan. Nothing in the
-file leaves the phone except inside a Gemini request, which keeps nothing
-(`store: false`).
+user, beside the open webpages and the notes: short, and never expiring
+on their own.
+
+**Which facts he sees** is Jev's call (2026-11-02; before, every fact went
+into every answer and every plan, "since there are few", and in the test a
+thousand made-up facts drowned the one that mattered: "what month do I
+graduate?" with "Lorcan is a junior at Lehigh University" among them was
+never answered). A second request, started beside the main pick on the
+same words and never waited for by it, asks one score question per fact,
+"How much could this fact about the user matter to answering the query?"
+(not at all / slightly or indirectly / directly), on `jev-1.14.0` for this
+request alone (`FactPicking` in the package; `FactPicker` sends it). A
+fact goes when one minus the probability of "not at all" is 0.3 or more,
+the highest 30 at most, in the store's order, plus any fact noted in the
+conversation still going; 400 facts a request (600 went over Jev's 64k
+tokens), the requests sent at once, the newest five exchanges in the state
+with their text cut to 300 characters. The session waits up to 1.5 s past
+the route for the scores (they normally land while the reading is still
+running) and sends every fact, as before, when Jev is slow, down or
+keyless, with the reason on the log line (`factPick`: held, sent,
+latency, outcome; `report decisions` sums them). An answer gets the
+chosen facts under "What Jarbits knows about Lorcan" (`AnswerPrompt`'s
+block after the context and the earlier exchanges; the prompts say to let
+them shape the answer when they bear on it, to work out what follows from
+one where they must, and never to repeat them); a question about Lorcan's
+life that they do not cover is answered with the hidden marker
+`NEEDS_MY_NOTES`, and the same answer is asked once more with every fact,
+whose instruction says to say he doesn't know instead: once per query,
+never on the retry (`retriedWithAll` on the answer's summary). The
+planner gets the chosen facts and is told how many more are held ("the 3
+of 212 chosen as bearing on this request"), and its `facts` tool looks
+through the rest by what to look for, with the same judge, as often as a
+plan's rounds allow with different words; the result lists what it found
+and how many more are held. The fact reader and `forget` still see every
+fact. Measured on the Mac over 56 labelled requests and a pool of a
+thousand made-up facts (`Packages/Engine/Evals/picks.jsonl`,
+`picks-pool.txt`; `swift run --package-path Packages/Engine report
+picks`, cached under `.evalcache/jev/` like the routing set, `--baseline`
+for what flipped): every needed fact reached at 15, 200 and 1,000 facts;
+1.7, 5.1 and 9.9 facts sent on average; the slowest of the three requests
+393 ms in the median and 698 ms at worst. "What month do I graduate?"
+with the Lehigh fact among a thousand answered "May 2028" six of six
+(`report answer "…" --one-line --facts-file picks-pool.txt --pick`, which
+has Jev choose first and prints the scores), where every fact sent
+answered "I don't know" every time; on the planned route the first round
+is a `facts` lookup for the graduation month. Timings on the phone are
+still to be measured (the Debug console prints `facts picked 3 of 212
+(310 ms)`). Nothing in the file leaves the phone except inside a Jev or
+Gemini request, neither of which keeps it (`store: false` for Gemini).
 
 A fact comes to be known three ways (`Fact.source`):
 - **told**: "remember that I'm allergic to peanuts", "keep in mind I'm
@@ -1508,7 +1558,8 @@ by paragraph or by turn, `Looking`; numbered, `from` continuing, the links
 as `s` handles; 2026-10-31, so that what the listing does not show is one
 look away and never a guess, at the cost of an extra round when the model
 reads what it already had),
-`close` closes open webpages by handle or all of them, and
+`close` closes open webpages by handle or all of them, `facts` looks
+through the facts not shown to it by what to look for (see "Facts"), and
 `done` ends the plan. `say` is for what the planner already holds in full
 (the facts, the open webpages listed, earlier steps' results), including
 "I don't know that yet"; a question needing knowledge beyond that goes
@@ -1554,8 +1605,9 @@ points at the notebook's handle for it, "p2: Opened my note "X" (n1)";
 screen thing, whose record carried no note id, and failed twice), with its
 picture as a second content part (see "Screen awareness"); nothing in
 the listing is judged or thinned by a second model, since reading what a
-request means is the planner's work. Every fact
-goes in the system instruction, as it does for an answer. A later showing
+request means is the planner's work. The facts chosen for the request go
+in the system instruction, as they do for an answer, with how many more
+are held; `facts` looks through the rest (see "Facts"). A later showing
 step adds a piece under what the step before showed in the bubble, and a
 page replaces the page; the planner is told that each stays, never to say
 what a step has already shown, and to call `done` after a step that
@@ -1726,7 +1778,7 @@ app as open webpages; card layers do not.
 
 | Path | Role |
 |---|---|
-| `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the open webpages (`Webpage`, `WebpageSearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the screen as the models see it (`Screen`, `ScreenItem`: the text, the links as things, the one rule), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
+| `Packages/Engine/` | Foundation-only Swift package with three libraries. `Engine`: the instincts and their Jev criteria (`Instinct`), the instinct registry (`InstinctSpec`: questions, values), the exchanges Jev reads (`Exchange`), the System One client, the engine's request and pick (`EngineRequest`: the pick, the relevance chain, the reasoning score, the confidence floor; `Pick`), `QueryParser` (an address as typed, the results pages), `Words` (the one tokenizer the stores key by), the time instinct's clock and zone tables (`LocalTimeAnswer`, `PlaceTimeZones`), the open webpages (`Webpage`, `WebpageSearch`, `RecallAsk`), the facts (`Fact`, `FactStore`, `FactSearch`, `FactRouting`, and `FactPicking`, which facts an answer or a plan sees), the gate into advanced reasoning and a plan's bounds and summary (`ReasoningPolicy`, `EngineSummary`), the screen as the models see it (`Screen`, `ScreenItem`: the text, the links as things, the one rule), the reading's summary, the log record and reports. `Answers`: the Gemini client (streamed for an answer, whole for a reading, a value or a plan), SSE parsing, the per-format prompts, the emphasis markup, the reader (`QueryReader`), the value extractor and the planner (`Planner`: every instinct as a tool, the plan's system instruction and first turn, one round). `Sites`: the Brave web search client. Tests run on macOS. |
 | `Jarbits/Engine/Engine.swift` | The cognitive engine's first stage: an address as typed, else one Jev request over the registry carrying the session's exchanges with the reading beside it, the extractor for every value the pick declares, and the instinct to run with what it needs; or the hand-off to the executor when the reasoning score says the query needs several steps. Also `JarbitsSession.makeEngine()`, `makeAnswerClient()`, `makeRecallResolver()` and `makeSiteSearch()`. |
 | `Jarbits/Engine/Executor.swift` | Advanced reasoning's second stage: runs a plan round by round, each call through the instincts, the sheet and the session, confirming a paid or destructive step, refusing a repeat, opening pages on Jarbits's own screen unless the planner said the user's, and sending every result back to the planner until `done` or the bounds. |
 | `Jarbits/Engine/Instinct.swift`, `Instincts.swift`, `SiteInstinct.swift`, `RecallInstinct.swift` | The `InstinctRunner` protocol (a spec from the registry and `run`, through the session), the registry of runners in order, the showing instincts, and the two that own a store: the site book and the search, the open webpages and Jev's judge. |
@@ -1799,7 +1851,9 @@ resolving to a real zone, and the day shift and clock format against a
 fixed instant); the site book's seed, learning and forgetting, the
 `rejects` question's shape, and the Brave client against canned results;
 the recall ask and shortlist; the facts (the store against a file of its
-own, the forget judge's request and picks, the shortlist); the reading's
+own, the forget judge's request and picks, the shortlist, and the pick of
+which facts go: its request, scores, selection, chunked requests and
+every failure sending every fact); the reading's
 request and what each kind of reply comes to; the gate into advanced reasoning, a plan's
 bounds and the plan summary on a log line; and
 for Gemini, the request body and key order (and that no tool is sent for

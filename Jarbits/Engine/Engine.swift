@@ -29,14 +29,18 @@ struct Engine {
     /// A Gemini key is configured, so an answer can be shown.
     let canAnswer: Bool
     let instincts: [any InstinctRunner]
+    /// Jev scoring which facts the answer or plan sees, in a request of its
+    /// own beside the pick; nil without a key, in which case every fact goes.
+    let factPicker: FactPicker?
 
-    init(router: Picker?, reader: QueryReader? = nil, extractor: ValueExtractor? = nil, planner: Planner? = nil, canAnswer: Bool, instincts: [any InstinctRunner] = InstinctRegistry.all()) {
+    init(router: Picker?, reader: QueryReader? = nil, extractor: ValueExtractor? = nil, planner: Planner? = nil, canAnswer: Bool, instincts: [any InstinctRunner] = InstinctRegistry.all(), factPicker: FactPicker? = nil) {
         self.router = router
         self.reader = reader
         self.extractor = extractor
         self.planner = planner
         self.canAnswer = canAnswer
         self.instincts = instincts
+        self.factPicker = factPicker
     }
 
     /// `exchanges` is the session's history up to the layer on screen,
@@ -45,11 +49,22 @@ struct Engine {
     /// `screen` is the read of what is on screen, started by the session as
     /// the query began: Jev never waits for it; the reader does, and the
     /// planner and an answer get it afterwards.
-    func route(_ typed: String, exchanges: [SessionExchange], current: Layer?, opened: OpenedSite?, persona: Persona = Persona(), screen screenRead: Task<Screen?, Never>? = nil) async -> EngineResult {
+    /// `facts` is everything known about the user as the query begins:
+    /// the pick that chooses which of them the answer or plan sees starts
+    /// here beside Jev's, and rides on the result unawaited.
+    func route(_ typed: String, exchanges: [SessionExchange], current: Layer?, opened: OpenedSite?, persona: Persona = Persona(), screen screenRead: Task<Screen?, Never>? = nil, facts: [Fact] = []) async -> EngineResult {
         let sent = Array(exchanges.suffix(EngineRequest.maxExchanges))
         var query = typed
         var reading: ReadingSummary?
         var decision: Pick
+        var factPick: Task<FactPickVerdict, Never>?
+        // Which facts the answer or plan will see, scored beside the pick on
+        // the same words; nothing here waits for it. See `FactPicking`.
+        func startPick(_ words: String) -> Task<FactPickVerdict, Never>? {
+            guard let factPicker, !facts.isEmpty else { return nil }
+            let exchanges = sent.map(\.exchange)
+            return Task { await factPicker.pick(words, facts: facts, exchanges: exchanges) }
+        }
         func read() async -> ReadingSummary? {
             guard let reader else { return nil }
             // The reader cleans the words and nothing more: no exchanges, no
@@ -62,10 +77,13 @@ struct Engine {
             // The reading runs beside the Jev request; a reading that only
             // touched case or punctuation never asks Jev twice.
             async let asked: ReadingSummary? = read()
+            factPick = startPick(typed)
             let first = await router.decide(typed, exchanges: sent.map(\.exchange), opened: opened)
             reading = await asked
             if let read = reading?.query, reading?.changed == true {
                 query = read
+                // The read words are what runs: scored again beside the second pick; the first is dropped.
+                factPick = startPick(read)
                 decision = await router.decide(read, exchanges: sent.map(\.exchange), opened: opened)
             } else {
                 decision = first
@@ -87,7 +105,7 @@ struct Engine {
         let picked = InstinctSpec.spec(for: decision.instinct)
         if planner != nil, ReasoningPolicy.entersReasoning(decision, spec: picked) {
             let lead = decision.source == .jev && !picked.shortcut ? Planner.pickedLead(decision.instinct) : nil
-            return EngineResult(query: query, decision: decision, reading: reading, reasoning: true, chained: chained.map(\.exchange), conversation: sent.map(\.exchange), lead: lead, screen: screen)
+            return EngineResult(query: query, decision: decision, reading: reading, reasoning: true, chained: chained.map(\.exchange), conversation: sent.map(\.exchange), lead: lead, screen: screen, factPick: factPick)
         }
         // The values the pick takes: what Jev read for its closed-set
         // fields, and what the extractor reads out of the words for every
@@ -161,7 +179,7 @@ struct Engine {
         )
         context.things = things
         context.screen = screen
-        return EngineResult(query: query, decision: decision, extraction: extraction, reading: reading, instinct: instinct(for: format), context: context, conversation: sent.map(\.exchange), screen: screen)
+        return EngineResult(query: query, decision: decision, extraction: extraction, reading: reading, instinct: instinct(for: format), context: context, conversation: sent.map(\.exchange), screen: screen, factPick: factPick)
     }
 
     func instinct(for format: Instinct) -> any InstinctRunner {
@@ -192,6 +210,9 @@ struct EngineResult {
     var lead: String? = nil
     /// What was on screen as the query began, when it could be read.
     var screen: Screen? = nil
+    /// Jev scoring which facts the answer or plan sees, started beside the
+    /// pick and never awaited here; nil without a key or facts.
+    var factPick: Task<FactPickVerdict, Never>? = nil
 }
 
 extension JarbitsSession {
@@ -215,7 +236,8 @@ extension JarbitsSession {
         let reader = Secrets.geminiAPIKey.map { QueryReader(client: GeminiClient(apiKey: $0)) }
         let extractor = Secrets.geminiAPIKey.map { ValueExtractor(client: GeminiClient(apiKey: $0)) }
         let planner = Secrets.geminiAPIKey.map { Planner(client: GeminiClient(apiKey: $0, model: Planner.model, totalTimeout: ReasoningPolicy.roundTimeout)) }
-        return Engine(router: router, reader: reader, extractor: extractor, planner: planner, canAnswer: Secrets.geminiAPIKey != nil)
+        let factPicker = Secrets.typeSafeAPIKey.map { FactPicker(client: FactPicker.client(apiKey: $0)) }
+        return Engine(router: router, reader: reader, extractor: extractor, planner: planner, canAnswer: Secrets.geminiAPIKey != nil, factPicker: factPicker)
     }
 
     /// Brave's web search for the sites an unknown name might mean, when a

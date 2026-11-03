@@ -100,6 +100,9 @@ final class JarbitsSession {
     private(set) var firingTrigger: Trigger?
     /// How the query in flight touched the triggers, for its log line.
     private var pendingTriggerSummary: TriggerSummary?
+    /// Which facts a plan was given, set by the executor as it ends, for
+    /// the plan's log line.
+    var planFactPick: FactPickSummary?
     /// The notifications the triggers need, and the catching up; see `TriggerClock`.
     let triggerClock: TriggerClock
     /// Triggers that have gone off but wait their turn: a query running, or
@@ -588,7 +591,8 @@ final class JarbitsSession {
         let token = UUID()
         requestToken = token
         beginRun(token: token, query: trimmed)
-        let routing = Task { await engine.route(trimmed, exchanges: exchanges, current: newest, opened: opened, persona: persona, screen: screenRead) }
+        let known = knownFacts
+        let routing = Task { await engine.route(trimmed, exchanges: exchanges, current: newest, opened: opened, persona: persona, screen: screenRead, facts: known) }
         // The fact reader beside the route: every lasting fact the words
         // state, read whatever the query becomes, applied when it is back.
         if factReading {
@@ -597,6 +601,8 @@ final class JarbitsSession {
         Task {
             let result = await routing.value
             guard token == requestToken else { releaseRun(token); return }   // a newer query won, or cancelled
+            run?.factPick = result.factPick   // which facts the answer or plan sees, still being scored
+            run?.factPickQuery = result.query
             lastQuery = result.query   // the words that ran: the label, the exchange, the layer and the record carry them
             askedQuery = result.query
             #if DEBUG
@@ -804,6 +810,37 @@ final class JarbitsSession {
         let all = await facts.all()
         knownFacts = all
         factTexts = all.map(\.text)
+    }
+
+    /// The facts for the query in flight: the ones Jev chose, when the pick
+    /// started beside the route has landed within `FactPicking.wait` of
+    /// this call (the route has returned by then, so it usually has); else
+    /// every fact, as before the choosing, with the reason for the log.
+    func pickedFacts(token: UUID) async -> FactSelection {
+        let held = knownFacts
+        guard let run, run.token == token, let task = run.factPick else {
+            return .all(held, reason: engine.factPicker == nil ? "no key" : "no pick", query: run?.factPickQuery ?? lastQuery)
+        }
+        let verdict = (try? await withTimeout(FactPicking.wait) { await task.value }) ?? .failed("timeout")
+        let selection = FactSelection.from(verdict, held: held, query: run.factPickQuery)
+        #if DEBUG
+        if let summary = selection.summary {
+            print("facts \(summary.outcome == .picked ? "picked" : "all") \(summary.sent) of \(summary.held)\(summary.latencyMs.map { " (\($0) ms)" } ?? "")\(summary.reason.map { ": \($0)" } ?? "")")
+        }
+        #endif
+        return selection
+    }
+
+    /// The planner's `facts` tool: the same judge over every fact, on words
+    /// of the planner's own, within `FactPicking.lookupWait`. Jev down or
+    /// slow gives every fact, so nothing is dropped in silence.
+    func lookUpFacts(about: String) async -> (found: [Fact], held: Int) {
+        let held = knownFacts
+        guard let picker = engine.factPicker, !held.isEmpty else { return ([], held.count) }
+        let task = Task { await picker.pick(about, facts: held) }
+        let verdict = (try? await withTimeout(FactPicking.lookupWait) { await task.value }) ?? .failed("timeout")
+        guard case let .scored(scores, _, _) = verdict else { return (held, held.count) }
+        return (FactPicking.select(scores, now: .now), held.count)
     }
 
     /// The mark, for a moment: a line in the bubble ("Remembered: …") when
@@ -1492,6 +1529,7 @@ final class JarbitsSession {
         layer.sources = readThisQuery   // what Jarbits read on its screen for this answer
         layer.extraction = context.extraction
         layer.fact = context.fact
+        layer.factPick = context.factPick
         layer.reading = context.reading
         if layer.answer == nil { layer.answer = makeAnswer(for: layer) }
         stage = .loading
@@ -1499,7 +1537,7 @@ final class JarbitsSession {
         layer.runToken = requestToken
         layer.messageAtFinish = false
         holdRun(requestToken)
-        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: factTexts, done: actions.newest().map { $0.line() }, persona: persona, screen: context.screen)
+        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: context.facts ?? factTexts, done: actions.newest().map { $0.line() }, persona: persona, screen: context.screen)
     }
 
     /// A site the book knew opens, in a new layer, as opened by name; on
@@ -1843,6 +1881,14 @@ final class JarbitsSession {
         if !shows { stage = stageBefore }
         let conversation = result.conversation   // the whole conversation, not only Jev's chain
         Task {
+            var context = context
+            // An answer gets the facts chosen for the query; the wait is bounded.
+            if instinct.spec.instinct.isAnswered, context.canAnswer, !decision.recent {
+                let picked = await pickedFacts(token: token)
+                guard token == requestToken else { releaseRun(token); return }
+                context.facts = picked.facts.map(\.text)
+                context.factPick = picked.summary
+            }
             let recordedBefore = actions.count
             let outcome = await instinct.run(context, in: self, token: token)
             // Whatever an instinct did, it is on the record, even one that wrote no line of its own.
@@ -1865,7 +1911,7 @@ final class JarbitsSession {
             #if DEBUG
             print("act \(instinct.spec.id): \(outcome.text)")
             #endif
-            record(decision, query: query, extraction: context.extraction, fact: outcome.fact ?? factSummary, reading: context.reading)
+            record(decision, query: query, extraction: context.extraction, fact: outcome.fact ?? factSummary, reading: context.reading, factPick: context.factPick)
         }
     }
 
@@ -1952,7 +1998,8 @@ final class JarbitsSession {
                     showReply(.said(query: query, text: line), context: context, recording: false).sources = readThisQuery
                 }
             }
-            record(decision, query: query, engine: summary, reading: reading)
+            record(decision, query: query, engine: summary, reading: reading, factPick: planFactPick)
+            planFactPick = nil
         }
     }
 
@@ -2140,6 +2187,16 @@ final class JarbitsSession {
 
     private func answerFinished(_ summary: AnswerSummary, in layer: Layer) {
         guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
+        if summary.outcome == .needsNotes, summary.retriedWithAll != true {
+            // The facts chosen for the query held nothing on a question about
+            // the user's life: the same answer once more, with every fact,
+            // whose instruction says to say he doesn't know instead. Once.
+            #if DEBUG
+            print("answer asks for every fact: asking again with \(factTexts.count)")
+            #endif
+            answer.retryWithAllFacts(factTexts)
+            return
+        }
         if !answer.text.isEmpty { actions.add("Answered \"\(answer.query)\": \(answer.text)", asked: layer.asked) }
         defer {
             if let token = layer.runToken {
@@ -2148,9 +2205,12 @@ final class JarbitsSession {
             }
         }
         if let decision = layer.decision {
-            record(decision, query: answer.query, answer: summary, extraction: layer.extraction, fact: layer.fact, reading: layer.reading)
+            record(decision, query: answer.query, answer: summary, extraction: layer.extraction, fact: layer.fact, reading: layer.reading, factPick: layer.factPick)
         }
         switch summary.outcome {
+        case .needsNotes:
+            // Never final: the retry's summary follows (see above).
+            break
         case .fellBackToWeb where !answer.history.isEmpty, .needsLiveData where !answer.history.isEmpty:
             // A turn of a conversation that brought nothing, or that needs
             // live data: the thread stays and the card says so in the turn's
@@ -2200,8 +2260,8 @@ final class JarbitsSession {
         }
     }
 
-    private func record(_ decision: Pick, query: String, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil) {
-        let record = DecisionRecord(query: query, decision: decision, answer: answer, recall: recall, site: site, extraction: extraction, fact: fact, engine: engine, reading: reading, away: run?.away == true ? true : nil, trigger: pendingTriggerSummary)
+    private func record(_ decision: Pick, query: String, answer: AnswerSummary? = nil, recall: RecallSummary? = nil, site: SiteSummary? = nil, extraction: ExtractionSummary? = nil, fact: FactSummary? = nil, engine: EngineSummary? = nil, reading: ReadingSummary? = nil, factPick: FactPickSummary? = nil) {
+        let record = DecisionRecord(query: query, decision: decision, answer: answer, recall: recall, site: site, extraction: extraction, fact: fact, engine: engine, reading: reading, away: run?.away == true ? true : nil, trigger: pendingTriggerSummary, factPick: factPick)
         pendingTriggerSummary = nil
         Task { await log.append(record) }
     }

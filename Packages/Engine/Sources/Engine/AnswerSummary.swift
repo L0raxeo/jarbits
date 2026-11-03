@@ -44,18 +44,30 @@ public struct AnswerUsage: Codable, Sendable, Equatable {
 /// What happened when Gemini answered a routed query. Rides on the same
 /// `DecisionRecord` line as the routing decision.
 public struct AnswerSummary: Codable, Sendable, Equatable {
+    /// The reply that asks for every fact (`AnswerPrompt.notesMarker` in
+    /// the Answers library), named here for the report.
+    public static let notesMarkerName = "NEEDS_MY_NOTES"
+
     public var model: String
     public var format: Instinct
     public var usage: AnswerUsage?
     public var firstTokenMs: Int?
     public var latencyMs: Int?
     public var outcome: Outcome
+    /// The answer was asked twice: the facts chosen for the query held
+    /// nothing on it, and this is the second asking with every fact. Nil
+    /// otherwise.
+    public var retriedWithAll: Bool?
 
     public enum Outcome: Codable, Sendable, Equatable {
         /// The answer streamed to the end.
         case completed
         /// A one-line question needed live data; the app showed web results.
         case needsLiveData
+        /// A question about the user's life found nothing in the facts
+        /// given; the app asks again with every fact. Never the final
+        /// outcome on a record: the retry's summary follows.
+        case needsNotes
         /// The stream failed after some text; the text shown is what arrived.
         case partial(String)
         /// Nothing usable arrived; the app showed web results instead.
@@ -68,7 +80,8 @@ public struct AnswerSummary: Codable, Sendable, Equatable {
         usage: AnswerUsage? = nil,
         firstTokenMs: Int? = nil,
         latencyMs: Int? = nil,
-        outcome: Outcome
+        outcome: Outcome,
+        retriedWithAll: Bool? = nil
     ) {
         self.model = model
         self.format = format
@@ -76,5 +89,6 @@ public struct AnswerSummary: Codable, Sendable, Equatable {
         self.firstTokenMs = firstTokenMs
         self.latencyMs = latencyMs
         self.outcome = outcome
+        self.retriedWithAll = retriedWithAll
     }
 }
