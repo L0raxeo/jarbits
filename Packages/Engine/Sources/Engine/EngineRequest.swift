@@ -288,6 +288,28 @@ public enum EngineRequest {
         thing: the person wants the AI's own answer, knowing what it is.
         """
 
+    /// The question that says the query is about his own actions, asked
+    /// beside the pick on the answer instincts: the device then answers a
+    /// note's history itself, and checks what he says against the record.
+    public static let didQuestionID = "did"
+    public static let didThreshold = 0.5
+
+    public static let didInstructions = """
+        Does the query ask about something the assistant itself did, said, \
+        changed, wrote, read, showed, opened, set or remembered: its own past \
+        actions in this app, rather than a fact about the world or about the \
+        user? "did you change this note", "what did you just do", "have you \
+        touched my list", "did you read that page", "what did you say about \
+        the retainer", "did you set that reminder", "undo what you did". A \
+        request to do something now, or a question about the world or about \
+        the user's own life, is not about the assistant's actions.
+        """
+
+    public static let didCriteria = (
+        yes: "The query asks what the assistant did, said, changed, read, showed, set or remembered, or whether it did a particular thing, or asks to take back what it did.",
+        no: "A request to do something, a question about the world, or a question about the user's own life, people or situation."
+    )
+
     public static let recencyCriteria = (
         yes: "The right answer could have changed since early 2025: it depends on someone's current status, the current holder of a position, a recent or ongoing event, or a new phrase.",
         no: "A settled fact, history, how something works, a definition, a conversion, a place, a date or time, something worked out from a settled fact and today's date such as an age or an elapsed time, a question about the user's own life, people, preferences or situation, which the assistant answers from what the user told it, anything else that does not go stale, or a question handed to the AI by name."
@@ -359,6 +381,7 @@ public enum EngineRequest {
             if case let .noul(value)? = response.answers[id] { value } else { nil }
         }
         let recency = noul(recencyQuestionID)
+        let did = noul(didQuestionID)
         let rejection = noul(rejectsQuestionID)
         let remember = noul(rememberQuestionID)
         // A missing relevance answer is a no.
@@ -388,6 +411,7 @@ public enum EngineRequest {
                 latencyMs: latencyMs,
                 inputTokens: response.usage.inputTokens,
                 recency: recency,
+            did: did,
                 rejection: rejection,
                 relevance: relevance,
                 chain: chain,
@@ -405,6 +429,7 @@ public enum EngineRequest {
                 latencyMs: latencyMs,
                 inputTokens: response.usage.inputTokens,
                 recency: recency,
+            did: did,
                 rejection: rejection,
                 relevance: relevance,
                 chain: chain,
@@ -429,6 +454,7 @@ public enum EngineRequest {
             latencyMs: latencyMs,
             inputTokens: response.usage.inputTokens,
             recency: recency,
+            did: did,
             rejection: rejection,
             recall: recallIntent(for: suggested),
             relevance: relevance,

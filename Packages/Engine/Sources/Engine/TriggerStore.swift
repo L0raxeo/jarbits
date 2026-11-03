@@ -82,7 +82,7 @@ public actor TriggerStore {
         state.nextNumber += 1
         state.triggers.append(trigger)
         save(state)
-        actions?.add("Set \(trigger.handle): \(trigger.whenWords(now: now)), \(trigger.jobWords)", asked: asked, at: now)
+        actions?.add("Set \(trigger.handle): \(trigger.whenWords(now: now)), \(trigger.jobWords)", asked: asked, kind: .change, at: now)
         return trigger
     }
 
@@ -101,7 +101,7 @@ public actor TriggerStore {
         guard let at = state.triggers.firstIndex(where: { $0.number == number && $0.isLive(at: now) }) else { return nil }
         state.triggers[at].finished = now
         save(state)
-        actions?.add("Cancelled \(state.triggers[at].handle): \(state.triggers[at].jobWords)", at: now)
+        actions?.add("Cancelled \(state.triggers[at].handle): \(state.triggers[at].jobWords)", kind: .change, at: now)
         return state.triggers[at]
     }
 
@@ -115,7 +115,7 @@ public actor TriggerStore {
             count += 1
         }
         save(state)
-        if count > 0 { actions?.add("Cancelled everything set to go off, \(count) in all", at: now) }
+        if count > 0 { actions?.add("Cancelled everything set to go off, \(count) in all", kind: .change, at: now) }
         return count
     }
 

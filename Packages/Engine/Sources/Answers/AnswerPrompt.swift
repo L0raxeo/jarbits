@@ -69,13 +69,12 @@ public enum AnswerPrompt {
         "What \(Persona.assistant) knows about \(persona.user)"
     }
 
-    /// The heading of the record of what he has done, and the name the rules give it.
-    public static let doneHeading = "What you have done"
+    /// The heading of the record of what he has done, and the name the
+    /// rules give it; the rule itself. Both live with `Done`, the one value
+    /// every model call is handed; kept here by name for the prompts.
+    public static let doneHeading = Done.answerHeading
 
-    /// How a model reads that record: the one rule, in every prompt where he speaks.
-    public static func doneRule(_ heading: String) -> String {
-        "The block \"\(heading)\" is the full record of your own actions, written the moment each happened. A question about what you did, said, changed or showed is answered from it: what it lists, you did, and you own it plainly; what it does not list, you did not do. Never answer it from how something looks now, and never deny something it lists."
-    }
+    public static func doneRule(_ heading: String) -> String { Done.rule(heading) }
 
     /// Includes thought tokens, so there is headroom above the visible
     /// answer. The same for both picks since the model decides the shape:
@@ -95,10 +94,11 @@ public enum AnswerPrompt {
     /// query, as he noted it, oldest first: the facts Jev chose for it
     /// (`FactPicking`), or every fact when Jev could not choose, or on the
     /// retry after `notesMarker`.
-    /// `done` is the newest of what he has done, oldest first (`ActionLog`).
+    /// `done` is what he has done: the record, this request's doings, and
+    /// what he is saying (`Done`); required, so no answer is asked without it.
     /// `callbacks` are the exchanges of earlier conversations nearest the
     /// query in meaning (`CallbackBook`), for a callback where one fits.
-    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil, callbacks: [Callback] = []) -> String {
+    public static func input(query: String, context: AnswerContext, earlier: [Exchange] = [], facts: [String] = [], persona: Persona = Persona(), screen: Screen? = nil, callbacks: [Callback] = [], done: Done) -> String {
         var lines = [
             "Query: \(query)",
             "",
@@ -127,12 +127,9 @@ public enum AnswerPrompt {
                 lines.append("- " + fact)
             }
         }
-        if !done.isEmpty {
+        if let block = done.block(heading: doneHeading, calendar: calendar(context)) {
             lines.append("")
-            lines.append("\(doneHeading) (oldest first):")
-            for action in done {
-                lines.append("- " + action)
-            }
+            lines.append(block)
         }
         if !callbacks.isEmpty {
             lines.append("")
@@ -168,17 +165,17 @@ public enum AnswerPrompt {
         history: [AnswerTurn] = [],
         earlier: [Exchange] = [],
         facts: [String] = [],
-        done: [String] = [],
         persona: Persona = Persona(),
         screen: Screen? = nil,
         retry: Bool = false,
         lines: [Line] = [],
-        callbacks: [Callback] = []
+        callbacks: [Callback] = [],
+        done: Done
     ) -> InteractionRequest {
         InteractionRequest(
             model: model,
             systemInstruction: system(for: format, persona: persona, retry: retry, lines: lines),
-            input: input(query: query, context: context, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, callbacks: callbacks),
+            input: input(query: query, context: context, earlier: earlier, facts: facts, persona: persona, screen: screen, callbacks: callbacks, done: done),
             history: history,
             maxOutputTokens: maxOutputTokens(for: format)
         )

@@ -55,15 +55,15 @@ public struct QueryReader: Sendable {
     public var timeout: Duration { extractor.timeout }
 
     /// The request the app sends, for the report and the CLI.
-    public static func request(query: String, exchanges: [Exchange] = [], now: Date = .now, model: String = model, persona: Persona = Persona(), screen: Screen? = nil) -> InteractionRequest {
-        ValueExtractor.request(query: query, exchanges: Array(exchanges.suffix(exchangesGiven)), schema: schema, instructions: system(persona), model: model, maxOutputTokens: maxOutputTokens, now: now, screen: screen)
+    public static func request(query: String, exchanges: [Exchange] = [], now: Date = .now, model: String = model, persona: Persona = Persona(), screen: Screen? = nil, done: Done) -> InteractionRequest {
+        ValueExtractor.request(query: query, exchanges: Array(exchanges.suffix(exchangesGiven)), schema: schema, instructions: system(persona), model: model, maxOutputTokens: maxOutputTokens, now: now, screen: screen, done: done)
     }
 
     /// One call within the timeout; never throws. `.rewritten` only when
     /// the substance differs (`Substance.differs`). `screen` is what the
     /// user sees as they ask: the selection and the visible text go.
-    public func read(_ query: String, exchanges: [Exchange] = [], now: Date = .now, persona: Persona = Persona(), screen: Screen? = nil) async -> ReadingSummary {
-        let verdict = await extractor.extract(query: query, exchanges: Array(exchanges.suffix(Self.exchangesGiven)), schema: Self.schema, instructions: Self.system(persona), maxOutputTokens: Self.maxOutputTokens, now: now, screen: screen)
+    public func read(_ query: String, exchanges: [Exchange] = [], now: Date = .now, persona: Persona = Persona(), screen: Screen? = nil, done: Done) async -> ReadingSummary {
+        let verdict = await extractor.extract(query: query, exchanges: Array(exchanges.suffix(Self.exchangesGiven)), schema: Self.schema, instructions: Self.system(persona), maxOutputTokens: Self.maxOutputTokens, now: now, screen: screen, done: done)
         switch verdict {
         case let .values(values, summary):
             let text = values["query"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

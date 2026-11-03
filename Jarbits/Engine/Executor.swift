@@ -102,7 +102,7 @@ final class Executor {
         let notes = await session.notebook.all()
         guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
         var things = ThingTable(exchanges: exchanges, webpages: listedWebpages, notes: notes, items: screen?.items ?? [])
-        var transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: now, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, spoken: spoken, triggers: triggers, done: session.actions.newest(), doneEarlier: max(session.actions.count - ActionLog.listed, 0), callbacks: callbacks), picture: screen?.picture)]
+        var transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: now, lead: lead, screen: screen, screenNoteID: screenNoteID, bubble: bubble, bubbleNoteID: bubbleNoteID, spoken: spoken, triggers: triggers, callbacks: callbacks, done: session.done), picture: screen?.picture)]
         func noSuchThing(_ handle: String) -> String {
             "no such thing: \(handle); the things are \(things.handles.isEmpty ? "none" : things.handles.joined(separator: ", "))"
         }
@@ -291,7 +291,7 @@ final class Executor {
                     } else {
                         guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
                         session.close(ids)
-                        session.actions.add("Closed \(ids.count == 1 ? "a webpage" : "\(ids.count) webpages"): \(closing.map(\.title).joined(separator: "; "))", asked: session.askedWords)
+                        session.actions.add("Closed \(ids.count == 1 ? "a webpage" : "\(ids.count) webpages"): \(closing.map(\.title).joined(separator: "; "))", asked: session.askedWords, kind: .change)
                         result = ids.count == 1 ? "closed it" : "closed \(ids.count) webpages"
                         outcome = "ran"
                         shown = true   // the user saw it go; nothing more to show
@@ -316,6 +316,7 @@ final class Executor {
                         ran.insert(key)
                         result = Planner.factsResult(found.map { $0.line() }, held: heldNow, about: about)
                         outcome = found.isEmpty ? "found nothing" : "read"
+                        session.doings.read("Looked through what I know about you for \"\(about)\": \(found.isEmpty ? "nothing bears on it" : "\(found.count) found")", full: result, asked: session.askedWords)
                         #if DEBUG
                         print("facts lookup \"\(about)\": \(found.count) of \(heldNow)")
                         #endif
@@ -342,6 +343,7 @@ final class Executor {
                         let read = session.actions.older(skipping: skipping, noteID: noteID)
                         result = Planner.pastResult(read.records, earlier: read.earlier, skipped: skipping, in: things)
                         outcome = "read"
+                        session.doings.read("Read further back in my own record" + (noteID == nil ? "" : ", for one note"), full: result, noteID: noteID, asked: session.askedWords)
                     }
                     answered = false
                 } else if call.name == Planner.lookTool.name {
@@ -355,41 +357,50 @@ final class Executor {
                     var host: PageHost?
                     var thing: Thing?
                     var refusal: String?
+                    /// What was read, in words, for the record.
+                    var subject = "what was open"
                     if handle.isEmpty {
                         // The newest page on Jarbits's screen from this plan, else
                         // whatever is on the user's screen: page, note or answer.
                         if let mine = deskPages.values.max(by: { $0.lastShown < $1.lastShown }) {
                             host = mine.page
                             mine.lastShown = .now
+                            subject = mine.exchanges.first.map { $0.exchange.described } ?? "the page on my screen"
                             if host == nil { refusal = "the page on my screen is no longer loaded: search again, or open it to show it to the user" }
                         } else if let open = session.pageHost(for: nil) {
                             host = open
+                            subject = "the page on your screen"
                         } else if let shown = await session.lookable() {
                             thing = shown
+                            subject = "what is on your screen"
                         } else {
                             refusal = "nothing is open to look at"
                         }
                     } else if let mine = deskPages[handle] {
                         host = mine.page
                         mine.lastShown = .now
+                        subject = mine.exchanges.first.map { $0.exchange.described } ?? "the page on my screen"
                         if host == nil { refusal = "\(handle) is no longer loaded on my screen: search again, or open \(handle) to show it to the user" }
                     } else {
                         switch things[handle] {
                         case .item?: refusal = "\(handle) is a link, not an open thing: open it first, then look"
                         case let .exchange(exchange)? where exchange.kind == .page || exchange.kind == .search:
                             host = session.pageHost(for: exchange)
+                            subject = exchange.described
                             if host == nil { refusal = "that page is not open now: open \(handle), then look" }
                         case let .exchange(exchange)? where exchange.kind == .note:
-                            if let id = exchange.noteID, let note = await session.notebook.note(id: id) { thing = .note(note) }
+                            if let id = exchange.noteID, let note = await session.notebook.note(id: id) { thing = .note(note); subject = "my note \"\(note.title)\"" }
                             else { refusal = exchange.noteID == nil ? "\(handle) is a grid of notes: open one of them to read it" : "that note is no longer in my notebook" }
                         case let .exchange(exchange)? where exchange.kind == .answer:
                             thing = .exchange(exchange)
+                            subject = "my answer to \"\(exchange.query)\""
                         case let .note(note)?:
                             // Fresh from the notebook: the listing's copy may be older than a step's write.
                             thing = await session.notebook.note(id: note.id).map { .note($0) } ?? .note(note)
+                            subject = "my note \"\(note.title)\""
                         case let .webpage(webpage)?:
                             // Loaded on the user's stack: its page is read as any page; else it must come forward first.
-                            if let open = session.layer(forWebpage: webpage.id), let page = open.page { host = page }
+                            if let open = session.layer(forWebpage: webpage.id), let page = open.page { host = page; subject = "the open webpage \"\(webpage.title)\"" }
                             else { refusal = "\(handle) is not loaded now: open \(handle), then look" }
                         case nil: refusal = noSuchThing(handle)
                         default: refusal = "\(handle) is a grid: open one of its things to read it"
@@ -406,6 +417,7 @@ final class Executor {
                         let handles = things.mint(items: looked?.items ?? [])
                         result = Planner.looked(what: what, text: looked?.text ?? "", handles: handles, in: things)
                         outcome = looked == nil ? "looked: no reply" : "looked: \(what), \(looked!.text.count) chars, \(handles.count) links"
+                        if let looked { session.doings.read("Read \(subject), its \(what): \(looked.text)", full: result, asked: session.askedWords) }
                     } else if let thing {
                         let (lead, read, unit) = Self.read(thing, what: what, from: from)
                         var text = read.text
@@ -413,6 +425,8 @@ final class Executor {
                         let handles = what == "links" ? things.mint(items: read.links) : []
                         result = Planner.looked(what: what, text: what == "links" ? "" : text, handles: handles, in: things, lead: lead)
                         outcome = "looked: \(what), \(text.count) chars, \(handles.count) links"
+                        let noteID: UUID? = if case let .note(note) = thing { note.id } else { nil }
+                        session.doings.read("Read \(subject), its \(what): \(text)", full: result, noteID: noteID, asked: session.askedWords)
                     } else {
                         result = "nothing is open to look at"
                         outcome = "failed: nothing open"
@@ -497,6 +511,7 @@ final class Executor {
                             let handles = things.mint(webpages: act.found)
                             result = Planner.found(handles, in: things, now: now)
                             outcome = act.found.isEmpty ? "found nothing" : "found \(act.found.count)"
+                            session.doings.read("Looked among the open webpages for \"\(stepQuery)\": \(act.found.isEmpty ? "found nothing" : "found \(act.found.count)")", full: result, asked: session.askedWords)
                         } else if readsWeather {
                             // The forecast in words, for the planner to answer from; kept
                             // as a source, so the answer carries Apple's mark.
@@ -510,6 +525,7 @@ final class Executor {
                             } else {
                                 result = act.text
                                 outcome = "read"
+                                session.doings.read("Read the forecast for myself: \(act.text)", full: act.text, asked: session.askedWords)
                             }
                         } else if onDesk {
                             // On Jarbits's screen: nothing the user sees moves; the page
@@ -531,7 +547,7 @@ final class Executor {
                                 failures += 1
                             }
                         } else if spec.showsLayer {
-                            let (didShow, reason, declined, text) = await session.perform(instinct, context: context, token: token)
+                            let (didShow, reason, declined, text, unfinished) = await session.perform(instinct, context: context, token: token)
                             guard session.isCurrent(token) else { return finish(.stale, webpages: listedWebpages.count) }
                             shown = shown || didShow   // an earlier piece stays shown whatever a later step does
                             if declined {
@@ -541,7 +557,9 @@ final class Executor {
                                 outcome = "declined"
                                 ended = .declined
                             } else {
-                                result = didShow ? (text.isEmpty ? "shown on screen" : "shown on screen; what it shows:\n\(text)") : "could not: \(reason ?? "not shown")"
+                                // An answer's words go back whole, so the planner never contradicts what was said.
+                                let says = spec.instinct.isAnswered ? (unfinished ? "what it says so far, still being written" : "what it says") : "what it shows"
+                                result = didShow ? (text.isEmpty ? "shown on screen" : "shown on screen; \(says):\n\(text)") : "could not: \(reason ?? "not shown")"
                                 outcome = didShow ? "shown" : "failed: \(reason ?? "not shown")"
                                 if !didShow { failures += 1 }
                             }
@@ -569,14 +587,14 @@ final class Executor {
                     outcome = "unknown"
                     answered = false
                 }
-                // Nothing he did goes unrecorded: a step that acted and wrote no
-                // line of its own goes on the record from its result. An answer
-                // has its line when it finishes; a tool that could not says so.
-                let answers = instincts.first { $0.spec.id == call.name }?.spec.instinct.isAnswered == true
-                if outcome == "ran" || outcome == "shown", !answers, session.actions.count == recordedBefore {
-                    session.actions.add("\(call.name): \(result)", asked: session.askedWords)
-                } else if outcome.hasPrefix("failed"), instincts.contains(where: { $0.spec.id == call.name }), outcome != "failed: no such thing" {
-                    session.actions.add("Tried \(call.name) and could not: \(result)", asked: session.askedWords)
+                // Nothing he did goes unrecorded: one decision, for every step,
+                // from what it came to (`StepRecord`): a step that acted and
+                // wrote no line of its own goes on the record from its result;
+                // an answer has its line when its words are out; a read wrote
+                // its own; a tool that could not says so.
+                let instinct = instincts.first { $0.spec.id == call.name }
+                if let line = StepRecord.line(name: call.name, outcome: outcome, result: result, recordedAlready: session.actions.count != recordedBefore, isAnswer: instinct?.spec.instinct.isAnswered == true, isInstinct: instinct != nil) {
+                    session.actions.add(line.what, asked: session.askedWords, kind: line.kind)
                 }
                 steps.append(EngineSummary.Step(name: call.name, arguments: call.arguments, outcome: outcome, latencyMs: Int((clock.now - stepStart) / .milliseconds(1)), answer: answerGiven))
                 session.planProgress(step: call.name)

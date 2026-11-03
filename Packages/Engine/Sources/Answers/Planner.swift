@@ -313,7 +313,7 @@ public struct Planner: Sendable {
     }
 
     /// The record of what he has done, as the listing heads it and the rules name it.
-    public static let doneHeading = "What I have done"
+    public static let doneHeading = Done.planHeading
 
     /// What `past` read, as a step's result: the entries, and how to go further back.
     public static func pastResult(_ records: [ActionRecord], earlier: Int, skipped: Int, in things: ThingTable, calendar: Calendar = .current) -> String {
@@ -328,14 +328,15 @@ public struct Planner: Sendable {
 
     /// The request, the exchanges it depends on, and the open webpages, as
     /// the plan's first turn, each tagged with its handle.
-    public static func input(query: String, exchanges: [Exchange], webpages: [Webpage], now: Date, calendar: Calendar = .current) -> String {
-        input(query: query, things: ThingTable(exchanges: exchanges, webpages: webpages), now: now, calendar: calendar)
+    public static func input(query: String, exchanges: [Exchange], webpages: [Webpage], now: Date, calendar: Calendar = .current, done: Done) -> String {
+        input(query: query, things: ThingTable(exchanges: exchanges, webpages: webpages), now: now, calendar: calendar, done: done)
     }
 
     /// `lead` is the one line before the request that says why the planner
     /// has it: what an instinct tried and could not do (`failureLead`), or
     /// that the classifier picked an instinct that is reasoned (`pickedLead`).
-    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil, bubble: Screen? = nil, bubbleNoteID: UUID? = nil, spoken: String? = nil, triggers: [Trigger] = [], done: [ActionRecord] = [], doneEarlier: Int = 0, callbacks: [Callback] = []) -> String {
+    /// `done` is what he has done (`Done`): required, so no plan starts without it.
+    public static func input(query: String, things: ThingTable, now: Date, calendar: Calendar = .current, lead: String? = nil, screen: Screen? = nil, screenNoteID: UUID? = nil, bubble: Screen? = nil, bubbleNoteID: UUID? = nil, spoken: String? = nil, triggers: [Trigger] = [], callbacks: [Callback] = [], done: Done) -> String {
         var lines = ["Request: \(query)"]
         // The words as the user said them, when the reading changed them: the
         // planner resolves "it" and "this" from these, never from a rewrite.
@@ -355,10 +356,9 @@ public struct Planner: Sendable {
             lines += exchanges.enumerated().map { "- " + ThingTable.line($0.element, now: now, calendar: calendar, noteHandles: noteHandles, webpageHandles: webpageHandles, withWords: $0.offset >= worded) }
         }
         // The record of what I have done: not things to show, and never thinned by what the request seems to be about.
-        if !done.isEmpty {
+        if let block = done.block(heading: doneHeading, calendar: calendar, noteHandles: things.noteHandles, past: true) {
             lines.append("")
-            lines.append("\(doneHeading) (oldest first\(doneEarlier > 0 ? "; \(doneEarlier) earlier, which past reads" : "")):")
-            lines += done.map { "- " + $0.line(calendar: calendar, noteHandles: things.noteHandles) }
+            lines.append(block)
         }
         // Exchanges from earlier conversations nearest the request, for a callback where one fits.
         if !callbacks.isEmpty {

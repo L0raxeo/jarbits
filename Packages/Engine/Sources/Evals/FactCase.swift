@@ -142,7 +142,7 @@ public struct FactRunner: Sendable {
     }
 
     public static func request(for factCase: FactCase, model: String = FactReader.model) -> InteractionRequest {
-        FactReader.request(query: factCase.query, exchanges: Array((factCase.exchanges ?? []).suffix(FactReader.exchangesGiven)), known: factCase.known ?? [], persona: .example, model: model, now: AnswerContext.example.now)
+        FactReader.request(query: factCase.query, exchanges: Array((factCase.exchanges ?? []).suffix(FactReader.exchangesGiven)), known: factCase.known ?? [], persona: .example, model: model, now: AnswerContext.example.now, done: .none)
     }
 
     public func run(_ cases: [FactCase]) async -> [FactResult] {

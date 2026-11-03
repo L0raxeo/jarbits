@@ -16,6 +16,10 @@ public struct Pick: Codable, Sendable, Equatable {
     /// two years; nil when the question was not asked or not answered. The
     /// answer instincts act on it; nothing else does.
     public var recency: Double?
+    /// Jev's probability that the query asks about his own actions: what
+    /// he did, said, changed, read or showed. Nil when the question was not
+    /// asked or went unanswered; the words then decide (`asksWhatHeDid`).
+    public var did: Double?
     /// Jev's probability that a follow-up rejects the site this app opened
     /// by name; nil when no such site was on screen or the question went
     /// unanswered. The site instinct acts on it.
@@ -73,6 +77,7 @@ public struct Pick: Codable, Sendable, Equatable {
         latencyMs: Int? = nil,
         inputTokens: Int? = nil,
         recency: Double? = nil,
+        did: Double? = nil,
         rejection: Double? = nil,
         recall: RecallIntent? = nil,
         relevance: [Double]? = nil,
@@ -92,6 +97,7 @@ public struct Pick: Codable, Sendable, Equatable {
         self.latencyMs = latencyMs
         self.inputTokens = inputTokens
         self.recency = recency
+        self.did = did
         self.rejection = rejection
         self.recall = recall
         self.relevance = relevance
@@ -136,6 +142,13 @@ public struct Pick: Codable, Sendable, Equatable {
     /// instincts show web results instead.
     public var recent: Bool {
         (recency ?? 0) >= EngineRequest.recencyThreshold
+    }
+
+    /// The query asks about his own actions, by Jev's reading; by the
+    /// words when Jev was not asked or did not say.
+    public func asksWhatHeDid(_ query: String) -> Bool {
+        if let did { return did >= EngineRequest.didThreshold }
+        return Done.asksWhatHeDid(query)
     }
 
     /// The query says the site on screen is the wrong one, by Jev's reading.

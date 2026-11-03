@@ -114,6 +114,21 @@ public struct Exchange: Codable, Sendable, Hashable {
         .answer(query: query, text: answer)
     }
 
+    /// Whether two exchanges are the same thing, whatever words asked for
+    /// it and whichever screen it was on: a layer's exchange carries the
+    /// user's words and the device's marks, a thing's handle does not, so
+    /// `==` over every field says two listings of one note differ.
+    public func isSameThing(as other: Exchange) -> Bool {
+        guard kind == other.kind else { return false }
+        switch kind {
+        case .note: return noteID != nil && noteID == other.noteID || noteID == nil && other.noteID == nil && title == other.title
+        case .page: return address != nil && address == other.address || address == nil && other.address == nil && title == other.title
+        case .answer: return query == other.query && text == other.text
+        case .search: return (text ?? query) == (other.text ?? other.query)
+        case .recall, .site: return query == other.query && title == other.title
+        }
+    }
+
     /// What the exchange got, in a few words, for a question's instructions.
     public var summary: String {
         switch kind {

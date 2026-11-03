@@ -1061,22 +1061,64 @@ loses nothing:
   stays off the record.
 - The session writes it as a card, a reply, a page or a question is shown, and
   as an answer finishes.
-- A plan step or a picked instinct that acted and wrote no line of its own goes
-  on the record from its result (`Executor`, `JarbitsSession.apply`). So a new
-  tool is on the record even before it says anything of its own, though it
-  should still write its own line, as the stores do.
+- A plan step that acted and wrote no line of its own goes on the record
+  from its result, by one decision made for every step from what it came to
+  (`StepRecord`, a pure function the tests cover outcome by outcome;
+  `JarbitsSession.apply` does the same for a picked instinct). So a new tool
+  is on the record even before it says anything of its own, though it should
+  still write its own line, as the stores do.
+- What he reads for himself is on the record too, in a line: a page or a
+  note he `look`ed at, the forecast, the facts he looked through, his own
+  record read further back, the open webpages he looked among. How he did a
+  thing is part of what he did.
 
 A rewrite is recorded by what it did to the note's words, worked out by plain
 comparison (`ActionWords`): "took out 640 of its 760 words and put in 12".
+Every line says what kind of thing it was (`ActionRecord.Kind`: a change, a
+show, a say, an ask, a read, a try), so the device can tell a change from a
+show without parsing the words.
 
-Every planner request and every answer reads the newest `ActionLog.listed` of
-it, whatever the request seems to be about, under the rule that a question about
-what he did, said or changed is answered from it: what it lists, he did; what it
-does not list, he did not. The planner's `past` reads further back, or a single
-note's whole history by its handle.
+### One memory per request (2026-11-03)
 
-Anything new that acts must go on this record. Build it into the store or the
-one function the action passes through, so it cannot be left out.
+The record is the lasting memory; a request has a working memory of its own,
+`Doings` (`Jarbits/Session/Doings.swift`), made in `send` for each query. It
+keeps, for the request alone, the whole of what each read brought back beside
+its cut line, and the words of an answer still coming out of him ("saying
+now"), since his voice is his and what is half out is already said. Every
+model he asks during the request is handed one value built from it the moment
+the call is made, `Done` (`Packages/Engine/Sources/Engine/Done.swift`): the
+record as it stood when the request began, this request's lines with the
+reads in full, and what he is saying. A writer the planner calls mid-plan
+therefore reads what the planner read, without the planner having to fold it
+into the question.
+
+`Done` is required, with no default, by every request builder: the answer, the
+planner's first turn, the closing, the fact reader, the query reader and the
+value extractor. A speaker gets the whole block under one rule
+(`Done.rule`); a reader gets the newest few lines (`Done.brief`), enough for
+"undo that" to resolve. No call can be built without it, which is the point:
+the bugs this replaced were each a feature forgetting to pass the record
+along. The CLI and the evals pass `.none` or a fixture; with nothing done for
+the request yet the block renders byte for byte as before, so the plan cache
+still hits.
+
+An answer step inside a plan waits for the answer's words (`answerWait`) and
+hands them back to the planner whole, so the planner never contradicts what
+was just said.
+
+### The device checks what he claims (2026-11-03)
+
+A question about his own actions is read by Jev beside the pick (`did`, on
+the answer instincts; the words decide when Jev did not say,
+`Done.asksWhatHeDid`). For the note in view, the device answers from the
+record alone, no model: the newest change he made to it, with when, or that
+he only showed it, or that he never touched it (`Done.say(aboutNote:)`). For
+any other such question the answer is checked as its words come (`Checker`,
+one bounded call, once per layer, `Layer.checked`): when it contradicts the
+record he cuts himself off where he is (`AnswerSession.stopEarly`), the words
+out so far stand, and the correction follows under them in his voice.
+`JarbitsSession.correction` holds the other presentation, a silent replace.
+The plain query path pays nothing: the check runs only on those questions.
 
 ## Notebook
 

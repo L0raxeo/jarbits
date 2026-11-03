@@ -283,6 +283,9 @@ case "route":
     if let remember = decision.remember {
         print("remember: \(remember.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRequest.rememberThreshold.formatted())), \(decision.statesFact ? "states a lasting fact about the user" : "no fact to keep")")
     }
+    if let did = decision.did {
+        print("did: \(did.formatted(.number.precision(.fractionLength(2)))) (threshold \(EngineRequest.didThreshold.formatted())), \(decision.asksWhatHeDid(query) ? "asks what he himself did: the record answers before a model does" : "not about what he did")")
+    }
     if let intent = decision.recall {
         func p(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(2))) }
         let kinds = RecallIntent.Kind.allCases.map { "\($0.rawValue) \(p(intent.probability(of: $0)))" }.joined(separator: " ")
@@ -344,14 +347,14 @@ case "extract":
     if free.count < fields.count {
         print("closed-set fields (Jev's questions, left out of the call): \(schema.closedSet.map(\.name).joined(separator: ", "))")
     }
-    let request = ValueExtractor.request(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free), instructions: instructions, now: today)
+    let request = ValueExtractor.request(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free), instructions: instructions, now: today, done: .none)
     print("request body:")
     print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
     guard let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
         print("set GEMINI_API_KEY to make the call (one small metered request)")
         exit(0)
     }
-    let verdict = await ValueExtractor(client: GeminiClient(apiKey: key), timeout: timeout).extract(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free), instructions: instructions, now: today)
+    let verdict = await ValueExtractor(client: GeminiClient(apiKey: key), timeout: timeout).extract(query: query, exchanges: exchanges, schema: schema.jsonSchema(only: free), instructions: instructions, now: today, done: .none)
     let budget = Double(timeout.components.seconds) + Double(timeout.components.attoseconds) / 1e18
     switch verdict {
     case let .values(values, summary):
@@ -444,7 +447,7 @@ case "plan":
     if pick { facts = await pickFacts(query, from: facts, exchanges: exchanges) }
     let bundle = PlanBundle(query: query, exchanges: exchanges, facts: facts, factsHeld: held, tools: Planner.tools(for: InstinctSpec.all), context: AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now), persona: .example, screen: screen)
     let things = ThingTable(exchanges: exchanges, webpages: webpages, items: links)
-    let transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: .now, screen: screen), picture: picture)]
+    let transcript: [InteractionStep] = [Planner.firstTurn(Planner.input(query: query, things: things, now: .now, screen: screen, done: .none), picture: picture)]
     let request = Planner.request(bundle: bundle, transcript: transcript)
     if !things.handles.isEmpty { print("things: " + things.entries.map { ThingTable.line($0, now: .now) }.joined(separator: " | ")) }
     print("first round's request body (\(Planner.model), \(bundle.tools.count) tools, \(roundTimeout.components.seconds) s to answer\(picture.map { ", a picture of \($0.count) bytes, shown here as <picture>" } ?? "")):")
@@ -524,8 +527,11 @@ case "answer":
         lines = await pickLines(query, picker: picker, embedder: embedder)
     }
     var callbacks: [Callback] = []
+    var done = Done.none
     if let actionsFile {
-        // The record's exchanges nearest the query, as the app gives them for a callback.
+        // The record as the app gives it: the newest of it, and its exchanges nearest the query for a callback.
+        let log = ActionLog(fileURL: actionsFile)
+        done = Done(before: log.newest(), earlier: max(log.count - ActionLog.listed, 0))
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let embedder = CachedEmbedder(inner: ProcessInfo.processInfo.environment["GEMINI_API_KEY"].flatMap { $0.isEmpty ? nil : GeminiEmbedder(apiKey: $0) }, directory: root.appending(path: ".evalcache/embeddings"))
         let memory = Callbacks(fileURL: root.appending(path: ".evalcache/callbacks.index"), embedder: embedder)
@@ -535,7 +541,7 @@ case "answer":
         print(callbacks.isEmpty ? "callbacks: none near it" : "callbacks:\n" + callbacks.map { "  \"\($0.asked ?? "")\" → \"\($0.said)\"" }.joined(separator: "\n"))
     }
     let context = AnswerContext(locale: Locale(identifier: "en_US"), timeZone: .current, now: .now)
-    let request = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: facts, persona: .example, lines: lines, callbacks: callbacks)
+    let request = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: facts, persona: .example, lines: lines, callbacks: callbacks, done: done)
     guard !dryRun, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
         print("request body (\(GeminiClient.defaultModel)):")
         print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
@@ -548,7 +554,7 @@ case "answer":
         if text.contains(AnswerPrompt.notesMarker) {
             // As the app does: once more with every fact, whose instruction says to say he doesn't know instead.
             print("\(AnswerPrompt.notesMarker): asking again with every fact (\(every.count))")
-            let again = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: every, persona: .example, retry: true, lines: lines, callbacks: callbacks)
+            let again = AnswerPrompt.request(format: format, query: query, context: context, history: history, facts: every, persona: .example, retry: true, lines: lines, callbacks: callbacks, done: done)
             print(try await client.interact(again).text)
         } else {
             print(text)
@@ -576,14 +582,14 @@ case "read":
         default: fail(usage)
         }
     }
-    let request = QueryReader.request(query: query, exchanges: exchanges)
+    let request = QueryReader.request(query: query, exchanges: exchanges, done: .none)
     print("request body (\(QueryReader.model), \(QueryReader.timeout.components.seconds) s to answer):")
     print((try? request.jsonData()).map { String(decoding: $0, as: UTF8.self) } ?? "<could not encode>")
     guard !dryRun, let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty else {
         print(dryRun ? "dry run: no call made" : "set GEMINI_API_KEY to make the call (one small metered call, a few hundredths of a cent)")
         exit(0)
     }
-    let summary = await QueryReader(client: GeminiClient(apiKey: key)).read(query, exchanges: exchanges)
+    let summary = await QueryReader(client: GeminiClient(apiKey: key)).read(query, exchanges: exchanges, done: .none)
     let tokens = summary.usage.map { "\($0.inputTokens) in, \($0.outputTokens + $0.thoughtTokens) out; about $\(GeminiPricing.cost($0, model: summary.model).formatted(.number.precision(.fractionLength(5))))" } ?? "no usage"
     switch summary.outcome {
     case .rewritten:

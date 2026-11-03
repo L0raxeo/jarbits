@@ -89,9 +89,11 @@ public struct FactReader: Sendable {
 
     /// The exchanges as "Earlier:" lines, today's date, the known facts
     /// numbered, then the request.
-    public static func input(query: String, exchanges: [Exchange], known: [String], now: Date? = nil) -> String {
+    /// `done` is what he has done (`Done`); a reader gets the newest few lines.
+    public static func input(query: String, exchanges: [Exchange], known: [String], now: Date? = nil, done: Done) -> String {
         var lines = exchanges.map { "Earlier: " + AnswerPrompt.describe($0) }
         if let now { lines.append("Today: " + now.formatted(Date.FormatStyle(date: .complete, time: .shortened, locale: Locale(identifier: "en_US")))) }
+        if let brief = done.brief() { lines.append(brief) }
         if known.isEmpty {
             lines.append("Known facts: none yet")
         } else {
@@ -102,11 +104,11 @@ public struct FactReader: Sendable {
         return lines.joined(separator: "\n")
     }
 
-    public static func request(query: String, exchanges: [Exchange], known: [String], persona: Persona = Persona(), model: String = model, now: Date? = nil) -> InteractionRequest {
+    public static func request(query: String, exchanges: [Exchange], known: [String], persona: Persona = Persona(), model: String = model, now: Date? = nil, done: Done) -> InteractionRequest {
         InteractionRequest(
             model: model,
             systemInstruction: system(persona),
-            input: input(query: query, exchanges: exchanges, known: known, now: now),
+            input: input(query: query, exchanges: exchanges, known: known, now: now, done: done),
             maxOutputTokens: maxOutputTokens,
             stream: false,
             outputSchema: schema(persona)
@@ -134,13 +136,13 @@ public struct FactReader: Sendable {
 
     /// One call within `timeout`; never throws. An empty list is a reading
     /// that found nothing; a failed call is a reading that missed.
-    public func read(query: String, exchanges: [Exchange], known: [String], persona: Persona = Persona(), now: Date? = nil) async -> (findings: [Finding], summary: ExtractionSummary) {
+    public func read(query: String, exchanges: [Exchange], known: [String], persona: Persona = Persona(), now: Date? = nil, done: Done) async -> (findings: [Finding], summary: ExtractionSummary) {
         let clock = ContinuousClock()
         let start = clock.now
         func summary(_ outcome: ExtractionSummary.Outcome, usage: AnswerUsage? = nil) -> ExtractionSummary {
             ExtractionSummary(model: client.model, latencyMs: Int((clock.now - start) / .milliseconds(1)), usage: usage, fields: ["facts"], outcome: outcome)
         }
-        let request = Self.request(query: query, exchanges: Array(exchanges.suffix(Self.exchangesGiven)), known: known, persona: persona, model: client.model, now: now)
+        let request = Self.request(query: query, exchanges: Array(exchanges.suffix(Self.exchangesGiven)), known: known, persona: persona, model: client.model, now: now, done: done)
         let interaction: Interaction
         do {
             interaction = try await client.interact(request, timeout: timeout)

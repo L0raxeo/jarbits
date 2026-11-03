@@ -5,7 +5,7 @@ import Testing
 
 @Suite struct RequestTests {
     @Test func bodyMatchesTheDocumentedShape() throws {
-        let request = AnswerPrompt.request(format: .oneLine, query: "capital of peru", context: .example)
+        let request = AnswerPrompt.request(format: .oneLine, query: "capital of peru", context: .example, done: .none)
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
 
         #expect(json["model"] as? String == GeminiClient.defaultModel)
@@ -20,14 +20,14 @@ import Testing
     }
 
     @Test func keyOrderIsStable() throws {
-        let body = String(decoding: try AnswerPrompt.request(format: .narrative, query: "q", context: .example).jsonData(), as: UTF8.self)
+        let body = String(decoding: try AnswerPrompt.request(format: .narrative, query: "q", context: .example, done: .none).jsonData(), as: UTF8.self)
         let order = ["\"model\"", "\"system_instruction\"", "\"input\"", "\"generation_config\"", "\"stream\"", "\"store\""]
         let positions = order.map { body.range(of: $0)!.lowerBound }
         #expect(positions == positions.sorted())
     }
 
     @Test func theNewFieldsAtTheirDefaultsLeaveTheFirstVersionsBytesUnchanged() throws {
-        let request = AnswerPrompt.request(format: .narrative, query: "q", context: .example)
+        let request = AnswerPrompt.request(format: .narrative, query: "q", context: .example, done: .none)
         let explicit = InteractionRequest(
             model: request.model, systemInstruction: request.systemInstruction, input: request.input, history: [],
             maxOutputTokens: request.maxOutputTokens, thinkingLevel: "minimal", stream: true, tools: [], toolChoice: nil, outputSchema: nil, transcript: nil
@@ -40,7 +40,7 @@ import Testing
     }
 
     @Test func toolsRenderAfterTheInputAndTheToolChoiceInsideGenerationConfig() throws {
-        var request = AnswerPrompt.request(format: .narrative, query: "q", context: .example)
+        var request = AnswerPrompt.request(format: .narrative, query: "q", context: .example, done: .none)
         request.tools = [ToolDeclaration(name: "narrative", description: "Answer in a paragraph.", parameters: ["type": "object", "properties": ["query": ["type": "string"]], "required": ["query"]])]
         request.toolChoice = .any
         let body = String(decoding: try request.jsonData(), as: UTF8.self)
@@ -64,7 +64,7 @@ import Testing
     }
 
     @Test func aSchemaBecomesTheResponseFormatAndStreamCanBeOff() throws {
-        var request = AnswerPrompt.request(format: .oneLine, query: "set the thermostat to 68", context: .example)
+        var request = AnswerPrompt.request(format: .oneLine, query: "set the thermostat to 68", context: .example, done: .none)
         request.stream = false
         request.outputSchema = ["type": "object", "properties": ["temperature": ["type": "integer"]], "required": ["temperature"], "additionalProperties": false]
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
@@ -82,7 +82,7 @@ import Testing
     }
 
     @Test func aTranscriptReplacesTheInputAndReplaysModelStepsVerbatim() throws {
-        var request = AnswerPrompt.request(format: .narrative, query: "ignored", context: .example, history: [AnswerTurn(query: "also", answer: "ignored")])
+        var request = AnswerPrompt.request(format: .narrative, query: "ignored", context: .example, history: [AnswerTurn(query: "also", answer: "ignored")], done: .none)
         let call: JSONValue = ["type": "function_call", "id": "call_1", "name": "narrative", "arguments": ["query": "a vegetarian dinner"], "thought_signature": "sig==", "extra": ["nested": [1, 2]]]
         request.transcript = [
             .userText("Request: remember I'm vegetarian, then suggest dinner"),
@@ -102,7 +102,7 @@ import Testing
     }
 
     @Test func withoutHistoryTheInputIsAString() throws {
-        let request = AnswerPrompt.request(format: .narrative, query: "q", context: .example)
+        let request = AnswerPrompt.request(format: .narrative, query: "q", context: .example, done: .none)
         #expect(request.history.isEmpty)
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
         #expect(json["input"] is String)
@@ -113,7 +113,7 @@ import Testing
             AnswerTurn(query: "how do you make hot chocolate", answer: "You **heat milk** and whisk in cocoa."),
             AnswerTurn(query: "why low heat?", answer: "Milk ==scorches== above a simmer."),
         ]
-        let request = AnswerPrompt.request(format: .narrative, query: "and with water?", context: .example, history: history)
+        let request = AnswerPrompt.request(format: .narrative, query: "and with water?", context: .example, history: history, done: .none)
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
         let steps = try #require(json["input"] as? [[String: Any]])
         #expect(steps.count == 5)
@@ -131,14 +131,14 @@ import Testing
 
     @Test func theWholeHistoryGoes() throws {
         let history = (0..<10).map { AnswerTurn(query: "q\($0)", answer: "a\($0)") }
-        let request = AnswerPrompt.request(format: .narrative, query: "q10", context: .example, history: history)
+        let request = AnswerPrompt.request(format: .narrative, query: "q10", context: .example, history: history, done: .none)
         #expect(request.history == history)
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
         #expect((json["input"] as? [Any])?.count == 2 * history.count + 1)
     }
 
     @Test func keyOrderIsStableWithHistory() throws {
-        let request = AnswerPrompt.request(format: .narrative, query: "q", context: .example, history: [AnswerTurn(query: "a", answer: "b")])
+        let request = AnswerPrompt.request(format: .narrative, query: "q", context: .example, history: [AnswerTurn(query: "a", answer: "b")], done: .none)
         let body = String(decoding: try request.jsonData(), as: UTF8.self)
         let order = ["\"model\"", "\"system_instruction\"", "\"input\"", "\"generation_config\"", "\"stream\"", "\"store\""]
         let positions = order.map { body.range(of: $0)!.lowerBound }
@@ -178,24 +178,24 @@ import Testing
             .answer(query: "capital of peru", text: "==Lima=="),
             .search(query: "eiffel tower", term: "eiffel tower"),
         ]
-        let request = AnswerPrompt.request(format: .narrative, query: "how big is it", context: .example, earlier: earlier)
+        let request = AnswerPrompt.request(format: .narrative, query: "how big is it", context: .example, earlier: earlier, done: .none)
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
         let input = try #require(json["input"] as? String, "no history: the input stays a string")
         #expect(input.hasPrefix("Query: how big is it\n"))
         #expect(input.contains("- Locale: en_US\n\nEarlier in this session (oldest first; the query may lean on them, but answer only the query):\n"), "after the context block")
         #expect(input.hasSuffix("- Searched \"brasil weather\"\n- Read \"Weather in Brasília\" (weather.com)\n- Asked \"capital of peru\" and got: ==Lima==\n- Searched \"eiffel tower\""))
-        #expect(!AnswerPrompt.input(query: "x", context: .example).contains("Earlier in this session"), "nothing added without exchanges")
-        let withHistory = AnswerPrompt.request(format: .narrative, query: "why?", context: .example, history: [AnswerTurn(query: "q", answer: "a")], earlier: Array(earlier.prefix(1)))
+        #expect(!AnswerPrompt.input(query: "x", context: .example, done: .none).contains("Earlier in this session"), "nothing added without exchanges")
+        let withHistory = AnswerPrompt.request(format: .narrative, query: "why?", context: .example, history: [AnswerTurn(query: "q", answer: "a")], earlier: Array(earlier.prefix(1)), done: .none)
         let steps = try #require(JSONSerialization.jsonObject(with: withHistory.jsonData()) as? [String: Any])["input"] as? [[String: Any]]
         #expect(steps?.count == 3, "the exchanges add no steps")
         #expect(((steps?.last?["content"] as? [[String: Any]])?.first?["text"] as? String)?.contains("- Searched \"brasil weather\"") == true, "they ride in the last step")
     }
 
     @Test func factsFollowTheContextAndTheExchangesAndThePromptsNameTheBlock() throws {
-        let input = AnswerPrompt.input(query: "give me a dinner recipe", context: .example, earlier: [.search(query: "dinner", term: "dinner ideas")], facts: ["Lorcan is vegetarian", "Lorcan hates cilantro"], persona: .example)
+        let input = AnswerPrompt.input(query: "give me a dinner recipe", context: .example, earlier: [.search(query: "dinner", term: "dinner ideas")], facts: ["Lorcan is vegetarian", "Lorcan hates cilantro"], persona: .example, done: .none)
         #expect(input.hasSuffix("- Searched \"dinner ideas\"\n\nWhat Jarbits knows about Lorcan (told earlier; let it shape the answer when it bears on it, never repeat it or say you were told):\n- Lorcan is vegetarian\n- Lorcan hates cilantro"))
-        #expect(!AnswerPrompt.input(query: "x", context: .example).contains("knows about"), "nothing added without facts")
-        let request = AnswerPrompt.request(format: .oneLine, query: "q", context: .example, facts: ["Lorcan uses metric units"], persona: .example)
+        #expect(!AnswerPrompt.input(query: "x", context: .example, done: .none).contains("knows about"), "nothing added without facts")
+        let request = AnswerPrompt.request(format: .oneLine, query: "q", context: .example, facts: ["Lorcan uses metric units"], persona: .example, done: .none)
         let json = try #require(JSONSerialization.jsonObject(with: request.jsonData()) as? [String: Any])
         #expect((json["input"] as? String)?.hasSuffix("- Lorcan uses metric units") == true)
         #expect(AnswerPrompt.system(for: .narrative, persona: .example).contains("What Jarbits knows about Lorcan"))
@@ -239,7 +239,7 @@ import Testing
     }
 
     @Test func contextCarriesDateZoneAndLocale() {
-        let input = AnswerPrompt.input(query: "what's the time in costa rica", context: .example)
+        let input = AnswerPrompt.input(query: "what's the time in costa rica", context: .example, done: .none)
         #expect(input.contains("- Date and time: Wednesday 21 October 2026, 11:26 (America/Chicago)"), "got: \(input)")
         #expect(input.contains("- Locale: en_US"))
         #expect(!input.contains("location"))
@@ -247,6 +247,6 @@ import Testing
 
         var atCutoff = AnswerContext.example
         atCutoff.now = Date(timeIntervalSince1970: 1_736_000_000)   // 4 January 2025
-        #expect(AnswerPrompt.input(query: "x", context: atCutoff).contains("about 0 months before"))
+        #expect(AnswerPrompt.input(query: "x", context: atCutoff, done: .none).contains("about 0 months before"))
     }
 }

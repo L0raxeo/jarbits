@@ -39,9 +39,12 @@ public struct ValueExtractor: Sendable {
 
     /// "Earlier: …" lines for the chained exchanges, today's date when a
     /// value may be relative to it, then the request.
-    public static func input(query: String, exchanges: [Exchange], now: Date? = nil, screen: Screen? = nil) -> String {
+    /// `done` is what he has done (`Done`); a reader gets the newest few
+    /// lines, so "undo that" and "put it back" have the thing in view.
+    public static func input(query: String, exchanges: [Exchange], now: Date? = nil, screen: Screen? = nil, done: Done) -> String {
         var lines = exchanges.map { "Earlier: " + AnswerPrompt.describe($0) }
         if let now { lines.append("Today: " + now.formatted(Date.FormatStyle(date: .complete, time: .shortened, locale: Locale(identifier: "en_US")))) }
+        if let brief = done.brief() { lines.append(brief) }
         if let screen {
             // What the user sees as they ask: the selection and the visible text.
             lines.append("")
@@ -77,11 +80,11 @@ public struct ValueExtractor: Sendable {
         """
     }
 
-    public static func request(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, model: String = model, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil, screen: Screen? = nil) -> InteractionRequest {
+    public static func request(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, model: String = model, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil, screen: Screen? = nil, done: Done) -> InteractionRequest {
         InteractionRequest(
             model: model,
             systemInstruction: instructions,
-            input: input(query: query, exchanges: exchanges, now: now, screen: screen),
+            input: input(query: query, exchanges: exchanges, now: now, screen: screen, done: done),
             maxOutputTokens: maxOutputTokens,
             stream: false,
             outputSchema: schema
@@ -97,13 +100,13 @@ public struct ValueExtractor: Sendable {
 
     /// One call within `timeout`; never throws. `instructions` is the
     /// system instruction, `system` unless a different reading is wanted.
-    public func extract(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil, screen: Screen? = nil) async -> Verdict {
+    public func extract(query: String, exchanges: [Exchange], schema: JSONValue, instructions: String = system, maxOutputTokens: Int = maxOutputTokens, now: Date? = nil, screen: Screen? = nil, done: Done) async -> Verdict {
         let clock = ContinuousClock()
         let start = clock.now
         func summary(_ outcome: ExtractionSummary.Outcome, fields: [String] = [], usage: AnswerUsage? = nil) -> ExtractionSummary {
             ExtractionSummary(model: client.model, latencyMs: Int((clock.now - start) / .milliseconds(1)), usage: usage, fields: fields, outcome: outcome)
         }
-        let request = Self.request(query: query, exchanges: exchanges, schema: schema, instructions: instructions, model: client.model, maxOutputTokens: maxOutputTokens, now: now, screen: screen)
+        let request = Self.request(query: query, exchanges: exchanges, schema: schema, instructions: instructions, model: client.model, maxOutputTokens: maxOutputTokens, now: now, screen: screen, done: done)
         let interaction: Interaction
         do {
             interaction = try await client.interact(request, timeout: timeout)
@@ -126,8 +129,8 @@ public struct ValueExtractor: Sendable {
 
     /// The lasting fact a query states on the way to something else, in one
     /// sentence; nil when the model found none or the call missed.
-    public func distill(query: String, exchanges: [Exchange], persona: Persona = Persona()) async -> (fact: String?, summary: ExtractionSummary) {
-        switch await extract(query: query, exchanges: exchanges, schema: Self.factSchema(persona), instructions: Self.factSystem(persona)) {
+    public func distill(query: String, exchanges: [Exchange], persona: Persona = Persona(), done: Done) async -> (fact: String?, summary: ExtractionSummary) {
+        switch await extract(query: query, exchanges: exchanges, schema: Self.factSchema(persona), instructions: Self.factSystem(persona), done: done) {
         case let .values(values, summary):
             let text = values["fact"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
             return (text?.isEmpty == false ? text : nil, summary)

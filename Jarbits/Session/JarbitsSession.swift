@@ -92,6 +92,13 @@ final class JarbitsSession {
     let triggers: TriggerStore
     /// Everything Jarbits has done; see `ActionLog`.
     let actions: ActionLog
+
+    /// What he has been doing for the request in hand; see `Doings`.
+    private(set) var doings: Doings
+    /// What he has done, as every model call is handed it (`Done`): the
+    /// record, this request's doings and what he is saying. Built the
+    /// moment a call is made, never kept.
+    var done: Done { doings.done() }
     /// The triggers that can still go off, as the planner's listing shows
     /// them; read from the store after every change, by the session and the clock.
     var liveTriggers: [Trigger] = []
@@ -315,6 +322,11 @@ final class JarbitsSession {
     /// Words the line that closes a plan that could not finish, from the
     /// device's record of what was tried; nil keeps the fixed lines.
     let closing: Closing?
+    /// The check of what he claims against the record; see `Checker`.
+    let checker: Checker?
+    /// How a caught contradiction is shown: he cuts himself off and puts
+    /// it right under the words already out (Lorcan, 2026-11-03).
+    static let correction: Checker.Presentation = .interrupt
     /// The facts as kept, beside their texts: what the reader is shown, and
     /// what a same or changed finding points back at.
     private(set) var knownFacts: [Fact] = []
@@ -348,7 +360,7 @@ final class JarbitsSession {
     /// A Gemini key is configured, so an answer can be shown.
     var canAnswer: Bool { answerClient != nil }
 
-    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, closing: Closing? = nil, log: DecisionLog = .shared, webpages: WebpageStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared, triggers: TriggerStore = .shared, actions: ActionLog = .shared) {
+    init(engine: Engine, answerClient: GeminiClient? = nil, recall: RecallResolver? = nil, siteSearch: SiteSearch? = nil, factResolver: FactResolver? = nil, factReader: FactReader? = nil, closing: Closing? = nil, checker: Checker? = nil, log: DecisionLog = .shared, webpages: WebpageStore = .shared, sites: SiteStore = .shared, facts: FactStore = .shared, notebook: Notebook = .shared, triggers: TriggerStore = .shared, actions: ActionLog = .shared) {
         let microphone = Microphone()
         self.microphone = microphone
         dictation = DictationSession(microphone: microphone)
@@ -360,6 +372,7 @@ final class JarbitsSession {
         self.notebook = notebook
         self.triggers = triggers
         self.actions = actions
+        doings = Doings(log: actions)
         triggerClock = TriggerClock(store: triggers)
         self.facts = facts
         lineStore = LineStore.shared
@@ -374,6 +387,7 @@ final class JarbitsSession {
         self.factResolver = factResolver
         self.factReader = factReader
         self.closing = closing
+        self.checker = checker
         self.engine = engine
         self.log = log
         self.answerClient = answerClient
@@ -604,6 +618,7 @@ final class JarbitsSession {
         let screenRead: Task<Screen?, Never>? = shown.map { layer in Task { await layer.screen(picture: early) } }
         lastQuery = trimmed
         askedQuery = trimmed
+        doings = Doings(log: actions)   // this request's memory of itself begins here
         askedOver = shown
         readThisQuery = []
         stage = .routing
@@ -613,7 +628,8 @@ final class JarbitsSession {
         let known = knownFacts
         // The request's meaning, for the book of lines: one embedding, beside the route.
         if let embedder { run?.meaning = Task { await embedder.vector(for: trimmed, as: .request) } }
-        let routing = Task { await engine.route(trimmed, exchanges: exchanges, current: newest, opened: opened, persona: persona, screen: screenRead, facts: known) }
+        let done = done
+        let routing = Task { await engine.route(trimmed, exchanges: exchanges, current: newest, opened: opened, persona: persona, screen: screenRead, facts: known, done: done) }
         // The fact reader beside the route: every lasting fact the words
         // state, read whatever the query becomes, applied when it is back.
         if factReading {
@@ -645,6 +661,12 @@ final class JarbitsSession {
             #endif
             apply(result, token: token)
         }
+    }
+
+    /// The note the user is looking at as they ask, when it is one.
+    private var noteInView: Note? {
+        guard let layer = askedOver ?? current, case let .note(note) = layer.plan else { return nil }
+        return note
     }
 
     /// The conversation the user is in, oldest first: the reply in the
@@ -692,9 +714,9 @@ final class JarbitsSession {
     private func recordAsked(_ title: String, _ answer: AskAnswer?) {
         switch answer {
         case let .option(_, text)?, let .text(text)?:
-            actions.add("Asked \"\(title)\" and you answered \"\(text)\"", asked: askedQuery)
+            actions.add("Asked \"\(title)\" and you answered \"\(text)\"", asked: askedQuery, kind: .ask)
         case nil:
-            actions.add("Asked \"\(title)\" and got no answer", asked: askedQuery)
+            actions.add("Asked \"\(title)\" and got no answer", asked: askedQuery, kind: .ask)
         }
     }
 
@@ -758,8 +780,9 @@ final class JarbitsSession {
         guard let factReader else { return }
         let known = knownFacts
         let persona = persona
+        let done = done
         Task { [weak self] in
-            let reading = await factReader.read(query: query, exchanges: exchanges, known: known.map { $0.line() }, persona: persona, now: .now)
+            let reading = await factReader.read(query: query, exchanges: exchanges, known: known.map { $0.line() }, persona: persona, now: .now, done: done)
             let result = await routing.value
             await self?.apply(findings: reading.findings, summary: reading.summary, known: known, query: query, decision: result.decision)
         }
@@ -895,7 +918,7 @@ final class JarbitsSession {
         let text = AnswerMarkup.plain(said).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         let line = Line(user: layer.asked ?? layer.query, jarbits: text, source: loved ? .loved : .hated, at: .now)
-        actions.add("\(loved ? "Marked as loved" : "Marked as not him"): \(text)", asked: layer.asked ?? layer.query)
+        actions.add("\(loved ? "Marked as loved" : "Marked as not him"): \(text)", asked: layer.asked ?? layer.query, kind: .change)
         note(FactMark(text: text, kind: loved ? .loved : .notHim))
         #if DEBUG
         print("line \(loved ? "loved" : "not him"): \"\(line.user)\" → \"\(text)\"")
@@ -955,27 +978,46 @@ final class JarbitsSession {
     /// waits until its result is on screen: true then, false when it never
     /// came within `performWait` or the query was overtaken.
     /// `text` is what the instinct handed back besides showing (the
-    /// weather's forecast in words), for the planner to answer from.
-    func perform(_ instinct: any InstinctRunner, context: InstinctContext, token: UUID) async -> (shown: Bool, failed: String?, declined: Bool, text: String) {
-        guard token == requestToken else { return (false, nil, false, "") }
+    /// weather's forecast in words), for the planner to answer from; for an
+    /// answer, its words: the step waits for them (`answerWait`), so the
+    /// planner reads what was said before its next step and never
+    /// contradicts it. `unfinished` says the words were still coming.
+    func perform(_ instinct: any InstinctRunner, context: InstinctContext, token: UUID) async -> (shown: Bool, failed: String?, declined: Bool, text: String, unfinished: Bool) {
+        guard token == requestToken else { return (false, nil, false, "", false) }
         // The capsule keeps the user's words; a step's query is the planner's.
         let before = replies.last   // a piece already up is not this step's
         let outcome = await instinct.run(context, in: self, token: token)
-        if let reason = outcome.failed { return (false, reason, false, "") }
-        if outcome.declined { return (true, nil, true, "") }   // the user said no to its question: shown what it showed, and over
+        if let reason = outcome.failed { return (false, reason, false, "", false) }
+        if outcome.declined { return (true, nil, true, "", false) }   // the user said no to its question: shown what it showed, and over
         let clock = ContinuousClock()
         let start = clock.now
         let landed = { [self] in stage == .ready || (replies.last !== before && replyHasContent) }
         while clock.now - start < Self.performWait {
-            if landed() { return (true, nil, false, outcome.text) }
-            guard token == requestToken else { return (false, nil, false, "") }
+            if landed() { break }
+            guard token == requestToken else { return (false, nil, false, "", false) }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return (landed(), nil, false, outcome.text)
+        guard landed() else { return (false, nil, false, outcome.text, false) }
+        guard instinct.spec.instinct.isAnswered, let layer = replies.last !== before ? replies.last : current, let answer = layer.answer else {
+            return (true, nil, false, outcome.text, false)
+        }
+        // The answer's words, whole: its stream ends within `answerWait`, or what is out goes.
+        let began = clock.now
+        while clock.now - began < Self.answerWait {
+            switch answer.phase {
+            case .done, .failed: return (true, nil, false, answer.displayText, false)   // never a marker
+            case .idle, .waiting, .streaming: break
+            }
+            guard token == requestToken else { return (false, nil, false, "", false) }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return (true, nil, false, answer.displayText, true)
     }
 
     /// How long a plan step may take to reach the screen.
     private static let performWait: Duration = .seconds(10)
+    /// How long a plan waits for an answer's words once they have begun.
+    private static let answerWait: Duration = .seconds(15)
 
     /// What is on the user's screen as a thing `look` can read when it is
     /// not a page: the note (fresh from the notebook) or the answer; nil
@@ -1019,7 +1061,8 @@ final class JarbitsSession {
         for layer in leaving where !layer.lingers {
             var items = layer.exchanges
             if items.isEmpty, case let .answer(_, query, _, _) = layer.plan, let answer = layer.answer, !answer.displayText.isEmpty {
-                actions.add("Began answering \"\(query)\" and was cut off: \(answer.displayText)", asked: layer.asked)
+                doings.update(saying: nil)
+                actions.add("Began answering \"\(query)\" and was cut off: \(answer.displayText)", asked: layer.asked, kind: .say)
                 items = [SessionExchange(exchange: .answer(query: query, text: answer.displayText), turn: nil, layerID: layer.id)]
             }
             if !items.isEmpty { archive.append((exchanges: items, at: now)) }
@@ -1375,7 +1418,7 @@ final class JarbitsSession {
     private func recordOpened(_ url: URL, onMyScreen: Bool) {
         let place = onMyScreen ? " on my own screen" : " on your screen"
         let term = QueryParser.isSearchResults(url) ? QueryParser.searchTerm(in: url) : nil
-        actions.add((term.map { "Searched \"\($0)\"" } ?? "Opened \(url.absoluteString)") + place, asked: askedQuery)
+        actions.add((term.map { "Searched \"\($0)\"" } ?? "Opened \(url.absoluteString)") + place, asked: askedQuery, kind: onMyScreen ? .read : .show)
     }
 
     /// What a card or a reply put in front of the user, on his record. A
@@ -1391,7 +1434,7 @@ final class JarbitsSession {
         case let .notes(notes, _): what = "Showed my notes: \(notes.map(\.title).joined(separator: "; "))"
         case .web, .answer, .note: return
         }
-        actions.add(what, asked: askedQuery)
+        if case .said = plan { actions.add(what, asked: askedQuery, kind: .say) } else { actions.add(what, asked: askedQuery, kind: .show) }
     }
 
     /// A new card layer, on screen at once. `spoken` is a line Jarbits says
@@ -1512,7 +1555,7 @@ final class JarbitsSession {
     func showNote(_ note: Note, wrote summary: String? = nil, lines: String? = nil, context: InstinctContext) {
         lastQuery = context.query
         // A write went on his record as the file changed.
-        if summary == nil { actions.add("Showed you my note \"\(note.title)\"", noteID: note.id, asked: askedQuery) }
+        if summary == nil { actions.add("Showed you my note \"\(note.title)\"", noteID: note.id, asked: askedQuery, kind: .show) }
         if let shown = current, stage != .idle, case let .note(old) = shown.plan, old.id == note.id {
             shown.plan = .note(note)
             shown.query = context.query
@@ -1612,7 +1655,7 @@ final class JarbitsSession {
         layer.runToken = requestToken
         layer.messageAtFinish = false
         holdRun(requestToken)
-        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: context.facts ?? factTexts, done: actions.newest().map { $0.line() }, persona: persona, screen: context.screen, lines: context.lines ?? [], callbacks: context.callbacks ?? [])
+        layer.answer?.start(format: format, query: context.query, history: context.thread, earlier: context.earlier, facts: context.facts ?? factTexts, done: done, persona: persona, screen: context.screen, lines: context.lines ?? [], callbacks: context.callbacks ?? [])
     }
 
     /// A site the book knew opens, in a new layer, as opened by name; on
@@ -1707,7 +1750,7 @@ final class JarbitsSession {
     /// let go. An unloaded one reloads to where its notes say. `byQuery`
     /// is false for the user's own tap under an answer.
     func bringForward(_ layer: Layer, context: InstinctContext? = nil, byQuery: Bool = true) {
-        if context != nil { actions.add("Brought \"\(layer.pageTitle ?? layer.query)\" to your screen", asked: askedQuery) }
+        if context != nil { actions.add("Brought \"\(layer.pageTitle ?? layer.query)\" to your screen", asked: askedQuery, kind: .show) }
         if let at = layers.firstIndex(where: { $0 === layer }) {
             if let context { lastQuery = context.query }
             if at != index { move(to: at) } else if stage == .idle { move(to: at) }
@@ -1835,6 +1878,7 @@ final class JarbitsSession {
         answer.onText = { [weak self, weak layer] text in
             guard let self, let layer else { return }
             speaker.add(layer.id, text: text)
+            doings.update(saying: text)   // his voice is his: what is out so far is on the record
         }
         return answer
     }
@@ -1949,6 +1993,19 @@ final class JarbitsSession {
         }
         guard let instinct = result.instinct, var context = result.context else { releaseRun(token); return }
         context.fact = factSummary
+        // A question about what he did to the note in view is answered from
+        // the record itself, no model: what it lists he did, with when.
+        if instinct.spec.instinct.isAnswered, decision.asksWhatHeDid(query), let note = noteInView, Done.pointsAtThingInView(query, title: note.title) {
+            let history = actions.older(skipping: 0, noteID: note.id).records
+            let line = Done.say(aboutNote: history)
+            #if DEBUG
+            print("did \"\(query)\": from the record, \(history.count) lines on \"\(note.title)\"")
+            #endif
+            showReply(.said(query: query, text: line), context: context)
+            record(decision, query: query, extraction: context.extraction, reading: context.reading)
+            releaseRun(token)
+            return
+        }
         // An instinct that shows nothing runs over the screen as it stood,
         // asking if it must; a showing one opens its layer and moves the
         // stage itself.
@@ -1974,7 +2031,7 @@ final class JarbitsSession {
             let outcome = await instinct.run(context, in: self, token: token)
             // Whatever an instinct did, it is on the record, even one that wrote no line of its own.
             if outcome.failed == nil, !outcome.declined, !outcome.text.isEmpty, actions.count == recordedBefore {
-                actions.add("\(instinct.spec.id): \(outcome.text)", asked: askedQuery)
+                actions.add("\(instinct.spec.id): \(outcome.text)", asked: askedQuery, kind: .change)
             }
             guard token == requestToken else { releaseRun(token); return }
             // The instinct could not do the thing: the planner takes the
@@ -2045,7 +2102,7 @@ final class JarbitsSession {
                     var message = fixed
                     if let closing, summary.lostConnection != true {
                         let reason: Closing.Reason = summary.outcome == .budget ? .budget : (summary.steps.contains { $0.outcome.hasPrefix("failed") } ? .failed : .nothing)
-                        let (line, ms) = await closing.line(query: query, steps: summary.steps, reason: reason, persona: persona)
+                        let (line, ms) = await closing.line(query: query, steps: summary.steps, reason: reason, persona: persona, done: done)
                         guard token == requestToken else { return }
                         #if DEBUG
                         print("closing \(line.map { "\"\($0)\"" } ?? "missed") (\(ms) ms)")
@@ -2062,7 +2119,7 @@ final class JarbitsSession {
                 // ended itself says nothing on a miss, having seen the failure.
                 var line = summary.cutShort == true ? Self.cutShortLine : nil
                 if let closing {
-                    let (remainder, ms) = await closing.remainder(query: query, steps: summary.steps, persona: persona)
+                    let (remainder, ms) = await closing.remainder(query: query, steps: summary.steps, persona: persona, done: done)
                     guard token == requestToken else { return }
                     #if DEBUG
                     print("remainder \(remainder) (\(ms) ms)")
@@ -2127,7 +2184,7 @@ final class JarbitsSession {
         print("sites \"\(name)\" learned as \(SiteBook.origin(of: url)?.absoluteString ?? url.absoluteString)")
         #endif
         Task { await sites.learn(name, url: url) }
-        actions.add("Learned that \"\(name)\" means \(url.host() ?? url.absoluteString)", asked: askedQuery)
+        actions.add("Learned that \"\(name)\" means \(url.host() ?? url.absoluteString)", asked: askedQuery, kind: .change)
         layer.openedSite = OpenedSite(name: Words.key(name), host: url.host() ?? "")
     }
 
@@ -2251,6 +2308,7 @@ final class JarbitsSession {
     /// reply, the screen goes back to where it stood and the bubble shows.
     private func answerStarted(in layer: Layer) {
         guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
+        checkClaims(in: layer)
         if replies.contains(where: { $0 === layer }) {
             stage = stageBefore
             // Read aloud from its first sentence, the rest as it streams; one
@@ -2266,6 +2324,49 @@ final class JarbitsSession {
         }
     }
 
+    /// An answer to a question about his own actions is checked against
+    /// the record as its words come (`Checker`), once per layer: when it
+    /// contradicts the record, he cuts himself off where he is and puts it
+    /// right under the words already out. A miss leaves the answer as it
+    /// is. Never for any other answer, so the plain path pays nothing.
+    private func checkClaims(in layer: Layer) {
+        guard let checker, let answer = layer.answer, !layer.checked, let decision = layer.decision, decision.asksWhatHeDid(layer.query) else { return }
+        layer.checked = true   // the one guard: never twice, whatever the retry or the stream does
+        let query = layer.query
+        let persona = persona
+        let token = requestToken
+        holdRun(token)
+        Task { [weak self, weak layer] in
+            defer { self?.releaseRun(token) }
+            guard let self else { return }
+            // Most answers are whole within a moment of their first words:
+            // a short wait judges the whole, a long answer is judged as it comes.
+            let clock = ContinuousClock()
+            let began = clock.now
+            while answer.phase == .streaming, clock.now - began < Self.checkWait {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            let unfinished = answer.phase == .streaming
+            let (verdict, ms) = await checker.check(query: query, answer: answer.displayText, unfinished: unfinished, done: done, persona: persona)
+            #if DEBUG
+            print("check \"\(query)\": \(verdict) (\(ms) ms)")
+            #endif
+            guard case let .contradicts(correction) = verdict, let layer, layer.answer === answer else { return }
+            switch Self.correction {
+            case .interrupt:
+                answer.stopEarly()   // the words out so far stand, cut off; the correction follows them
+            case .replace:
+                answer.cancel()
+                if replies.contains(where: { $0 === layer }) { remove(layer) }
+            }
+            let context = InstinctContext(query: query, decision: Pick(instinct: .narrative, suggested: nil, confidence: 1, source: .plan), opened: nil, canAnswer: canAnswer, thread: [], earlier: [], arguments: [:])
+            showReply(.said(query: query, text: correction), context: context, recording: false)
+        }
+    }
+
+    /// How long the check lets an answer run before judging what is out.
+    private static let checkWait: Duration = .milliseconds(1_500)
+
     private func answerFinished(_ summary: AnswerSummary, in layer: Layer) {
         guard let answer = layer.answer, case .answer = layer.plan, answer.query == layer.query else { return }
         if summary.outcome == .needsNotes, summary.retriedWithAll != true {
@@ -2278,7 +2379,8 @@ final class JarbitsSession {
             answer.retryWithAllFacts(factTexts)
             return
         }
-        if !answer.text.isEmpty { actions.add("Answered \"\(answer.query)\": \(answer.text)", asked: layer.asked) }
+        doings.update(saying: nil)
+        if !answer.text.isEmpty { actions.add("Answered \"\(answer.query)\": \(answer.text)", asked: layer.asked, kind: .say) }
         defer {
             if let token = layer.runToken {
                 layer.runToken = nil
@@ -2317,7 +2419,7 @@ final class JarbitsSession {
                     defer { releaseRun(token) }
                     var message = "Nothing came of that, I'm afraid."
                     if let closing {
-                        let (line, ms) = await closing.line(query: answer.query, steps: Closing.failedAnswer(query: answer.query, format: summary.format), reason: .failed, persona: persona)
+                        let (line, ms) = await closing.line(query: answer.query, steps: Closing.failedAnswer(query: answer.query, format: summary.format), reason: .failed, persona: persona, done: done)
                         guard token == requestToken else { return }
                         #if DEBUG
                         print("closing \(line.map { "\"\($0)\"" } ?? "missed") (\(ms) ms)")
@@ -2527,7 +2629,7 @@ final class JarbitsSession {
         let said = action == "dropped" ? "Left \(trigger.handle) undone, as it came due while the app was away: \(trigger.jobWords)"
             : action == "caught up" ? "\(trigger.handle) went off as a notification: \(trigger.line)"
             : "\(trigger.handle) went off: \(trigger.line)"
-        actions.add(said, asked: trigger.asked, at: occurrence ?? .now)
+        actions.add(said, asked: trigger.asked, kind: action == "dropped" ? .tried : .say, at: occurrence ?? .now)
         let record = DecisionRecord(query: trigger.asked, decision: Pick(instinct: .trigger, source: .plan), trigger: TriggerSummary(action: action, number: trigger.number, kind: trigger.when.kind))
         Task { await log.append(record) }
     }

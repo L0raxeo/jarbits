@@ -62,6 +62,20 @@ import Testing
         #expect(said == "Rewrote my note \"Trip\": took out 3 of its 6 words and put in 1")
     }
 
+    @Test func aRecordSaysWhatKindOfThingItWas() async {
+        let (log, _) = makeLog()
+        let store = FactStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "facts-\(UUID().uuidString).jsonl"), actions: log)
+        await store.add(Fact(text: "Lorcan is vegetarian", source: .told, madeBy: "i'm vegetarian"))
+        #expect(log.newest().last?.kind == .change)
+        let triggers = TriggerStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "triggers-\(UUID().uuidString).jsonl"), actions: log)
+        let now = Date(timeIntervalSince1970: 1_792_600_000)
+        _ = await triggers.add(asked: "remind me", when: .at(now.addingTimeInterval(3_600)), job: .say, line: "Now, sir.", now: now)
+        #expect(log.newest().last?.kind == .change)
+        log.add("Read the page", kind: .read)
+        #expect(log.newest().last?.kind == .read)
+        #expect(log.newest().allSatisfy { $0.kind != nil }, "every line says its kind")
+    }
+
     @Test func factsGoOnTheRecordInTheSameStep() async {
         let (log, _) = makeLog()
         let store = FactStore(fileURL: FileManager.default.temporaryDirectory.appending(path: "facts-\(UUID().uuidString).jsonl"), actions: log)

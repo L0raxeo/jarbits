@@ -72,7 +72,7 @@ public actor FactStore {
         all.append(fact)
         loaded = all
         append(fact)
-        actions?.add("Noted about you: \(fact.text)", asked: fact.madeBy)
+        actions?.add("Noted about you: \(fact.text)", asked: fact.madeBy, kind: .change)
         return fact
     }
 
@@ -97,7 +97,7 @@ public actor FactStore {
         guard let i = all.firstIndex(where: { $0.id == id }) else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return all[i] }
-        actions?.add("Changed what I hold about you, from \"\(all[i].text)\" to \"\(trimmed)\"", asked: madeBy)
+        actions?.add("Changed what I hold about you, from \"\(all[i].text)\" to \"\(trimmed)\"", asked: madeBy, kind: .change)
         all[i].previous = all[i].text
         all[i].text = trimmed
         all[i].source = .inferred
@@ -111,7 +111,7 @@ public actor FactStore {
     public func forget(_ id: UUID) {
         var all = facts()
         guard let i = all.firstIndex(where: { $0.id == id }) else { return }
-        actions?.add("Dropped what I held about you: \(all[i].text)")
+        actions?.add("Dropped what I held about you: \(all[i].text)", kind: .change)
         all.remove(at: i)
         loaded = all
         rewrite(all)

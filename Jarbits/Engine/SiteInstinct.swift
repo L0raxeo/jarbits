@@ -20,7 +20,7 @@ struct SiteInstinct: InstinctRunner {
         // A rejection forgets what the name meant, then asks again.
         if context.decision.rejectsSite {
             await session.sites.forget(name)
-            session.actions.add("Forgot what \"\(name)\" meant, on your word", asked: session.askedWords)
+            session.actions.add("Forgot what \"\(name)\" meant, on your word", asked: session.askedWords, kind: .change)
         }
         if let entry = await session.sites.lookup(name) {
             guard session.isCurrent(token) else { return .nothing }

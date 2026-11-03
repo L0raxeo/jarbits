@@ -208,6 +208,15 @@ public struct InstinctSpec: Sendable, Identifiable {
     /// in the answer's context; the model never sees an address.
     public static let aboutField = ArgumentSchema.Field(name: "about", kind: .thing, description: "the thing this is about, when the request leans on one that was listed; a follow-up to the answer the user is reading (the newest answer listed, p2) names that answer here, with query as the follow-up itself, and the device makes the reply its next turn", required: false)
 
+    /// The two questions both answer instincts add: whether the answer may
+    /// have gone stale, and whether the query is about his own actions.
+    static var answerQuestions: [(id: String, question: Question)] {
+        [
+            (EngineRequest.recencyQuestionID, .noul(instructions: EngineRequest.recencyInstructions, criteria: EngineRequest.recencyCriteria)),
+            (EngineRequest.didQuestionID, .noul(instructions: EngineRequest.didInstructions, criteria: EngineRequest.didCriteria)),
+        ]
+    }
+
     public init(instinct: Instinct) {
         self.instinct = instinct
         var showsLayer = true
@@ -218,11 +227,11 @@ public struct InstinctSpec: Sendable, Identifiable {
         switch instinct {
         case .narrative:
             shortcut = true
-            questions = { _ in [(EngineRequest.recencyQuestionID, .noul(instructions: EngineRequest.recencyInstructions, criteria: EngineRequest.recencyCriteria))] }
+            questions = { _ in Self.answerQuestions }
             arguments = ArgumentSchema(fields: [Self.aboutField])
         case .oneLine:
             shortcut = true
-            questions = { _ in [(EngineRequest.recencyQuestionID, .noul(instructions: EngineRequest.recencyInstructions, criteria: EngineRequest.recencyCriteria))] }
+            questions = { _ in Self.answerQuestions }
             arguments = ArgumentSchema(fields: [Self.aboutField])
         case .recall:
             shortcut = true

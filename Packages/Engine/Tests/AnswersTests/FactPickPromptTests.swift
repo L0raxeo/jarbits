@@ -18,9 +18,9 @@ import Testing
             #expect(retry.contains("never guess, never answer from the world"))
         }
         #expect(AnswerSummary.notesMarkerName == AnswerPrompt.notesMarker, "the report names the marker without importing Answers")
-        let request = AnswerPrompt.request(format: .oneLine, query: "q", context: .example, facts: ["f"], persona: .example, retry: true)
+        let request = AnswerPrompt.request(format: .oneLine, query: "q", context: .example, facts: ["f"], persona: .example, retry: true, done: .none)
         #expect(request.systemInstruction.contains("you don't know that yet"))
-        #expect(AnswerPrompt.request(format: .oneLine, query: "q", context: .example, persona: .example).systemInstruction.contains(AnswerPrompt.notesMarker))
+        #expect(AnswerPrompt.request(format: .oneLine, query: "q", context: .example, persona: .example, done: .none).systemInstruction.contains(AnswerPrompt.notesMarker))
     }
 
     @Test func thePlannerKnowsHowManyFactsItWasNotShownAndHasATool() throws {

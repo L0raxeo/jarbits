@@ -52,7 +52,9 @@ struct Engine {
     /// `facts` is everything known about the user as the query begins:
     /// the pick that chooses which of them the answer or plan sees starts
     /// here beside Jev's, and rides on the result unawaited.
-    func route(_ typed: String, exchanges: [SessionExchange], current: Layer?, opened: OpenedSite?, persona: Persona = Persona(), screen screenRead: Task<Screen?, Never>? = nil, facts: [Fact] = []) async -> EngineResult {
+    /// `done` is what he has done as the query begins (`Done`): the readers
+    /// get the newest few lines of it, so "undo that" has the thing in view.
+    func route(_ typed: String, exchanges: [SessionExchange], current: Layer?, opened: OpenedSite?, persona: Persona = Persona(), screen screenRead: Task<Screen?, Never>? = nil, facts: [Fact] = [], done: Done) async -> EngineResult {
         let sent = Array(exchanges.suffix(EngineRequest.maxExchanges))
         var query = typed
         var reading: ReadingSummary?
@@ -69,7 +71,7 @@ struct Engine {
             guard let reader else { return nil }
             // The reader cleans the words and nothing more: no exchanges, no
             // screen, so "this" comes through as said for the planner to resolve.
-            return await reader.read(typed, persona: persona)
+            return await reader.read(typed, persona: persona, done: done)
         }
         if QueryParser.directURL(from: typed) != nil {
             decision = .directURL()
@@ -120,7 +122,7 @@ struct Engine {
         // that notes a fact stated on the way to another pick: it keeps the
         // whole sentence, naming whoever it is about.
         if decision.instinct == .remember, let extractor {
-            let (text, summary) = await extractor.distill(query: query, exchanges: chained.map(\.exchange), persona: persona)
+            let (text, summary) = await extractor.distill(query: query, exchanges: chained.map(\.exchange), persona: persona, done: done)
             if let text { arguments["fact"] = .string(text) }
             extraction = summary
         }
@@ -129,7 +131,7 @@ struct Engine {
         if !missing.isEmpty {
             if let extractor {
                 let schema = spec.arguments.jsonSchema(only: missing)
-                switch await extractor.extract(query: query, exchanges: chained.map(\.exchange), schema: schema, instructions: ValueExtractor.system(persona), now: .now) {
+                switch await extractor.extract(query: query, exchanges: chained.map(\.exchange), schema: schema, instructions: ValueExtractor.system(persona), now: .now, done: done) {
                 case let .values(values, summary):
                     arguments.merge(spec.arguments.validate(values)) { _, read in read }
                     extraction = summary
@@ -227,6 +229,10 @@ extension JarbitsSession {
 
     /// Words the line that closes a plan that could not finish, when a
     /// Gemini key is configured; nil keeps the bubble's fixed lines.
+    static func makeChecker() -> Checker? {
+        Secrets.geminiAPIKey.map { Checker(client: GeminiClient(apiKey: $0)) }
+    }
+
     static func makeClosing() -> Closing? {
         Secrets.geminiAPIKey.map { Closing(client: GeminiClient(apiKey: $0)) }
     }

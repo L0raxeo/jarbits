@@ -20,6 +20,23 @@ import Testing
         #expect(try keys(.site(query: "q", name: "zillow", hosts: ["www.zillow.com"])) == ["query", "kind", "title", "text"])
     }
 
+    @Test func anExchangeIsTheSameThingWhateverWordsAskedForIt() {
+        let id = UUID()
+        var listed = Exchange.note(query: "open trip", title: "Trip", excerpt: "- passport", noteID: id)
+        listed.asked = "open my trip note"
+        let handle = Exchange.note(query: "is it any good?", title: "Trip", excerpt: "- passport\n- charger", noteID: id)
+        #expect(listed != handle, "field for field they differ")
+        #expect(listed.isSameThing(as: handle), "but they are one note")
+        #expect(!listed.isSameThing(as: .note(query: "q", title: "Trip", excerpt: "", noteID: UUID())), "another note with the same title is not")
+        var page = Exchange.page(query: "q", title: "Zillow", address: URL(string: "https://www.zillow.com/homes")!, own: true)
+        page.asked = "pull up zillow"
+        #expect(page.isSameThing(as: .page(query: "x", title: "Zillow", address: URL(string: "https://www.zillow.com/homes")!)))
+        #expect(!page.isSameThing(as: .search(query: "q", term: "zillow")), "a search is not a page")
+        var answer = Exchange.answer(query: "capital of peru", text: "Lima")
+        answer.asked = "capital of peru?"
+        #expect(answer.isSameThing(as: .answer(query: "capital of peru", text: "Lima")))
+    }
+
     @Test func turnsBecomeAnswerExchanges() {
         let turns = [AnswerTurn(query: "capital of peru", answer: "==Lima==", format: .oneLine), AnswerTurn(query: "and chile?", answer: "==Santiago==", format: .oneLine)]
         let exchanges = Exchange.fromTurns(turns)

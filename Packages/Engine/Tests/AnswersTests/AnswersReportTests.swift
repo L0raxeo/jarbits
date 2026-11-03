@@ -16,7 +16,7 @@ import Testing
         #expect(markdown.contains(AnswerPrompt.system(for: .narrative, persona: .example)))
         #expect(!markdown.contains(AnswerPrompt.system(for: .oneLine, persona: .example)), "one instruction is quoted; the other pick's hint line beside it")
         #expect(markdown.contains("## Who Jarbits is") && markdown.contains(Persona.example.identityLine))
-        #expect(markdown.contains(AnswerPrompt.input(query: "<query>", context: .example)))
+        #expect(markdown.contains(AnswerPrompt.input(query: "<query>", context: .example, done: .none)))
         #expect(markdown.contains(GeminiClient.defaultModel))
         #expect(markdown.contains("### One system instruction for `narrative` and `one_line`, max \(AnswerPrompt.maxOutputTokens(for: .narrative)) output tokens"))
         #expect(markdown.contains(AnswerPrompt.hintLine(.oneLine)))

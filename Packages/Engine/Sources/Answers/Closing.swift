@@ -94,17 +94,22 @@ public struct Closing: Sendable {
         \(persona.user.capitalizedFirst) asked you for something and you could not finish it. From the facts below and nothing else, write one short line to \(persona.user), in your own voice (you for them, I for yourself): what you tried, in plain words, why it did not work out, and what they could do instead when you know of something that would (Maps for a distance, a site or a call for a booking). If a line you already said to them is listed, do not repeat it: add only what is new, or say that you kept looking and found nothing more.
         """
         return persona.speakerLine + "\n\n" + Voice.background(persona) + "\n" + Voice.guide(persona) + "\n" + Voice.dividerVoiceOnly + "\n\nTruth (never bent): " + task + " " + """
-        Two sentences at most. Say only what happened here: never that you did something not listed as tried, and never that you are unable to do a kind of thing. The reason listed is the only cause you know: never name another, such as the connection, a timeout or a site being down. The looking is over: never promise to look again or to do anything later. Never a tool name, a handle, a count of steps or rounds, or anything technical: say what a person would say. Reply with JSON matching the schema and nothing else.
+        Two sentences at most. Say only what happened here: never that you did something not listed as tried, and never that you are unable to do a kind of thing. A block "\(Done.planHeading)" may list what you did and read before and during this request; what it lists, you did, and the line agrees with it. The reason listed is the only cause you know: never name another, such as the connection, a timeout or a site being down. The looking is over: never promise to look again or to do anything later. Never a tool name, a handle, a count of steps or rounds, or anything technical: say what a person would say. Reply with JSON matching the schema and nothing else.
         """
     }
 
     /// The facts: the request, each step in plain words, the reason, and
     /// what was already said.
-    public static func input(query: String, steps: [EngineSummary.Step], reason: Reason, said: [String], persona: Persona = Persona()) -> String {
+    /// `done` is what he has done (`Done`), so the line never says something
+    /// was not done that the record lists, or the other way about.
+    public static func input(query: String, steps: [EngineSummary.Step], reason: Reason, said: [String], persona: Persona = Persona(), done: Done) -> String {
         var lines = ["Request: \(query)"]
         let tried = steps.compactMap { describe($0, persona: persona) }
         lines.append(tried.isEmpty ? "Tried: nothing got started" : "Tried, in order:")
         lines += tried.map { "- " + $0 }
+        if let block = done.block(heading: Done.planHeading) {
+            lines.append(block)
+        }
         lines.append("Why it stopped: \(reason.rawValue)")
         if !said.isEmpty {
             lines.append("Already said to \(persona.user):")
@@ -152,11 +157,11 @@ public struct Closing: Sendable {
         }
     }
 
-    public static func request(query: String, steps: [EngineSummary.Step], reason: Reason, persona: Persona = Persona(), model: String = model) -> InteractionRequest {
+    public static func request(query: String, steps: [EngineSummary.Step], reason: Reason, persona: Persona = Persona(), model: String = model, done: Done) -> InteractionRequest {
         InteractionRequest(
             model: model,
             systemInstruction: system(persona, reason: reason),
-            input: input(query: query, steps: steps, reason: reason, said: said(in: steps), persona: persona),
+            input: input(query: query, steps: steps, reason: reason, said: said(in: steps), persona: persona, done: done),
             maxOutputTokens: reason == .partly ? partlyMaxOutputTokens : maxOutputTokens,
             stream: false,
             outputSchema: reason == .partly ? partlySchema : schema
@@ -187,10 +192,10 @@ public struct Closing: Sendable {
     }
 
     /// What did not happen in a plan that partly worked: one call within `timeout`.
-    public func remainder(query: String, steps: [EngineSummary.Step], persona: Persona = Persona()) async -> (remainder: Remainder, latencyMs: Int) {
+    public func remainder(query: String, steps: [EngineSummary.Step], persona: Persona = Persona(), done: Done) async -> (remainder: Remainder, latencyMs: Int) {
         let clock = ContinuousClock()
         let start = clock.now
-        let request = Self.request(query: query, steps: steps, reason: .partly, persona: persona, model: client.model)
+        let request = Self.request(query: query, steps: steps, reason: .partly, persona: persona, model: client.model, done: done)
         guard let interaction = try? await client.interact(request, timeout: timeout), interaction.usable else {
             return (.missed, Int((clock.now - start) / .milliseconds(1)))
         }
@@ -198,10 +203,10 @@ public struct Closing: Sendable {
     }
 
     /// One call within `timeout`; nil on any miss, so the fixed line stands.
-    public func line(query: String, steps: [EngineSummary.Step], reason: Reason, persona: Persona = Persona()) async -> (line: String?, latencyMs: Int) {
+    public func line(query: String, steps: [EngineSummary.Step], reason: Reason, persona: Persona = Persona(), done: Done) async -> (line: String?, latencyMs: Int) {
         let clock = ContinuousClock()
         let start = clock.now
-        let request = Self.request(query: query, steps: steps, reason: reason, persona: persona, model: client.model)
+        let request = Self.request(query: query, steps: steps, reason: reason, persona: persona, model: client.model, done: done)
         guard let interaction = try? await client.interact(request, timeout: timeout), interaction.usable else {
             return (nil, Int((clock.now - start) / .milliseconds(1)))
         }

@@ -39,7 +39,7 @@ actor Notebook {
     private func fileURL(for id: UUID) -> URL { directory.appending(path: "\(id.uuidString).md") }
 
     private func recorded(_ what: String, _ note: Note, by hand: Hand) {
-        if case let .jarbits(asked) = hand { actions.add(what, noteID: note.id, asked: asked) }
+        if case let .jarbits(asked) = hand { actions.add(what, noteID: note.id, asked: asked, kind: .change) }
     }
 
     // MARK: Reading

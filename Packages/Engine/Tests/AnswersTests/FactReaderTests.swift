@@ -30,10 +30,10 @@ import Testing
     }
 
     @Test func theInputNumbersTheKnownFactsAndEndsOnTheRequest() {
-        let known = FactReader.input(query: "I'm vegetarian", exchanges: [.answer(query: "q", text: "a")], known: ["Lorcan lives in Austin", "Lorcan's wife is Ana"])
+        let known = FactReader.input(query: "I'm vegetarian", exchanges: [.answer(query: "q", text: "a")], known: ["Lorcan lives in Austin", "Lorcan's wife is Ana"], done: .none)
         #expect(known == "Earlier: Asked \"q\" and got: a\nKnown facts:\n1. Lorcan lives in Austin\n2. Lorcan's wife is Ana\nRequest: I'm vegetarian")
-        #expect(FactReader.input(query: "hi", exchanges: [], known: []) == "Known facts: none yet\nRequest: hi")
-        let request = FactReader.request(query: "hi", exchanges: [], known: [], persona: .example)
+        #expect(FactReader.input(query: "hi", exchanges: [], known: [], done: .none) == "Known facts: none yet\nRequest: hi")
+        let request = FactReader.request(query: "hi", exchanges: [], known: [], persona: .example, done: .none)
         #expect(request.model == FactReader.model && request.maxOutputTokens == FactReader.maxOutputTokens)
     }
 

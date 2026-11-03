@@ -109,10 +109,10 @@ import Testing
         let now = AnswerContext.example.now
         let trip = Note(title: "Trip", body: "- passport", created: now, edited: now)
         let done = ActionRecord(at: now, what: "Rewrote my note \"Trip\": took out 9 of its 12 words and put in 1", noteID: trip.id, asked: "tidy this")
-        let input = Planner.input(query: "did you change this?", things: ThingTable(notes: [trip]), now: now, done: [done], doneEarlier: 40)
+        let input = Planner.input(query: "did you change this?", things: ThingTable(notes: [trip]), now: now, done: Done(before: [done], earlier: 40))
         #expect(input.contains("What I have done (oldest first; 40 earlier, which past reads):\n- "))
         #expect(input.contains("took out 9 of its 12 words and put in 1 (n1) [for \"tidy this\"]"), "by the note's handle, with the words it was for")
-        #expect(!Planner.input(query: "q", things: ThingTable(), now: now).contains("What I have done"), "no block with nothing done")
+        #expect(!Planner.input(query: "q", things: ThingTable(), now: now, done: .none).contains("What I have done"), "no block with nothing done")
         let system = Planner.system(facts: [], context: .example, persona: .example)
         #expect(system.contains("is the full record of your own actions"))
         #expect(system.contains("what it does not list, you did not do"))
@@ -131,9 +131,10 @@ import Testing
     }
 
     @Test func anAnswerReadsTheRecordToo() {
-        let input = AnswerPrompt.input(query: "did you change it?", context: .example, done: ["Mon 2 Nov 14:00: Rewrote my note \"Trip\""])
-        #expect(input.contains("What you have done (oldest first):\n- Mon 2 Nov 14:00: Rewrote my note \"Trip\""))
-        #expect(!AnswerPrompt.input(query: "x", context: .example).contains("What you have done"), "no block with nothing done")
+        let record = ActionRecord(at: AnswerContext.example.now, what: "Rewrote my note \"Trip\"")
+        let input = AnswerPrompt.input(query: "did you change it?", context: .example, done: Done(before: [record]))
+        #expect(input.contains("What you have done (oldest first):\n- " + record.line(calendar: AnswerPrompt.calendar(.example))))
+        #expect(!AnswerPrompt.input(query: "x", context: .example, done: .none).contains("What you have done"), "no block with nothing done")
         for format in [Instinct.narrative, .oneLine] {
             #expect(AnswerPrompt.system(for: format, persona: .example).contains("is the full record of your own actions"))
         }
@@ -142,7 +143,7 @@ import Testing
     @Test func everyNoteIsListedWholeAndNumbered() {
         let now = AnswerContext.example.now
         let trip = Note(title: "Trip", body: "## Groceries\n- [milk](https://m.com)\n\n## Packing\n- [ ] passport", created: now.addingTimeInterval(-86_400), edited: now.addingTimeInterval(-86_400))
-        let input = Planner.input(query: "add eggs to the groceries", things: ThingTable(notes: [trip]), now: now)
+        let input = Planner.input(query: "add eggs to the groceries", things: ThingTable(notes: [trip]), now: now, done: .none)
         #expect(input.contains("In my notebook, every note (newest first):\n- n1: My note \"Trip\", edited yesterday:\n    1| ## Groceries\n    2| - [milk]\n    3| \n    4| ## Packing\n    5| - [ ] passport"), "a link as its bracketed title, blank lines numbered too")
         let notebook = Planner.tools(for: InstinctSpec.all).first { $0.name == "notebook" }
         #expect(notebook?.description.contains("text is the exact lines to add, in the marks of the lines around where they go, and after is the number of the line they follow") == true)
@@ -168,10 +169,10 @@ import Testing
     }
 
     @Test func aFailureIsTheFirstThingThePlannerReads() {
-        let input = Planner.input(query: "open my packing list", things: ThingTable(), now: AnswerContext.example.now, lead: Planner.failureLead("I have no note the words mean in my notebook"))
+        let input = Planner.input(query: "open my packing list", things: ThingTable(), now: AnswerContext.example.now, lead: Planner.failureLead("I have no note the words mean in my notebook"), done: .none)
         #expect(input.hasPrefix("Request: open my packing list\n\nTried first, and could not: I have no note the words mean in my notebook. Do what the request needs another way, or say so."))
         #expect(Planner.pickedLead(.notebook).hasPrefix("The classifier picked notebook with confidence; you run it, because it acts on things"))
-        #expect(!Planner.input(query: "q", things: ThingTable(), now: AnswerContext.example.now).contains("Tried first"))
+        #expect(!Planner.input(query: "q", things: ThingTable(), now: AnswerContext.example.now, done: .none).contains("Tried first"))
     }
 
     @Test func theFirstTurnHasTheRequestTheExchangesAndTheOpenWebpages() {
@@ -184,7 +185,7 @@ import Testing
         let input = Planner.input(
             query: "find a dealer near me for it",
             exchanges: [.search(query: "hennessey venom", term: "hennessey venom"), .page(query: "hennessey", title: "Hennessey Performance", address: URL(string: "https://www.hennesseyperformance.com/?utm_source=x")!)],
-            webpages: webpages, now: now, calendar: Calendar(identifier: .gregorian)
+            webpages: webpages, now: now, calendar: Calendar(identifier: .gregorian), done: .none
         )
         #expect(input.hasPrefix("Request: find a dealer near me for it\n\nEarlier in this session (oldest first):\n- p1: "))
         #expect(input.contains("hennessey venom"))
@@ -192,7 +193,7 @@ import Testing
         #expect(input.contains("Open webpages, newest first (what the user has open, kept until closed; open brings one forward, close closes; recall finds one by what it is about):\n- w1: A search for \"venom f5 price\", open since today\n- w2: A page open since yesterday (www.hennesseyperformance.com): \"Hennessey Performance\""))
         let things = ThingTable(exchanges: [], webpages: webpages)
         #expect(things.screenHandle(for: Screen(kind: .page, title: "Hennessey Performance", address: URL(string: "https://www.hennesseyperformance.com/?utm_source=x"))) == "w2", "the page on screen is the open webpage it is")
-        let bare = Planner.input(query: "x", exchanges: [], webpages: [], now: now)
+        let bare = Planner.input(query: "x", exchanges: [], webpages: [], now: now, done: .none)
         #expect(bare == "Request: x\n\nIn my notebook: no notes yet.", "an empty notebook is said, so a write makes a note instead of asking which")
     }
 
@@ -201,18 +202,18 @@ import Testing
         let items = [ScreenItem(title: "Lisbon in 4K", address: URL(string: "https://m.youtube.com/watch?v=def")!)]
         let screen = Screen(kind: .page, title: "YouTube", address: URL(string: "https://m.youtube.com/results?q=lisbon"), visible: "Lisbon in 4K\nRick Steves' Europe", items: items)
         let things = ThingTable(exchanges: [.page(query: "lisbon videos", title: "YouTube", address: URL(string: "https://m.youtube.com/results?q=lisbon")!)], items: items)
-        let input = Planner.input(query: "open the first one", things: things, now: now, screen: screen)
+        let input = Planner.input(query: "open the first one", things: things, now: now, screen: screen, done: .none)
         #expect(input.hasSuffix("\n\nOn screen, p1: the page \"YouTube\" at https://m.youtube.com/results?q=lisbon\nVisible now:\nLisbon in 4K\nRick Steves' Europe\nLinks in view, in order:\n- s1: \"Lisbon in 4K\" \u{2192} https://m.youtube.com/watch?v=def"), "the page on screen is named by the handle it already has")
         let trip = Note(title: "Trip", body: "- passport")
         let noteThings = ThingTable(exchanges: [.note(query: "open my trip note", title: "Trip", excerpt: "- passport", noteID: trip.id)], notes: [trip])
-        let noteInput = Planner.input(query: "reorganize these notes", things: noteThings, now: now, screen: Screen(kind: .note, title: "Trip", visible: "- passport"), screenNoteID: trip.id)
+        let noteInput = Planner.input(query: "reorganize these notes", things: noteThings, now: now, screen: Screen(kind: .note, title: "Trip", visible: "- passport"), screenNoteID: trip.id, done: .none)
         #expect(noteInput.contains("- p1: Opened my note \"Trip\" (n1)"), "the opened note points at the notebook's handle")
         #expect(noteInput.hasSuffix("\n\nOn screen, n1: my note \"Trip\" (its lines are listed under n1 above)"), "a note on screen is named once, by the notebook's handle, and not repeated")
         let ideas = Note(title: "Ideas", body: "- robot")
         let twoThings = ThingTable(exchanges: [.note(query: "open my trip note", title: "Trip", excerpt: "- passport", noteID: trip.id), .note(query: "pull up my ideas", title: "Ideas", excerpt: "- robot", noteID: ideas.id)], notes: [trip, ideas])
-        let twoInput = Planner.input(query: "turn the bullets into checkboxes", things: twoThings, now: now, screen: Screen(kind: .note, title: "Trip", visible: "- passport"), screenNoteID: trip.id, bubble: Screen(kind: .note, title: "Ideas", visible: "- robot"), bubbleNoteID: ideas.id)
+        let twoInput = Planner.input(query: "turn the bullets into checkboxes", things: twoThings, now: now, screen: Screen(kind: .note, title: "Trip", visible: "- passport"), screenNoteID: trip.id, bubble: Screen(kind: .note, title: "Ideas", visible: "- robot"), bubbleNoteID: ideas.id, done: .none)
         #expect(twoInput.hasSuffix("\n\nOn screen, n1: my note \"Trip\" (its lines are listed under n1 above)\n\nIn the bubble, n2: my note \"Ideas\" (its lines are listed under n2 above)"), "the bubble is a second place in view")
-        let sameThing = Planner.input(query: "q", things: twoThings, now: now, screen: Screen(kind: .note, title: "Trip", visible: "- passport"), screenNoteID: trip.id, bubble: Screen(kind: .note, title: "Trip", visible: "- passport"), bubbleNoteID: trip.id)
+        let sameThing = Planner.input(query: "q", things: twoThings, now: now, screen: Screen(kind: .note, title: "Trip", visible: "- passport"), screenNoteID: trip.id, bubble: Screen(kind: .note, title: "Trip", visible: "- passport"), bubbleNoteID: trip.id, done: .none)
         #expect(!sameThing.contains("In the bubble"), "the same thing in both places is named once")
         #expect(Planner.system(facts: [], context: .example, persona: .example).contains("when one thing is in view, it is that thing, and asking would be a nuisance. Ask which, never whether"), "two things in view and an unnamed target get a question; one does not; whether is the device's")
         #expect(!noteInput.contains("Visible now"))
@@ -220,12 +221,12 @@ import Testing
         #expect(system.contains("The last block names what is on the screen by its handle"))
         #expect(system.contains("When the request itself carries the thing to write or keep"), "content in the sentence wins over the screen")
         #expect(system.contains("never ask Lorcan to say again what the listing already holds"))
-        let spoken = Planner.input(query: "add it to my notes about my project", things: ThingTable(), now: now, spoken: "um add it to my, to my notes about my project")
+        let spoken = Planner.input(query: "add it to my notes about my project", things: ThingTable(), now: now, spoken: "um add it to my, to my notes about my project", done: .none)
         #expect(spoken.hasPrefix("Request: add it to my notes about my project\nAs spoken: \"um add it to my, to my notes about my project\"\n"), "the words as spoken ride beside the read words when they differ")
-        #expect(!Planner.input(query: "q", things: ThingTable(), now: now, spoken: "q").contains("As spoken"))
+        #expect(!Planner.input(query: "q", things: ThingTable(), now: now, spoken: "q", done: .none).contains("As spoken"))
         var write = Exchange.noteWrite(query: "add the rules", title: "Assistant project", heading: "Added to Assistant project", lines: "- answers should bold less\n- add subtitles", noteID: trip.id)
         write.asked = "make answers stricter about what they bold and add subtitles, and add it to my notes about my project"
-        let worded = Planner.input(query: "no not that, I meant the rules", things: ThingTable(exchanges: [write], notes: [trip]), now: now)
+        let worded = Planner.input(query: "no not that, I meant the rules", things: ThingTable(exchanges: [write], notes: [trip]), now: now, done: .none)
         #expect(worded.contains("- p1: You asked \"make answers stricter about what they bold and add subtitles, and add it to my notes about my project\" → Added to Assistant project (my note \"Assistant project\"):\n    - answers should bold less\n    - add subtitles"), "the user's words and what was written are in view; got: \(worded)")
         #expect(system.contains("Never guess what a thing holds"), "what the listing does not show is one look away")
         #expect(system.contains("An effect in the world no tool of yours produces"), "an effect with no tool is said at once")
@@ -252,7 +253,7 @@ import Testing
 
     @Test func theRequestIsOneWholeBodyCallWithEveryToolAndToolChoiceAny() throws {
         let bundle = PlanBundle(query: "q", exchanges: [], facts: ["f"], tools: Planner.tools(for: InstinctSpec.all), context: .example)
-        let transcript: [InteractionStep] = [.userText(Planner.input(query: "q", exchanges: [], webpages: [], now: AnswerContext.example.now))]
+        let transcript: [InteractionStep] = [.userText(Planner.input(query: "q", exchanges: [], webpages: [], now: AnswerContext.example.now, done: .none))]
         let request = Planner.request(bundle: bundle, transcript: transcript)
         #expect(request.model == Planner.model)
         #expect(request.stream == false)

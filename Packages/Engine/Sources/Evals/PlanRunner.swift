@@ -54,7 +54,7 @@ public struct PlanRunner: Sendable {
         let things = ThingTable(exchanges: planCase.exchanges ?? [], webpages: webpages, notes: notes, items: screen?.items ?? [])
         let lead = planCase.failure.map(Planner.failureLead) ?? planCase.picked.map(Planner.pickedLead)
         let triggers = (planCase.triggers ?? []).map { $0.trigger(now: context.now) }
-        var transcript: [InteractionStep] = [.userText(Planner.input(query: planCase.query, things: things, now: context.now, lead: lead, screen: screen, bubble: planCase.bubble?.screen, triggers: triggers, done: (planCase.done ?? []).map { $0.record(now: context.now) }))]
+        var transcript: [InteractionStep] = [.userText(Planner.input(query: planCase.query, things: things, now: context.now, lead: lead, screen: screen, bubble: planCase.bubble?.screen, triggers: triggers, done: Done(before: (planCase.done ?? []).map { $0.record(now: context.now) })))]
         // Steps already taken. The API refuses a function_call step the client
         // wrote, and a transcript that ends on a model step (400 "invalid
         // argument", 2026-10-29), so each goes in as two steps: the model's

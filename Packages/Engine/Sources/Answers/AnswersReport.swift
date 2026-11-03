@@ -34,7 +34,7 @@ public enum AnswersReport {
         out.append("### Input (both formats)")
         out.append("")
         out.append("```")
-        out.append(AnswerPrompt.input(query: "<query>", context: .example))
+        out.append(AnswerPrompt.input(query: "<query>", context: .example, done: .none))
         out.append("```")
         out.append("")
         out.append("### Input with earlier exchanges")
@@ -45,7 +45,7 @@ public enum AnswersReport {
         out.append(AnswerPrompt.input(query: "<query>", context: .example, earlier: [
             .search(query: "<earlier query>", term: "<term searched>"),
             Exchange(query: "<earlier query>", kind: .page, title: "<page title>", host: "<host>", address: "https://<host>/<path>"),
-        ]))
+        ], done: .none))
         out.append("```")
         out.append("")
         out.append("### Input with facts")
@@ -53,7 +53,7 @@ public enum AnswersReport {
         out.append("The facts the app knows about the user (`FactStore`: told outright, chosen on the sheet, or inferred from a query that stated something lasting on the way to its ask) that could bear on the query go in after the context and the earlier exchanges, each as Jarbits noted it. Which ones: Jev scores every fact against the query in a request of its own beside the main pick (`FactPicking`, model `\(FactPicking.model)`, one `score` question per fact, \"\(FactPicking.question)\" over the levels \(FactPicking.levels.map { "\"\($0)\"" }.joined(separator: ", ")); a fact goes when one minus the probability of the first level is at least \(FactPicking.threshold.formatted()), the highest \(FactPicking.maxSent) at most, plus any fact noted in the conversation still going; \(FactPicking.chunk) facts a request, the requests sent at once, with the newest \(FactPicking.exchangesGiven) exchanges in the state). The session waits \(FactPicking.wait.components.seconds).\(FactPicking.wait.components.attoseconds / 100_000_000_000_000_000) s past the route for it and sends every fact when Jev is slow or down. The system instructions say to let them shape the answer when they bear on it and never to repeat them; a question about the user's life that the facts given do not cover is answered with `\(AnswerPrompt.notesMarker)`, never shown, and the same answer is asked once more with every fact (`retry`), whose instruction says to say he doesn't know instead. The planner gets the chosen facts and how many more are held, and its `facts` tool looks through the rest by what to look for. The fact reader sees every fact.")
         out.append("")
         out.append("```")
-        out.append(AnswerPrompt.input(query: "<query>", context: .example, facts: ["<fact>", "<fact>"], persona: .example))
+        out.append(AnswerPrompt.input(query: "<query>", context: .example, facts: ["<fact>", "<fact>"], persona: .example, done: .none))
         out.append("```")
         out.append("")
         out.append("Every query is also read for facts beside its routing by the fact reader (`FactReader`, `\(FactReader.model)`, within \(FactReader.timeout.components.seconds) s, nothing waiting on it): the words, the newest \(FactReader.exchangesGiven) exchanges and the facts already known, numbered, go in; a list comes back, each fact `new`, `same` as a known one (refreshed) or `changed` from one (replaced, the old words kept). This instruction, with the input below it:")
@@ -63,7 +63,7 @@ public enum AnswersReport {
         out.append("```")
         out.append("")
         out.append("```")
-        out.append(FactReader.input(query: "<query>", exchanges: [.answer(query: "<earlier query>", text: "<answer>")], known: ["<fact>", "<fact>"], now: AnswerContext.example.now))
+        out.append(FactReader.input(query: "<query>", exchanges: [.answer(query: "<earlier query>", text: "<answer>")], known: ["<fact>", "<fact>"], now: AnswerContext.example.now, done: .none))
         out.append("```")
         out.append("")
         out.append("A plan that could not finish (the time ran out, or nothing came of it) is closed by the device, not the planner: its record of what was tried, each step in plain words with its outcome, why it stopped and what the planner already said, goes to `\(Closing.model)` (`Closing`, within \(Closing.timeout.components.seconds) s, at most \(Closing.maxOutputTokens) output tokens) for one short line to the user in Jarbits's voice: what was tried, why it did not work out, what would; a miss leaves the bubble's fixed lines. A long answer that brought nothing is closed the same way. A plan that partly worked goes to the same model with the reason `partly`, for a line about what did not happen, or an empty line when all of it did. This instruction, with the input below it:")
@@ -72,7 +72,19 @@ public enum AnswersReport {
         out.append(Closing.system(.example))
         out.append("```")
         out.append("```")
-        out.append(Closing.input(query: "<query>", steps: [EngineSummary.Step(name: "web_results", arguments: ["query": "<words>"], outcome: "read", latencyMs: 0)], reason: .budget, said: ["<what the planner said>"], persona: .example))
+        out.append(Closing.input(query: "<query>", steps: [EngineSummary.Step(name: "web_results", arguments: ["query": "<words>"], outcome: "read", latencyMs: 0)], reason: .budget, said: ["<what the planner said>"], persona: .example, done: .none))
+        out.append("```")
+        out.append("")
+        out.append("### The check of what he claims (`Checker`)")
+        out.append("")
+        out.append("A question about his own actions (Jev's `did` question beside the pick, or the words when Jev did not say) has its answer checked against the record as the words come: the query, the answer so far and the block \"\(Done.answerHeading)\" go to `\(Checker.model)` (within \(Checker.timeout.components.seconds) s, at most \(Checker.maxOutputTokens) output tokens), once per answer. A contradiction cuts the answer off where it is and the correction follows under it, in his voice; a miss leaves the answer as it is. A question about the note in view is answered from the record with no model at all. This instruction, with the input below it:")
+        out.append("")
+        out.append("```")
+        out.append(Checker.system(.example))
+        out.append("```")
+        out.append("")
+        out.append("```")
+        out.append(Checker.input(query: "<query>", answer: "<the answer so far>", unfinished: true, done: Done(before: [ActionRecord(at: AnswerContext.example.now, what: "<what I did>", asked: "<the words it was for>")]), persona: .example))
         out.append("```")
         out.append("")
         out.append("A `remember` pick on the direct path reads its one fact with the value reader's fact instruction (`ValueExtractor.factSystem`), kept as told.")
@@ -121,7 +133,12 @@ public enum AnswersReport {
         let things = ThingTable(exchanges: bundle.exchanges, webpages: [
             Webpage(kind: .page, address: URL(string: "https://example.com/<path>")!, title: "<page title>", query: "<earlier query>", opened: AnswerContext.example.now.addingTimeInterval(-86_400)),
         ], items: screen.items)
-        let input = Planner.input(query: "<query>", things: things, now: AnswerContext.example.now, screen: screen, done: [ActionRecord(at: AnswerContext.example.now, what: "<what I did>", asked: "<the words it was for>")])
+        let done = Done(
+            before: [ActionRecord(at: AnswerContext.example.now, what: "<what I did>", asked: "<the words it was for>")],
+            now: [Done.Entry(record: ActionRecord(at: AnswerContext.example.now, what: "<what I read for this request>", asked: "<the words it was for>", kind: .read), full: "<the whole of what I read>")],
+            saying: "<the words of an answer still coming out of me>"
+        )
+        let input = Planner.input(query: "<query>", things: things, now: AnswerContext.example.now, screen: screen, done: done)
         var out: [String] = []
         out.append("### Reasoning (function calling)")
         out.append("")
@@ -175,7 +192,8 @@ public enum AnswersReport {
         let request = ValueExtractor.request(
             query: "<query>",
             exchanges: [.search(query: "<earlier query>", term: "<term searched>")],
-            schema: sample.jsonSchema()
+            schema: sample.jsonSchema(),
+            done: .none
         )
         var out: [String] = []
         out.append("### Values read by Gemini")
@@ -213,7 +231,7 @@ public enum AnswersReport {
 
     /// The reading beside the Jev request: the request standing on its own.
     private static func readingSection() -> [String] {
-        let request = QueryReader.request(query: "Which oh can you pull up youtube?", now: Date(timeIntervalSince1970: 1_792_600_000), screen: Screen(kind: .page, title: "<page title>", address: URL(string: "https://example.com/<path>"), visible: "<the text in the viewport>"))
+        let request = QueryReader.request(query: "Which oh can you pull up youtube?", now: Date(timeIntervalSince1970: 1_792_600_000), screen: Screen(kind: .page, title: "<page title>", address: URL(string: "https://example.com/<path>"), visible: "<the text in the viewport>"), done: .none)
         var out: [String] = []
         out.append("### The reading beside Jev")
         out.append("")

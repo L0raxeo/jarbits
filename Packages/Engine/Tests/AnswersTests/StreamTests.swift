@@ -59,7 +59,7 @@ import Testing
         }
     }
 
-    private let request = AnswerPrompt.request(format: .oneLine, query: "what's the time in costa rica", context: .example)
+    private let request = AnswerPrompt.request(format: .oneLine, query: "what's the time in costa rica", context: .example, done: .none)
 
     @Test func streamsAnAnswerInOrder() async throws {
         let client = MockGeminiTransport.client(status: 200, body: answerStream)
@@ -142,7 +142,7 @@ import Testing
 
     @Test func theReaderCallsADifferentSubstanceARewrite() async throws {
         let client = MockGeminiTransport.client(status: 200, body: body(#"{"query":"can you pull up youtube?"}"#))
-        let summary = await QueryReader(client: client).read("Which oh can you pull up youtube?")
+        let summary = await QueryReader(client: client).read("Which oh can you pull up youtube?", done: .none)
         #expect(summary.outcome == .rewritten)
         #expect(summary.changed)
         #expect(summary.query == "can you pull up youtube?")
@@ -157,18 +157,18 @@ import Testing
 
     @Test func theReaderLeavesTheSameWordsUnchanged() async {
         let client = MockGeminiTransport.client(status: 200, body: body(#"{"query":"Capital of Peru"}"#))
-        let summary = await QueryReader(client: client).read("capital of peru?")
+        let summary = await QueryReader(client: client).read("capital of peru?", done: .none)
         #expect(summary.outcome == .unchanged)
         #expect(!summary.changed)
         #expect(summary.query == "Capital of Peru")
     }
 
     @Test func theReaderFailsOnNothingUsable() async {
-        let empty = await QueryReader(client: MockGeminiTransport.client(status: 200, body: body(#"{"query":"  "}"#))).read("x")
+        let empty = await QueryReader(client: MockGeminiTransport.client(status: 200, body: body(#"{"query":"  "}"#))).read("x", done: .none)
         #expect(empty.outcome == .failed("no query") && empty.query == nil)
-        let notObject = await QueryReader(client: MockGeminiTransport.client(status: 200, body: body("just words"))).read("x")
+        let notObject = await QueryReader(client: MockGeminiTransport.client(status: 200, body: body("just words"))).read("x", done: .none)
         #expect({ if case .failed = notObject.outcome { true } else { false } }())
-        let denied = await QueryReader(client: MockGeminiTransport.client(status: 401, body: #"{"error":{"message":"API key not valid"}}"#)).read("x")
+        let denied = await QueryReader(client: MockGeminiTransport.client(status: 401, body: #"{"error":{"message":"API key not valid"}}"#)).read("x", done: .none)
         #expect({ if case .failed = denied.outcome { true } else { false } }())
     }
 
@@ -176,7 +176,7 @@ import Testing
 
     @Test func theExtractorReadsValuesWithoutNulls() async {
         let client = MockGeminiTransport.client(status: 200, body: body(#"{"temperature": 68, "room": null}"#))
-        let verdict = await ValueExtractor(client: client).extract(query: "set it to 68", exchanges: [], schema: thermostat)
+        let verdict = await ValueExtractor(client: client).extract(query: "set it to 68", exchanges: [], schema: thermostat, done: .none)
         guard case let .values(values, summary) = verdict else {
             Issue.record("expected values, got \(verdict)")
             return
@@ -197,26 +197,26 @@ import Testing
 
     @Test func theExtractorCallsProseAnEmptyObjectAndAFailureMisses() async {
         let prose = MockGeminiTransport.client(status: 200, body: body("I think 68 degrees."))
-        if case let .failed(summary) = await ValueExtractor(client: prose).extract(query: "x", exchanges: [], schema: thermostat), case let .failed(reason) = summary.outcome {
+        if case let .failed(summary) = await ValueExtractor(client: prose).extract(query: "x", exchanges: [], schema: thermostat, done: .none), case let .failed(reason) = summary.outcome {
             #expect(reason.hasPrefix("not an object"))
         } else {
             Issue.record("prose is a failure")
         }
         let empty = MockGeminiTransport.client(status: 200, body: body(#"{"temperature": null, "room": null}"#))
-        if case let .failed(summary) = await ValueExtractor(client: empty).extract(query: "x", exchanges: [], schema: thermostat) {
+        if case let .failed(summary) = await ValueExtractor(client: empty).extract(query: "x", exchanges: [], schema: thermostat, done: .none) {
             #expect(summary.outcome == .empty)
             #expect(summary.usage?.inputTokens == 200)
         } else {
             Issue.record("nothing read is empty")
         }
         let http = MockGeminiTransport.client(status: 400, body: "bad schema")
-        if case let .failed(summary) = await ValueExtractor(client: http).extract(query: "x", exchanges: [], schema: thermostat) {
+        if case let .failed(summary) = await ValueExtractor(client: http).extract(query: "x", exchanges: [], schema: thermostat, done: .none) {
             #expect(summary.outcome == .failed("http 400: bad schema"))
         } else {
             Issue.record("an HTTP error is a failure")
         }
         let failed = MockGeminiTransport.client(status: 200, body: #"{"id":"x","status":"failed","steps":[]}"#)
-        if case let .failed(summary) = await ValueExtractor(client: failed).extract(query: "x", exchanges: [], schema: thermostat) {
+        if case let .failed(summary) = await ValueExtractor(client: failed).extract(query: "x", exchanges: [], schema: thermostat, done: .none) {
             #expect(summary.outcome == .failed("status failed"))
         } else {
             Issue.record("a failed status is a failure")
@@ -273,7 +273,7 @@ import Testing
         }
         MockGeminiTransport.requests = []
         let extractor = ValueExtractor(client: GeminiClient(apiKey: "test-key", session: MockGeminiTransport.session()), timeout: .milliseconds(50))
-        if case let .failed(summary) = await extractor.extract(query: "x", exchanges: [], schema: thermostat) {
+        if case let .failed(summary) = await extractor.extract(query: "x", exchanges: [], schema: thermostat, done: .none) {
             #expect(summary.outcome == .failed("timeout"))
             #expect(summary.latencyMs < 250, "gave up at the budget, not at the reply")
         } else {

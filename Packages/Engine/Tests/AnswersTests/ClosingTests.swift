@@ -24,7 +24,7 @@ import Testing
             EngineSummary.Step(name: "say", arguments: ["text": "I can't measure distances yet; Maps will tell you which is closer. I'll keep checking."], outcome: "shown", latencyMs: 1),
             EngineSummary.Step(name: "web_results", arguments: ["query": "campus pizza to maginnes hall distance"], outcome: "failed: no reply", latencyMs: 1),
         ]
-        let input = Closing.input(query: "which is closer to maginnes hall", steps: steps, reason: .budget, said: Closing.said(in: steps), persona: .example)
+        let input = Closing.input(query: "which is closer to maginnes hall", steps: steps, reason: .budget, said: Closing.said(in: steps), persona: .example, done: .none)
         #expect(input == """
         Request: which is closer to maginnes hall
         Tried, in order:
@@ -35,8 +35,8 @@ import Testing
         Already said to Lorcan:
         - I can't measure distances yet; Maps will tell you which is closer. I'll keep checking.
         """, "no handles, no tool names, no counts; the say step is what was said, not a step")
-        #expect(Closing.input(query: "q", steps: [], reason: .nothing, said: []) == "Request: q\nTried: nothing got started\nWhy it stopped: nothing came of it")
-        let request = Closing.request(query: "q", steps: [], reason: .failed, persona: .example)
+        #expect(Closing.input(query: "q", steps: [], reason: .nothing, said: [], done: .none) == "Request: q\nTried: nothing got started\nWhy it stopped: nothing came of it")
+        let request = Closing.request(query: "q", steps: [], reason: .failed, persona: .example, done: .none)
         #expect(request.model == Closing.model && request.maxOutputTokens == Closing.maxOutputTokens && request.stream == false)
     }
 
@@ -53,10 +53,10 @@ import Testing
         #expect(system.contains("never of what got done"))
         #expect(system.contains("never promise to look again or to do anything later"))
         #expect(!Closing.system(.example).contains("If nothing is left"), "a plan that could not finish always gets its line")
-        let request = Closing.request(query: "q", steps: [], reason: .partly, persona: .example)
+        let request = Closing.request(query: "q", steps: [], reason: .partly, persona: .example, done: .none)
         #expect(request.systemInstruction == system && request.outputSchema == Closing.partlySchema)
         #expect(request.maxOutputTokens == Closing.partlyMaxOutputTokens, "120 cut the reply off before its closing brace (2026-11-02)")
-        #expect(Closing.request(query: "q", steps: [], reason: .failed, persona: .example).outputSchema == Closing.schema)
+        #expect(Closing.request(query: "q", steps: [], reason: .failed, persona: .example, done: .none).outputSchema == Closing.schema)
     }
 
     @Test func theLineStandsOnlyWhenAThingIsLeft() {
@@ -71,7 +71,7 @@ import Testing
 
     @Test func aFailedAnswerIsTheOneStepTried() {
         let steps = Closing.failedAnswer(query: "who wrote it", format: .narrative)
-        #expect(Closing.input(query: "who wrote it", steps: steps, reason: .failed, said: []) == """
+        #expect(Closing.input(query: "who wrote it", steps: steps, reason: .failed, said: [], done: .none) == """
         Request: who wrote it
         Tried, in order:
         - tried to answer "who wrote it" and it did not work

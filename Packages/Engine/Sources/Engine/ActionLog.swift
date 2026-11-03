@@ -2,19 +2,48 @@ import Foundation
 
 /// One thing Jarbits did, in his own words, as it happened.
 public struct ActionRecord: Codable, Sendable, Equatable {
+    /// What kind of thing it was, so the device and the record's renderer
+    /// tell a read from a change without parsing the words. Nil on records
+    /// written before kinds were kept (2026-11-03): they still decode.
+    public enum Kind: String, Codable, Sendable, CaseIterable {
+        /// Changed something that lasts: a note, a fact, a trigger.
+        case change
+        /// Put something in front of the user: a page, a note, a grid.
+        case show
+        /// Said or answered something, in words.
+        case say
+        /// Asked the user a question, and what came back.
+        case ask
+        /// Read something for himself: a page, a forecast, his own record.
+        case read
+        /// Tried and could not.
+        case tried
+    }
+
     public var at: Date
     public var what: String
+    public var kind: Kind?
     /// The note it touched, so "did you change this?" finds it by the note,
     /// whatever the note is called now.
     public var noteID: UUID?
     /// The user's words it was for; nil for what he did on his own (a reminder going off).
     public var asked: String?
 
-    public init(at: Date = .now, what: String, noteID: UUID? = nil, asked: String? = nil) {
+    public init(at: Date = .now, what: String, noteID: UUID? = nil, asked: String? = nil, kind: Kind? = nil) {
         self.at = at
         self.what = what
         self.noteID = noteID
         self.asked = asked
+        self.kind = kind
+    }
+
+    /// When it was, as said in a line: "at 14:00" today, "on Mon 2 Nov at 14:00" before.
+    public func when(calendar: Calendar = .current, now: Date = .now) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = calendar.isDate(at, inSameDayAs: now) ? "'at' HH:mm" : "'on' EEE d MMM 'at' HH:mm"
+        return formatter.string(from: at)
     }
 
     /// One line of a model's context: when, what, and what it was for.
@@ -72,17 +101,42 @@ public final class ActionLog: @unchecked Sendable {
         return decoder
     }()
 
-    /// Records it now, on disk before this returns.
-    public func add(_ what: String, noteID: UUID? = nil, asked: String? = nil, at: Date = .now) {
+    /// Records it now, on disk before this returns. Returns its place in
+    /// the record, so a request's working memory (`Done`) can keep the
+    /// whole of what was read beside the cut line.
+    @discardableResult
+    public func add(_ what: String, noteID: UUID? = nil, asked: String? = nil, kind: ActionRecord.Kind? = nil, at: Date = .now) -> Int? {
         let trimmed = what.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        let record = ActionRecord(at: at, what: Self.cut(trimmed), noteID: noteID, asked: asked.map(Self.cut))
+        guard !trimmed.isEmpty else { return nil }
+        let record = ActionRecord(at: at, what: Self.cut(trimmed), noteID: noteID, asked: asked.map(Self.cut), kind: kind)
         lock.lock()
         defer { lock.unlock() }
         var all = records()
         all.append(record)
         loaded = all
         write(record)
+        return all.count - 1
+    }
+
+    /// Everything from the given place on, oldest first: what a request
+    /// did, counted from where the record stood as it began.
+    public func since(_ index: Int) -> [ActionRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        let all = records()
+        guard index < all.count else { return [] }
+        return Array(all[max(index, 0)...])
+    }
+
+    /// The newest `limit` before the given place, oldest first, and how
+    /// many are earlier still: the record as a request found it.
+    public func newest(_ limit: Int = ActionLog.listed, before index: Int) -> (records: [ActionRecord], earlier: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        let all = records()
+        let end = min(max(index, 0), all.count)
+        let start = max(end - limit, 0)
+        return (Array(all[start..<end]), start)
     }
 
     /// How many there are: a step that leaves this as it was recorded nothing.

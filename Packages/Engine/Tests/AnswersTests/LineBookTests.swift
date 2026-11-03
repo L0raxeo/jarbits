@@ -86,6 +86,6 @@ import Testing
         #expect(Planner.system(facts: [], context: .example, persona: .example, lines: [lovedQuestion]).contains("Which, sir?"), "a loved line has no situation and always goes")
         let bundle = PlanBundle(query: "q", exchanges: [], facts: [], tools: [], context: .example, persona: .example, lines: lines)
         #expect(Planner.request(bundle: bundle, transcript: [.userText("x")]).systemInstruction.contains(block))
-        #expect(AnswerPrompt.request(format: .narrative, query: "q", context: .example, persona: .example, lines: lines).systemInstruction.contains(block))
+        #expect(AnswerPrompt.request(format: .narrative, query: "q", context: .example, persona: .example, lines: lines, done: .none).systemInstruction.contains(block))
     }
 }

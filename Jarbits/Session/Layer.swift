@@ -50,6 +50,9 @@ final class Layer: Identifiable {
     var pageTitle: String?
     /// An answer layer's own stream, so its text and turns survive leaving.
     var answer: AnswerSession?
+    /// The answer has been checked against the record, or is being: once
+    /// per layer, whatever else happens to the answer (`Checker`).
+    var checked = false
     /// A site this layer opened by name and still shows: routing asks Jev
     /// whether a follow-up rejects it.
     var openedSite: OpenedSite?

@@ -150,9 +150,11 @@ public struct PlanCase: Codable, Equatable, Sendable {
         /// How long before the example date it happened.
         public var minutesAgo: Double?
         public var asked: String?
+        /// What kind of thing it was (`ActionRecord.Kind`); nil as on the phone's older lines.
+        public var kind: ActionRecord.Kind?
 
         public func record(now: Date) -> ActionRecord {
-            ActionRecord(at: now.addingTimeInterval(-(minutesAgo ?? 1) * 60), what: what, asked: asked)
+            ActionRecord(at: now.addingTimeInterval(-(minutesAgo ?? 1) * 60), what: what, asked: asked, kind: kind)
         }
     }
 

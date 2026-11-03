@@ -31,7 +31,7 @@ final class AnswerSession {
     /// What the app knows about the user that could bear on the query, each
     /// as Jarbits noted it: the facts chosen for it, or every fact on the retry.
     private(set) var facts: [String] = []
-    private var done: [String] = []
+    private var done = Done.none
     private var persona = Persona()
     private var screen: Screen?
     /// The lines of his book nearest the query, for the manner.
@@ -116,7 +116,7 @@ final class AnswerSession {
         phase == .streaming ? Shape.streaming(displayText) : Shape.of(displayText)
     }
 
-    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil, retry: Bool = false, lines: [Line] = [], callbacks: [Callback] = []) {
+    func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], done: Done, persona: Persona = Persona(), screen: Screen? = nil, retry: Bool = false, lines: [Line] = [], callbacks: [Callback] = []) {
         task?.cancel()
         self.callbacks = callbacks
         self.format = format
@@ -148,11 +148,25 @@ final class AnswerSession {
         }
     }
 
-    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String], done: [String], persona: Persona, screen: Screen?, retry: Bool, lines: [Line], callbacks: [Callback]) async {
+    /// He cuts himself off: the stream stops where it is, the words out so
+    /// far stand as the answer, and it finishes as any answer does, so the
+    /// record and the thread hold what was really said. Nothing to do once
+    /// the answer is over.
+    func stopEarly() {
+        guard phase == .streaming else { return }
+        task?.cancel()
+        task = nil
+        phase = .done
+        let summary = AnswerSummary(model: client.model, format: format, usage: nil, firstTokenMs: nil, latencyMs: 0, outcome: .completed, retriedWithAll: retry ? true : nil, shape: Shape.of(text), callbacks: callbacks.isEmpty ? nil : callbacks.count)
+        self.summary = summary
+        onFinish?(summary)
+    }
+
+    private func run(format: Instinct, query: String, history: [AnswerTurn], earlier: [Exchange], facts: [String], done: Done, persona: Persona, screen: Screen?, retry: Bool, lines: [Line], callbacks: [Callback]) async {
         let clock = ContinuousClock()
         let start = clock.now
         let context = AnswerContext(locale: .current, timeZone: .current, now: .now)
-        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts, done: done, persona: persona, screen: screen, retry: retry, lines: lines, callbacks: callbacks)
+        let request = AnswerPrompt.request(format: format, query: query, context: context, model: client.model, history: history, earlier: earlier, facts: facts, persona: persona, screen: screen, retry: retry, lines: lines, callbacks: callbacks, done: done)
 
         var usage: AnswerUsage?
         var firstTokenMs: Int?

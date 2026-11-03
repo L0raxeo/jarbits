@@ -39,11 +39,11 @@ struct AnswerInstinct: InstinctRunner {
         if let about = context.things["about"] {
             let exchange = about.asExchange(query: context.query)
             let conversation = session.focus?.exchanges.map(\.exchange) ?? []
-            if context.decision.source == .plan, about.kind == .answer, conversation.contains(exchange) {
+            if context.decision.source == .plan, about.kind == .answer, conversation.contains(where: { $0.isSameThing(as: exchange) }) {
                 context.thread = session.thread
-                context.earlier.removeAll { conversation.contains($0) }
+                context.earlier.removeAll { one in conversation.contains { $0.isSameThing(as: one) } }
                 context.decision.continues = true
-            } else if !context.earlier.contains(exchange) {
+            } else if !context.earlier.contains(where: { $0.isSameThing(as: exchange) }) {
                 context.earlier.append(exchange)
             }
         }

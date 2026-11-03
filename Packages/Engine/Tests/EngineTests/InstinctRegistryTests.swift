@@ -62,8 +62,8 @@ import Testing
         func ids(_ format: Instinct, _ context: RequestContext) -> [String] {
             InstinctSpec.spec(for: format).questions(context).map(\.id)
         }
-        #expect(ids(.narrative, plain) == ["recent"])
-        #expect(ids(.oneLine, plain) == ["recent"])
+        #expect(ids(.narrative, plain) == ["recent", "did"])
+        #expect(ids(.oneLine, plain) == ["recent", "did"])
         #expect(ids(.recall, plain) == EngineRequest.recallQuestionIDs)
         #expect(ids(.site, plain) == [], "the rejects question needs a site on screen")
         #expect(ids(.site, overSite) == ["rejects"])
