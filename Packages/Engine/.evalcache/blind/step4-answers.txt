@@ -1,0 +1,18 @@
+Step 4: one answer instruction, the pick as a hint, the model decides the shape.
+What he said on the Mac (facts given: allergic to peanuts; a junior at Lehigh), markers as written.
+
+[one_line hint]  capital of peru                  → ==Lima==
+[one_line hint]  100 usd to eur                   → NEEDS_LIVE_DATA  (web results, as before)
+[one_line hint]  how long do cold sores last      → Usually **7 to 10** days.
+[one_line hint]  what am I allergic to            → You are allergic to **peanuts**, sir.
+[one_line hint]  bitcoin price                    → NEEDS_LIVE_DATA
+[one_line hint]  is charlie kirk alive            → NEEDS_LIVE_DATA
+[one_line hint]  what month do I graduate?        → You graduate in **May** 2028, sir.   (six of six answered without asking for every fact)
+[one_line hint]  how many semesters do I have left? → You have ==two== semesters remaining.
+[narrative hint] why is the sky blue              → Sunlight reaches the atmosphere and is scattered in all directions by the gases and particles in the air. Blue light travels in shorter, smaller waves and is scattered more strongly than other colours, which is why the sky appears blue to our eyes. This phenomenon is known as _Rayleigh scattering_.
+[narrative hint] you're useless                   → A harsh assessment, sir. I shall endeavour to be more of a convenience and less of a liability.
+[narrative hint] I'm so tired today               → Then I shall keep this short. You've had a taxing term, I dare say. Rest is in order.
+[narrative hint] what do you know about me        → (asked for every fact first, rightly) I know that you are a __junior at Lehigh University__ and that you have a **peanut allergy**, sir. Beyond those details, my knowledge remains quite thin, I'm afraid.
+[narrative hint] add it to my list                → Which list, sir? I have your shopping and task lists, among others.   (a question back; the lists are invented, since this ran with no notebook in view)
+
+On the screen: a one-row reply of at most twelve words shows as a line, large and bare; anything longer as a card; while it streams it is a line until it outgrows one.
