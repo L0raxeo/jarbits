@@ -177,8 +177,8 @@ public enum DecisionsReport {
             let cost = answered.compactMap { $0.1.usage?.costUSD }.reduce(0, +)
             out.append("\(answered.count) answered by Gemini, about $\(cost.formatted(.number.precision(.fractionLength(4)))) in tokens.")
             out.append("")
-            out.append("| Format | Answers | Completed | Needed live data | Partial | Fell back | Median first token | Median total | Mean output tokens |")
-            out.append("|---|---|---|---|---|---|---|---|---|")
+            out.append("| Format | Answers | Completed | Needed live data | Partial | Fell back | Median first token | Median total | Mean output tokens | Lines |")
+            out.append("|---|---|---|---|---|---|---|---|---|---|")
             for format in Instinct.allCases {
                 let rows = answered.filter { $0.1.format == format }
                 guard !rows.isEmpty else { continue }
@@ -188,7 +188,8 @@ public enum DecisionsReport {
                 let fellBack = rows.filter { if case .fellBackToWeb = $0.1.outcome { true } else { false } }.count
                 let outputs = rows.compactMap { $0.1.usage.map { $0.outputTokens + $0.thoughtTokens } }
                 let meanOutput = outputs.isEmpty ? 0 : outputs.reduce(0, +) / outputs.count
-                out.append("| `\(format.rawValue)` | \(rows.count) | \(completed) | \(liveData) | \(partial) | \(fellBack) | \(median(rows.compactMap(\.1.firstTokenMs))) | \(median(rows.compactMap(\.1.latencyMs))) | \(meanOutput) |")
+                let lines = rows.filter { $0.1.shape == .line }.count
+                out.append("| `\(format.rawValue)` | \(rows.count) | \(completed) | \(liveData) | \(partial) | \(fellBack) | \(median(rows.compactMap(\.1.firstTokenMs))) | \(median(rows.compactMap(\.1.latencyMs))) | \(meanOutput) | \(lines) |")
             }
             out.append("")
             let liveData = answered.filter { $0.1.outcome == .needsLiveData }

@@ -76,7 +76,7 @@ import Testing
         let where_ = narrative.range(of: block)!.lowerBound
         #expect(character < where_ && where_ < emphasis, "under Character, before the markers")
         #expect(!AnswerPrompt.system(for: .narrative, persona: .example).contains(LineBook.heading), "no lines, no block")
-        #expect(!AnswerPrompt.system(for: .oneLine, persona: .example, lines: lines).contains(LineBook.heading), "the bare answer takes no lines")
+        #expect(AnswerPrompt.system(for: .oneLine, persona: .example, lines: lines).contains(LineBook.heading), "one instruction for both picks")
         let planner = Planner.system(facts: [], context: .example, persona: .example, lines: lines)
         #expect(planner.contains(block) && planner.range(of: block)!.lowerBound > planner.range(of: "Truth, and how things work")!.lowerBound && planner.range(of: block)!.lowerBound < planner.range(of: "What Jarbits knows about")!.lowerBound, "after the rules, before the facts")
         let question = Line(user: "open my list", jarbits: "Which one, sir?", situation: "a question back", source: .seed)

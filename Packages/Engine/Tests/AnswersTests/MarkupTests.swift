@@ -45,7 +45,7 @@ import Testing
     }
 
     @Test func formatsAllowTheRightMarkers() {
-        #expect(AnswerMarkup.markers(for: .oneLine) == [.highlight])
+        #expect(AnswerMarkup.markers(for: .oneLine) == [.highlight, .bold, .underline, .italic], "the model decides the shape; the instruction keeps a bare value to a highlight")
         #expect(AnswerMarkup.markers(for: .narrative) == [.highlight, .bold, .underline, .italic])
         #expect(AnswerMarkup.markers(for: .webResults).isEmpty)
     }

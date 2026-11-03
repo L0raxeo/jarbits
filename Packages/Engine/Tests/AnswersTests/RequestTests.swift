@@ -145,27 +145,30 @@ import Testing
         #expect(positions == positions.sorted())
     }
 
-    @Test func eachFormatHasItsOwnRulesAndBudget() {
+    @Test func bothPicksShareOneInstructionAndThePickIsAHint() {
         let narrative = AnswerPrompt.system(for: .narrative)
         let oneLine = AnswerPrompt.system(for: .oneLine)
         #expect(narrative != oneLine)
+        #expect(narrative.replacingOccurrences(of: AnswerPrompt.hintLine(.narrative), with: "") == oneLine.replacingOccurrences(of: AnswerPrompt.hintLine(.oneLine), with: ""), "the same instruction but for the hint")
+        #expect(narrative.hasSuffix(AnswerPrompt.hintLine(.narrative)) && oneLine.hasSuffix(AnswerPrompt.hintLine(.oneLine)), "the hint is the last line")
+        #expect(oneLine.contains("a single line: a value or a short clause, most likely. A hint, not a rule"))
         #expect(narrative.contains("Open with the most immediate, simple answer"))
         #expect(narrative.contains("There is no target length"))
         #expect(!narrative.contains("two to four"), "no word or paragraph count")
+        #expect(narrative.contains("The question decides the shape, and you read it: a bare value for a value question"))
+        #expect(narrative.contains("never more than twelve words"))
+        #expect(narrative.contains("a question back when the request cannot be served without something only Lorcan can give") == false && narrative.contains("a question back when the request cannot be served without something only the person you assist can give"), "nameless until the name is given")
         #expect(Instinct.narrative.criterion.examples.contains("whats isi in ipe"))
         #expect(Instinct.oneLine.criterion.notFor.contains("definitions"))
         #expect(narrative.contains("no access to the web"))
-        #expect(narrative.contains("Never say when your knowledge ends"), "no cutoff disclaimer in a narrative")
-        #expect(!narrative.contains("may be out of date, then"))
-        #expect(narrative.contains("Earlier turns of this conversation"), "a continued narrative reads as a reply")
+        #expect(narrative.contains("Never say when your knowledge ends"), "no cutoff disclaimer")
+        #expect(narrative.contains("Earlier turns of this conversation"), "a continued answer reads as a reply")
         #expect(narrative.contains("each answer in a conversation has its own"))
-        #expect(oneLine.contains("whether a person is alive"))
-        #expect(oneLine.contains("one line only"))
-        #expect(oneLine.contains("Never more than twelve words"))
-        #expect(oneLine.contains("Earlier turns of this conversation"), "a one-line reply can continue a thread")
-        #expect(narrative.contains("Earlier turns of this conversation"))
-        #expect(oneLine.contains("reply with exactly: \(AnswerPrompt.liveDataMarker)"))
-        #expect(AnswerPrompt.maxOutputTokens(for: .narrative) > AnswerPrompt.maxOutputTokens(for: .oneLine))
+        #expect(narrative.contains("whether a person is alive"))
+        #expect(narrative.contains("reply with exactly \(AnswerPrompt.liveDataMarker) and nothing else"), "either shape may need live data")
+        #expect(narrative.contains("A question that asks why or how, or wants an explanation, is never the marker"))
+        #expect(AnswerPrompt.maxOutputTokens(for: .narrative) == AnswerPrompt.maxOutputTokens(for: .oneLine), "the model decides the shape, so a line that grows is not cut")
+        #expect(Shape.lineWords == 12)
     }
 
     @Test func earlierExchangesGoInTheContextBlockOnly() throws {
@@ -214,8 +217,8 @@ import Testing
         for system in [AnswerPrompt.system(for: .narrative, persona: .example), Planner.system(facts: [], context: .example, persona: .example), Closing.system(.example)] {
             #expect(system.contains(Voice.guide(.example)), "with how he talks")
         }
-        #expect(!AnswerPrompt.system(for: .oneLine, persona: .example).contains(Voice.guide(.example)), "a one-line answer is the bare answer: \"120 levels\", never \"There are 120 levels, sir\"")
-        #expect(AnswerPrompt.system(for: .oneLine, persona: .example).contains("never \"sir\""))
+        #expect(AnswerPrompt.system(for: .oneLine, persona: .example).contains(Voice.guide(.example)), "one instruction for both picks: the voice is in it, and a bare value stays bare")
+        #expect(AnswerPrompt.system(for: .oneLine, persona: .example).contains("no \"sir\", no full stop at the end"))
         #expect(!ValueExtractor.factSystem(.example).contains(Voice.guide(.example)), "a fact is written, not spoken")
         let reader = Persona.example.readerLine
         #expect(reader.hasSuffix("What you hand back is Lorcan's request in Lorcan's own words, not your words about it."))

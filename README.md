@@ -389,11 +389,12 @@ of it.
 
 `AnswerSession` streams one answer at a time from Gemini `gemini-3.1-flash-lite`
 (Interactions API, thinking `minimal`, `store: false`, no tools). The system
-instruction is the per-format rule set in `AnswerPrompt`
-(`Packages/Engine/Sources/Answers`): narrative opens with the immediate
-answer and keeps to the scope the query's wording implies, with no target
-length; one-line gives the answer itself in at most twelve words, never a
-sentence restating the question. The input carries the
+instruction is the one answer instruction in `AnswerPrompt`
+(`Packages/Engine/Sources/Answers`), the same for both picks since
+2026-11-02 with the pick as a hint on its last line: the model reads the
+shape off the question, a bare value in at most twelve words for a value
+question, a paragraph or two for why or how, and the screen follows the
+text (see "Jarbits and the user"). The input carries the
 query plus the device date, time and zone and the locale, so "today", "now"
 and "the time in X" work without any lookup, and the model's knowledge
 cutoff (January 2025, pinned in `AnswerPrompt.knowledgeCutoff`) with the
@@ -973,7 +974,30 @@ record. `report lines "<request>"` prints the six a request would get,
 `report book [lines.jsonl]` the seed by situation and what was marked on
 the phone, `report answer --lines` and `report plans` (lines on by default,
 `--no-lines` for the bare prompt, `--book` for a phone's file) run with them;
-embeddings are cached under `.evalcache/embeddings/`. `Evals/voice.jsonl` holds 31 of Lorcan's
+embeddings are cached under `.evalcache/embeddings/`.
+
+**The reply's shape is his** (2026-11-02, the fourth step). Jev's
+`one_line` and `narrative` picks stay exactly as they are, and route as
+before; but both now run one answer instruction, and the pick is a hint
+on its last line ("The classifier read this query as wanting a single
+line … A hint, not a rule: the question decides"). Under Character the
+instruction says what shape each kind of question wants: a bare value
+for a value question (never a sentence restating it, no "sir", no full
+stop, at most twelve words), a remark or a sentence when a bare word
+needs a touch of context, a short paragraph or two for why or how, a
+question back when only Lorcan can supply what is missing. Both picks
+have the same output budget, since a line that grows must not be cut,
+and either may reply `NEEDS_LIVE_DATA`; a why-or-how question never
+does. The screen follows the text, not the pick (`Shape` in the Engine
+library: one row of at most twelve words is a line, anything else is
+prose): while an answer streams it is a line until a second row or a
+thirteenth word arrives, then a card, never back; a finished line is
+shown large and bare where the clay was, a finished answer that is prose
+as a transcript; a `say` that is one line is a line too. All four
+emphasis markers parse for both picks; the instruction keeps a bare
+value to a highlight. The answer's summary on the log line carries its
+`shape` beside the pick, and `report decisions` counts the lines per
+pick, so a pick that keeps coming back the other shape shows. `Evals/voice.jsonl` holds 31 of Lorcan's
 real requests, each set one round before the planner speaks, to hear the
 voice with `report plans`; `report answer` hears one answer. Where he
 writes facts (the fact reader, the remember distill): "You are Jarbits,

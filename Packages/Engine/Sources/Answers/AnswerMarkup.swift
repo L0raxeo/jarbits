@@ -37,11 +37,12 @@ public struct StyledSpan: Equatable, Sendable {
 /// The answer markup: four symmetric markers, not Markdown. The model is told
 /// what each one means in `AnswerPrompt`; this turns its text into spans.
 public enum AnswerMarkup {
-    /// Which markers a format may use. One-line answers only highlight.
+    /// Which markers an answered format may use: all four for both, since
+    /// the model decides the shape (the instruction keeps a bare value to a
+    /// highlight); the parser never leaves a marker literal in an answer.
     public static func markers(for format: Instinct) -> [Emphasis] {
         switch format {
-        case .oneLine: [.highlight]
-        case .narrative: [.highlight, .bold, .underline, .italic]
+        case .oneLine, .narrative: [.highlight, .bold, .underline, .italic]
         case .webResults, .map, .stock, .image, .video, .recall, .site, .remember, .forget, .time, .notebook, .weather, .trigger: []
         }
     }

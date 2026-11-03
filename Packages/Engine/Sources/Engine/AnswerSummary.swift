@@ -58,6 +58,9 @@ public struct AnswerSummary: Codable, Sendable, Equatable {
     /// nothing on it, and this is the second asking with every fact. Nil
     /// otherwise.
     public var retriedWithAll: Bool?
+    /// The shape the text turned out to have, beside the pick that was the
+    /// hint; nil in logs from before the model decided it.
+    public var shape: Shape?
 
     public enum Outcome: Codable, Sendable, Equatable {
         /// The answer streamed to the end.
@@ -81,7 +84,8 @@ public struct AnswerSummary: Codable, Sendable, Equatable {
         firstTokenMs: Int? = nil,
         latencyMs: Int? = nil,
         outcome: Outcome,
-        retriedWithAll: Bool? = nil
+        retriedWithAll: Bool? = nil,
+        shape: Shape? = nil
     ) {
         self.model = model
         self.format = format
@@ -90,5 +94,6 @@ public struct AnswerSummary: Codable, Sendable, Equatable {
         self.latencyMs = latencyMs
         self.outcome = outcome
         self.retriedWithAll = retriedWithAll
+        self.shape = shape
     }
 }

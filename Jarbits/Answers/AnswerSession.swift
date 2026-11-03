@@ -3,6 +3,10 @@ import Foundation
 import Observation
 import Engine
 
+/// The package's `Shape`, named apart from SwiftUI's in the views (and the
+/// app's own `Engine` type shadows the module's name there).
+typealias AnswerShape = Shape
+
 /// One in-flight Gemini answer: the text as it streams and the summary that
 /// goes to the log when it ends. A new query cancels the old answer.
 @Observable
@@ -99,9 +103,15 @@ final class AnswerSession {
     /// What he says when every fact was given and still nothing bears on it.
     static let dontKnowLine = "I don't know that yet, I'm afraid."
 
-    /// `displayText` with the format's emphasis markers applied.
+    /// `displayText` with the emphasis markers applied.
     var styledSpans: [StyledSpan] {
         AnswerMarkup.styled(displayText, for: format)
+    }
+
+    /// The shape the text has: a line until it outgrows one while streaming,
+    /// and what it is once finished. The screen follows this, not the pick.
+    var shape: AnswerShape {
+        phase == .streaming ? Shape.streaming(displayText) : Shape.of(displayText)
     }
 
     func start(format: Instinct, query: String, history: [AnswerTurn] = [], earlier: [Exchange] = [], facts: [String] = [], done: [String] = [], persona: Persona = Persona(), screen: Screen? = nil, retry: Bool = false, lines: [Line] = []) {
@@ -179,7 +189,7 @@ final class AnswerSession {
             outcome = trimmed.isEmpty ? .fellBackToWeb(failure) : .partial(failure)
         } else if trimmed.isEmpty {
             outcome = .fellBackToWeb("empty answer")
-        } else if format == .oneLine, trimmed.contains(AnswerPrompt.liveDataMarker) {
+        } else if trimmed.contains(AnswerPrompt.liveDataMarker) {
             outcome = .needsLiveData
         } else if trimmed.contains(AnswerPrompt.notesMarker) {
             if retry {
@@ -203,7 +213,8 @@ final class AnswerSession {
             firstTokenMs: firstTokenMs,
             latencyMs: Self.elapsedMs(clock, since: start),
             outcome: outcome,
-            retriedWithAll: retry ? true : nil
+            retriedWithAll: retry ? true : nil,
+            shape: outcome == .completed ? Shape.of(text) : nil
         )
         self.summary = summary
         if outcome == .completed, !announced, !displayText.isEmpty {

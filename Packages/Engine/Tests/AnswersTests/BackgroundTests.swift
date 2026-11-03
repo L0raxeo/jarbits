@@ -31,7 +31,7 @@ import Testing
             let guideStart = system.range(of: Voice.guide(.example))!.lowerBound
             #expect(speakerEnd <= backgroundStart && backgroundStart < guideStart, "\(name): after who he speaks to, before how he speaks")
         }
-        #expect(!AnswerPrompt.system(for: .oneLine, persona: .example).contains(background), "a one-line answer is the bare answer")
+        #expect(AnswerPrompt.system(for: .oneLine, persona: .example).contains(background), "one instruction for both picks")
         for (name, system) in speaking {
             // The narrative has a Character block; the planner and the closing line have the voice alone.
             let divider = name == "narrative" ? Voice.divider : Voice.dividerVoiceOnly
@@ -39,7 +39,7 @@ import Testing
             #expect(!system.contains(name == "narrative" ? Voice.dividerVoiceOnly : Voice.divider), "\(name): the other line is not there")
             #expect(system.range(of: divider)!.lowerBound > system.range(of: Voice.guide(.example))!.lowerBound, "\(name): after the voice")
         }
-        #expect(!AnswerPrompt.system(for: .oneLine, persona: .example).contains(Voice.divider) && !AnswerPrompt.system(for: .oneLine, persona: .example).contains(Voice.dividerVoiceOnly))
+        #expect(AnswerPrompt.system(for: .oneLine, persona: .example).contains(Voice.divider))
         #expect(!FactReader.system(.example).contains(background), "where he writes facts")
         #expect(!QueryReader.system(.example).contains(background) && !ValueExtractor.system(.example).contains(background), "where he only reads")
     }

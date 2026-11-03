@@ -18,6 +18,10 @@ public struct AnswerTurn: Hashable, Codable, Sendable {
         self.format = format
     }
 
+    /// How the turn is drawn: a line or prose, read off the answer's text,
+    /// whatever the format was (2026-11-02).
+    public var shape: Shape { Shape.of(answer) }
+
     enum CodingKeys: String, CodingKey {
         case query, answer, format
     }

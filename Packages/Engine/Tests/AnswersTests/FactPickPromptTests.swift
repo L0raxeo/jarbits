@@ -10,11 +10,11 @@ import Testing
     @Test func anAnswerAsksForEveryFactOnceThenSaysItDoesNotKnow() {
         for format in [Instinct.narrative, .oneLine] {
             let first = AnswerPrompt.system(for: format, persona: .example)
-            #expect(first.contains("is answered from that block alone. When it holds something that bears on it, answer from that, working out what follows where you must (a junior graduates in two years). Only when nothing in it bears on the subject at all, reply with exactly NEEDS_MY_NOTES and nothing else: the block holds only the facts chosen for this query"), "\(format)")
+            #expect(first.contains("is answered from that block alone. When it holds something that bears on it, even distantly, answer from that, working out what follows where you must (a junior graduates in two years, in May; the date in the context says which year). Only when nothing in it bears on the subject at all, reply with exactly NEEDS_MY_NOTES and nothing else: the block holds only the facts chosen for this query"), "\(format)")
             #expect(!first.contains("that you don't know that yet"), "\(format): the first asking never says so by itself")
             let retry = AnswerPrompt.system(for: format, persona: .example, retry: true)
             #expect(!retry.contains(AnswerPrompt.notesMarker), "\(format): the retry has every fact; the marker would loop")
-            #expect(retry.contains("When it holds nothing on it, \(format == .oneLine ? "reply in a line" : "say in a line") that you don't know that yet;"), "\(format)")
+            #expect(retry.contains("When it holds nothing on it, say in a line that you don't know that yet;"), "\(format)")
             #expect(retry.contains("never guess, never answer from the world"))
         }
         #expect(AnswerSummary.notesMarkerName == AnswerPrompt.notesMarker, "the report names the marker without importing Answers")

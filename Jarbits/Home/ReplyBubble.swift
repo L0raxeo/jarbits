@@ -237,12 +237,14 @@ private struct ReplyPiece: View {
         return Self.expandableByKind(layer) || cut
     }
 
-    /// Expandable before its height is known: a narrative, a say, a note.
+    /// Expandable before its height is known: prose (an answer or a say
+    /// that is more than a line), a note, the weather.
     static func expandableByKind(_ layer: Layer) -> Bool {
         if layer.lingers { return false }
         switch layer.plan {
-        case let .answer(format, _, _, _): return format == .narrative && !(layer.answer?.text.isEmpty ?? true)
-        case .said, .note, .weather: return true
+        case .answer: return (layer.answer?.shape ?? .prose) == .prose && !(layer.answer?.text.isEmpty ?? true)
+        case let .said(_, text): return AnswerShape.of(text) == .prose
+        case .note, .weather: return true
         default: return false
         }
     }
@@ -321,10 +323,13 @@ private struct ReplyPiece: View {
             case .answer where awaitingText:
                 // The reply is on its way: its place, breathing, until the first words.
                 pulse()
-            case let .answer(format, _, _, _) where format == .oneLine:
+            case .answer where (layer.answer?.shape ?? .prose) == .line:
+                // The screen follows the text's shape, not the pick: a line is shown as one.
                 line(layer.answer?.styledSpans ?? [])
             case .answer:
                 card(layer.answer?.styledSpans ?? [], stoppedEarly: layer.answer?.stoppedEarly ?? false)
+            case let .said(_, text) where AnswerShape.of(text) == .line:
+                line(AnswerMarkup.styled(text, for: .narrative))
             case .said:
                 card(AnswerMarkup.styled(layer.plan.replyText, for: .narrative), stoppedEarly: false)
             case let .note(note):

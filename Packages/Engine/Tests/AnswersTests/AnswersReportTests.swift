@@ -14,11 +14,12 @@ import Testing
     @Test func reportQuotesThePromptsTheAppSends() {
         let markdown = AnswersReport.markdown()
         #expect(markdown.contains(AnswerPrompt.system(for: .narrative, persona: .example)))
-        #expect(markdown.contains(AnswerPrompt.system(for: .oneLine, persona: .example)))
+        #expect(!markdown.contains(AnswerPrompt.system(for: .oneLine, persona: .example)), "one instruction is quoted; the other pick's hint line beside it")
         #expect(markdown.contains("## Who Jarbits is") && markdown.contains(Persona.example.identityLine))
         #expect(markdown.contains(AnswerPrompt.input(query: "<query>", context: .example)))
         #expect(markdown.contains(GeminiClient.defaultModel))
-        #expect(markdown.contains("### `narrative` — system instruction, max \(AnswerPrompt.maxOutputTokens(for: .narrative)) output tokens"))
+        #expect(markdown.contains("### One system instruction for `narrative` and `one_line`, max \(AnswerPrompt.maxOutputTokens(for: .narrative)) output tokens"))
+        #expect(markdown.contains(AnswerPrompt.hintLine(.oneLine)))
         #expect(markdown.contains("`user_input`") && markdown.contains("`model_output`"), "the continued-narrative shape is documented")
         #expect(markdown.contains("Every earlier turn is sent"))
         #expect(markdown.contains("### Input with earlier exchanges"))
@@ -67,7 +68,7 @@ import Testing
 
         let markdown = DecisionsReport.markdown(records: parsed)
         #expect(markdown.contains("3 answered by Gemini, about $0.0002 in tokens."))
-        #expect(markdown.contains("| `one_line` | 2 | 1 | 1 | 0 | 0 | 900 ms | 1200 ms | 7 |"), Comment(rawValue: markdown))
+        #expect(markdown.contains("| `one_line` | 2 | 1 | 1 | 0 | 0 | 900 ms | 1200 ms | 7 | 0 |"), Comment(rawValue: markdown))
         #expect(markdown.contains("| `narrative` | 1 | 0 | 0 | 0 | 1 | – | 10000 ms | 0 |"))
         #expect(markdown.contains("Needed live data (shown web results): \"will it rain today\""))
         #expect(markdown.contains("- \"why is the sky blue\": fell back to web, timeout"))

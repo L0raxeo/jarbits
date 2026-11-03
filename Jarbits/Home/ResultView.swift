@@ -91,14 +91,14 @@ struct ResultView: View {
         case let .answer(format, query, history, _):
             if let answer = layer.answer {
                 AnswerView(
-                    spans: answer.styledSpans, stoppedEarly: answer.stoppedEarly, format: format, clayY: clayY, barCompact: $barCompact,
+                    spans: answer.styledSpans, stoppedEarly: answer.stoppedEarly, shape: answer.shape, clayY: clayY, barCompact: $barCompact,
                     history: history, query: query, failed: answer.failedBeforeText, needsLiveData: answer.needsLiveData, sources: layer.sources, onMark: { session.mark(layer, loved: $0) }
                 )
             }
         case let .time(_, text):
-            AnswerView(spans: AnswerMarkup.styled(text, for: .oneLine), stoppedEarly: false, format: .oneLine, clayY: clayY, barCompact: $barCompact)
+            AnswerView(spans: AnswerMarkup.styled(text, for: .oneLine), stoppedEarly: false, shape: .line, clayY: clayY, barCompact: $barCompact)
         case let .said(_, text):
-            AnswerView(spans: AnswerMarkup.styled(text, for: .narrative), stoppedEarly: false, format: .narrative, clayY: clayY, barCompact: $barCompact, sources: layer.sources, onMark: { session.mark(layer, loved: $0) })
+            AnswerView(spans: AnswerMarkup.styled(text, for: .narrative), stoppedEarly: false, shape: AnswerShape.of(text), clayY: clayY, barCompact: $barCompact, sources: layer.sources, onMark: { session.mark(layer, loved: $0) })
         case let .recallPicker(webpages, title):
             RecallGridView(webpages: webpages, title: title, topInset: topInset, barCompact: $barCompact)
         case let .siteChoices(name, candidates):
@@ -233,7 +233,8 @@ private struct AnswerView: View {
     let spans: [StyledSpan]
     /// The stream failed after some text had arrived.
     let stoppedEarly: Bool
-    let format: Instinct
+    /// A line is shown large and bare where the clay was; prose as a transcript.
+    let shape: AnswerShape
     let clayY: CGFloat
     @Binding var barCompact: Bool
     /// A remembered answer: when it was given, so a stale one reads as old.
@@ -265,7 +266,7 @@ private struct AnswerView: View {
     var body: some View {
         GeometryReader { proxy in
             Group {
-                if format == .oneLine, history.isEmpty {
+                if shape == .line, history.isEmpty {
                     oneLine(in: proxy)
                 } else {
                     transcript(in: proxy)
@@ -295,7 +296,7 @@ private struct AnswerView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     ForEach(history.indices, id: \.self) { index in
                         queryLine(history[index].query)
-                        prose(AnswerMarkup.styled(history[index].answer, for: history[index].format), as: history[index].format, markable: false)
+                        prose(AnswerMarkup.styled(history[index].answer, for: history[index].format), as: history[index].shape, markable: false)
                     }
                     if !history.isEmpty, let query {
                         queryLine(query).id(Self.latestTurn)
@@ -305,7 +306,7 @@ private struct AnswerView: View {
                             .font(.footnote)
                             .foregroundStyle(quiet)
                     } else {
-                        prose(spans, as: format)
+                        prose(spans, as: shape)
                     }
                     footer
                 }
@@ -334,9 +335,9 @@ private struct AnswerView: View {
     /// A narrative as prose; a one-line turn as the short fact it is. The
     /// newest answer takes the mark menu on a long press; earlier turns select.
     @ViewBuilder
-    private func prose(_ spans: [StyledSpan], as format: Instinct, markable: Bool = true) -> some View {
+    private func prose(_ spans: [StyledSpan], as shape: AnswerShape, markable: Bool = true) -> some View {
         let text = Text(AttributedString(spans: spans, ink: ink))
-            .font(format == .oneLine ? .title3.weight(.semibold) : .body)
+            .font(shape == .line ? .title3.weight(.semibold) : .body)
         if markable {
             text.contextMenu { markMenu }.frame(maxWidth: .infinity, alignment: .leading)
         } else {
@@ -391,7 +392,7 @@ private struct AnswerView: View {
                 .font(.subheadline)
                 .foregroundStyle(quiet)
         }
-        .frame(maxWidth: .infinity, alignment: format == .oneLine && history.isEmpty ? .center : .leading)
+        .frame(maxWidth: .infinity, alignment: shape == .line && history.isEmpty ? .center : .leading)
     }
 }
 
